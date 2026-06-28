@@ -1,0 +1,6 @@
+{
+  "name": "DocFlow Pro / Gestión Documental",
+  "description": "Plataforma de gestión documental, procesos con control de avance riguroso por etapas y roles de Manager y Asesor.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
