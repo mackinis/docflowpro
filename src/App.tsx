@@ -46,9 +46,9 @@ export default function App() {
       const data: AppDataState = await response.json();
       setState(data);
 
-      // Restore user from localStorage if exists
-      const savedUserStr = localStorage.getItem('docflow_user');
-      const savedRealUserStr = localStorage.getItem('docflow_real_user');
+      // Restore user from sessionStorage if exists
+      const savedUserStr = sessionStorage.getItem('docflow_user');
+      const savedRealUserStr = sessionStorage.getItem('docflow_real_user');
       if (savedUserStr) {
         try {
           const savedUser = JSON.parse(savedUserStr);
@@ -62,17 +62,17 @@ export default function App() {
               setRealUser(matchedReal || matchedUser);
             } else {
               setRealUser(matchedUser);
-              localStorage.setItem('docflow_real_user', JSON.stringify(matchedUser));
+              sessionStorage.setItem('docflow_real_user', JSON.stringify(matchedUser));
             }
           } else {
-            localStorage.removeItem('docflow_user');
-            localStorage.removeItem('docflow_real_user');
+            sessionStorage.removeItem('docflow_user');
+            sessionStorage.removeItem('docflow_real_user');
             setCurrentUser(null);
             setRealUser(null);
           }
         } catch (e) {
-          localStorage.removeItem('docflow_user');
-          localStorage.removeItem('docflow_real_user');
+          sessionStorage.removeItem('docflow_user');
+          sessionStorage.removeItem('docflow_real_user');
           setCurrentUser(null);
           setRealUser(null);
         }
@@ -347,8 +347,8 @@ export default function App() {
         onLoginSuccess={(user) => {
           setCurrentUser(user);
           setRealUser(user);
-          localStorage.setItem('docflow_user', JSON.stringify(user));
-          localStorage.setItem('docflow_real_user', JSON.stringify(user));
+          sessionStorage.setItem('docflow_user', JSON.stringify(user));
+          sessionStorage.setItem('docflow_real_user', JSON.stringify(user));
           setActiveTab('dashboard');
           setActiveCaseId(null);
         }}

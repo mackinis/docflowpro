@@ -310,7 +310,7 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-3 bg-slate-900 hover:bg-indigo-650 text-white font-semibold rounded-xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md disabled:opacity-50"
+                className="w-full py-3 bg-slate-900 hover:bg-indigo-600 text-white font-semibold rounded-xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md disabled:opacity-50"
                 id="btn-login-submit"
               >
                 {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Ingresar al Portal'}
@@ -460,7 +460,7 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-650 cursor-pointer"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
                       title={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
                     >
                       {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
@@ -482,7 +482,7 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
                     <button
                       type="button"
                       onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-650 cursor-pointer"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
                       title={showConfirmPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
                     >
                       {showConfirmPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
@@ -494,10 +494,10 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-3 bg-indigo-650 hover:bg-indigo-750 text-white font-semibold rounded-xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow"
+                className="w-full py-3 bg-slate-900 hover:bg-indigo-600 text-white font-semibold rounded-xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md disabled:opacity-50"
                 id="btn-register-submit"
               >
-                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Registrar nueva cuenta'}
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Registrar'}
               </button>
 
               <div className="text-center">
@@ -564,7 +564,7 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-3 bg-slate-900 hover:bg-indigo-650 text-white font-semibold rounded-xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md disabled:opacity-50"
+                className="w-full py-3 bg-slate-900 hover:bg-indigo-600 text-white font-semibold rounded-xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md disabled:opacity-50"
                 id="btn-verify-submit"
               >
                 {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Verificar y Activar Cuenta'}

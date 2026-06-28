@@ -182,7 +182,7 @@ export default function UserProfile({
       }
 
       onUpdateCurrentUser(data.user);
-      localStorage.setItem('docflow_user', JSON.stringify(data.user));
+      sessionStorage.setItem('docflow_user', JSON.stringify(data.user));
       setSuccessMsg('Perfil actualizado con éxito.');
       setProfilePassword('');
       await loadState();

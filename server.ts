@@ -224,16 +224,22 @@ function cleanDummyData(state: AppDataState) {
   ensureSuperadmin(state);
   
   // Clean users that are dummy (Lucia, Marcos, Sofía, Esteban unless they have dynamic password hashes or are superadmin)
-  state.users = state.users.filter(u => u.email.toLowerCase() === DEFAULT_SUPERADMIN_EMAIL.toLowerCase() || u.passwordHash);
+  if (state.users) {
+    state.users = state.users.filter(u => u.email.toLowerCase() === DEFAULT_SUPERADMIN_EMAIL.toLowerCase() || u.passwordHash);
+  } else {
+    state.users = [];
+    ensureSuperadmin(state);
+  }
 
-  // Clear dummy cases, documents, etc.
-  state.cases = [];
-  state.documents = [];
-  state.tasks = [];
-  state.observations = [];
-  state.notifications = [];
-  state.auditLogs = [];
-  state.formSubmissions = [];
+  // Initialize arrays only if they are missing or falsy, do NOT clear active records!
+  if (!state.cases) state.cases = [];
+  if (!state.documents) state.documents = [];
+  if (!state.tasks) state.tasks = [];
+  if (!state.observations) state.observations = [];
+  if (!state.notifications) state.notifications = [];
+  if (!state.auditLogs) state.auditLogs = [];
+  if (!state.formSubmissions) state.formSubmissions = [];
+  
   state.activeIndustry = state.activeIndustry || 'Inmobiliaria';
   state.verificationPolicies = state.verificationPolicies || {
     ASESOR: 'email',

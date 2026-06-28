@@ -298,7 +298,8 @@ export default function Sidebar({
         <div className="space-y-2">
           <button
             onClick={() => {
-              localStorage.removeItem('docflow_user');
+              sessionStorage.removeItem('docflow_user');
+              sessionStorage.removeItem('docflow_real_user');
               window.location.reload();
             }}
             className={`w-full flex items-center justify-center ${isCollapsed ? 'p-2.5' : 'gap-2 py-2 px-3'} rounded-lg text-xs font-semibold bg-red-600/20 hover:bg-red-600 text-red-300 hover:text-white transition-all border border-red-500/10 cursor-pointer`}
