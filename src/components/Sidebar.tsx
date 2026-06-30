@@ -16,7 +16,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Settings as SettingsIcon,
-  Mail
+  Mail,
+  FolderDown
 } from 'lucide-react';
 import { User, Notification } from '../types';
 
@@ -34,6 +35,8 @@ interface SidebarProps {
   onOpenCase: (caseId: string) => void;
   tabOrder?: string[];
   realUser?: User | null;
+  mobileSidebarOpen?: boolean;
+  onCloseMobileSidebar?: () => void;
 }
 
 export default function Sidebar({
@@ -49,36 +52,38 @@ export default function Sidebar({
   onMarkAllNotificationsRead,
   onOpenCase,
   tabOrder,
-  realUser
+  realUser,
+  mobileSidebarOpen = false,
+  onCloseMobileSidebar
 }: SidebarProps) {
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   
-  // Theme state initialized from localStorage
+  // Theme state initialized from sessionStorage
   const [darkMode, setDarkMode] = useState(() => {
-    const saved = localStorage.getItem('docflow_theme');
+    const saved = sessionStorage.getItem('docflow_theme');
     return saved === 'dark';
   });
 
-  // Sidebar collapse state initialized from localStorage
+  // Sidebar collapse state initialized from sessionStorage
   const [isCollapsed, setIsCollapsed] = useState(() => {
-    const saved = localStorage.getItem('docflow_sidebar_collapsed');
+    const saved = sessionStorage.getItem('docflow_sidebar_collapsed');
     return saved === 'true';
   });
 
   // Persist sidebar collapsed state
   useEffect(() => {
-    localStorage.setItem('docflow_sidebar_collapsed', String(isCollapsed));
+    sessionStorage.setItem('docflow_sidebar_collapsed', String(isCollapsed));
   }, [isCollapsed]);
 
-  // Sync dark mode preference with HTML element class & localStorage
+  // Sync dark mode preference with HTML element class & sessionStorage
   useEffect(() => {
     if (darkMode) {
       document.documentElement.classList.add('dark');
-      localStorage.setItem('docflow_theme', 'dark');
+      sessionStorage.setItem('docflow_theme', 'dark');
     } else {
       document.documentElement.classList.remove('dark');
-      localStorage.setItem('docflow_theme', 'light');
+      sessionStorage.setItem('docflow_theme', 'light');
     }
   }, [darkMode]);
 
@@ -92,24 +97,32 @@ export default function Sidebar({
 
   const menuItems = [
     { id: 'dashboard', label: 'Tablero Principal', icon: LayoutDashboard, roles: ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR'] },
+    { id: 'audit', label: 'Auditoría', icon: ShieldAlert, roles: ['SUPERADMIN', 'ADMIN'] },
     { id: 'cases', label: 'Expedientes', icon: FileText, roles: ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR'] },
-    { id: 'templates', label: 'Plantillas de Procesos', icon: FolderKanban, roles: ['SUPERADMIN', 'ADMIN', 'MANAGER'] },
-    { id: 'profile', label: 'Perfiles de usuarios', icon: UserIcon, roles: ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR'] },
+    { id: 'documents', label: 'Documentos', icon: FolderDown, roles: ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR'] },
     { id: 'messages', label: 'Mensajes', icon: Mail, roles: ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR'] },
     { id: 'notifications', label: 'Notificaciones', icon: Bell, roles: ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR'] },
+    { id: 'templates', label: 'Plantillas y Procesos', icon: FolderKanban, roles: ['SUPERADMIN', 'ADMIN', 'MANAGER'] },
+    { id: 'profile', label: 'Perfiles de Usuarios', icon: UserIcon, roles: ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR'] },
     { id: 'settings', label: 'Configuración', icon: SettingsIcon, roles: ['SUPERADMIN', 'ADMIN'] },
-    { id: 'audit', label: 'Auditoría', icon: ShieldAlert, roles: ['SUPERADMIN', 'ADMIN'] },
   ];
 
   const sortedMenuItems = [...menuItems];
   if (tabOrder && Array.isArray(tabOrder) && tabOrder.length > 0) {
+    // Build a complete order by taking the default order and inserting customized order
+    const fullOrder = [...tabOrder];
+    menuItems.forEach(item => {
+      if (!fullOrder.includes(item.id)) {
+        // Find default index and insert or push
+        const defaultIdx = menuItems.findIndex(m => m.id === item.id);
+        fullOrder.splice(defaultIdx, 0, item.id);
+      }
+    });
+
     sortedMenuItems.sort((a, b) => {
-      const idxA = tabOrder.indexOf(a.id);
-      const idxB = tabOrder.indexOf(b.id);
-      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
-      if (idxA !== -1) return -1;
-      if (idxB !== -1) return 1;
-      return 0;
+      const idxA = fullOrder.indexOf(a.id);
+      const idxB = fullOrder.indexOf(b.id);
+      return idxA - idxB;
     });
   }
 
@@ -124,7 +137,18 @@ export default function Sidebar({
   };
 
   return (
-    <aside className={`relative ${isCollapsed ? 'w-20' : 'w-64'} bg-slate-900 text-slate-100 flex flex-col h-screen border-r border-slate-800 shrink-0 select-none transition-all duration-300 z-40`}>
+    <>
+      {/* Mobile background overlay */}
+      {mobileSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-40 lg:hidden cursor-pointer" 
+          onClick={onCloseMobileSidebar}
+        />
+      )}
+
+      <aside className={`fixed inset-y-0 left-0 lg:static ${isCollapsed ? 'w-20' : 'w-64'} bg-slate-900 text-slate-100 flex flex-col h-screen border-r border-slate-800 shrink-0 select-none transition-all duration-300 z-50 ${
+        mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+      }`}>
       {/* Brand Header */}
       <div className={`p-4 ${isCollapsed ? 'justify-center' : 'p-6 justify-between'} border-b border-slate-800 flex items-center relative min-h-[77px]`}>
         <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'gap-2.5'}`}>
@@ -144,7 +168,7 @@ export default function Sidebar({
         {/* Toggle Collapse Button on Sidebar Edge */}
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
-          className="absolute top-1/2 -translate-y-1/2 -right-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 p-1 rounded-full shadow-lg z-50 transition-all hover:scale-110 active:scale-95 cursor-pointer flex items-center justify-center"
+          className="absolute top-1/2 -translate-y-1/2 -right-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 p-1 rounded-full shadow-lg z-50 transition-all hover:scale-110 active:scale-95 cursor-pointer hidden lg:flex items-center justify-center"
           title={isCollapsed ? "Expandir menú" : "Colapsar menú"}
         >
           {isCollapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
@@ -225,16 +249,17 @@ export default function Sidebar({
             {users.map((u) => (
               <button
                 key={u.id}
-                onClick={() => {
-                  onUserChange(u);
-                  setShowUserDropdown(false);
-                }}
+              onClick={() => {
+                onUserChange(u);
+                setShowUserDropdown(false);
+                if (onCloseMobileSidebar) onCloseMobileSidebar();
+              }}
                 className={`w-full flex items-center justify-between p-2.5 text-left hover:bg-slate-700 transition-colors cursor-pointer ${
                   u.id === currentUser.id ? 'bg-slate-700/40 text-indigo-300' : 'text-slate-300'
                 }`}
               >
                 <div className="flex items-center gap-2.5">
-                  <img src={u.avatar} alt={u.name} className="w-8 h-8 rounded-full object-cover shrink-0" referrerPolicy="no-referrer" />
+                  <img src={u.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100"} alt={u.name} className="w-8 h-8 rounded-full object-cover shrink-0" referrerPolicy="no-referrer" />
                   <div>
                     <p className="text-xs font-semibold leading-tight">{u.name} {u.lastName}</p>
                     <p className="text-[10px] text-slate-400 font-mono">{u.role}</p>
@@ -255,7 +280,10 @@ export default function Sidebar({
           return (
             <button
               key={item.id}
-              onClick={() => setActiveTab(item.id)}
+              onClick={() => {
+                setActiveTab(item.id);
+                if (onCloseMobileSidebar) onCloseMobileSidebar();
+              }}
               className={`w-full flex items-center ${isCollapsed ? 'justify-center px-2' : 'gap-3.5 px-4'} py-3 rounded-lg text-sm font-medium transition-all duration-150 cursor-pointer ${
                 isActive 
                   ? 'bg-indigo-600/10 text-indigo-400 border-l-4 border-indigo-500 font-semibold' 
@@ -324,5 +352,6 @@ export default function Sidebar({
         </div>
       </div>
     </aside>
+  </>
   );
 }

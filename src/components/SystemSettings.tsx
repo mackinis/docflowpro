@@ -11,7 +11,8 @@ import {
   Clock,
   ArrowUp,
   ArrowDown,
-  List
+  List,
+  FolderKanban
 } from 'lucide-react';
 import { User, AppDataState } from '../types';
 
@@ -52,27 +53,55 @@ export default function SystemSettings({
     };
   });
 
+  // Templates permission state
+  const [allowAdminManagerTemplates, setAllowAdminManagerTemplates] = useState(() => {
+    return state.systemSettings?.allowAdminManagerTemplates !== false;
+  });
+
   const defaultTabs = [
     { id: 'dashboard', label: 'Tablero Principal' },
+    { id: 'audit', label: 'Auditoría' },
     { id: 'cases', label: 'Expedientes' },
-    { id: 'templates', label: 'Plantillas de Procesos' },
-    { id: 'profile', label: 'Perfiles de usuarios' },
+    { id: 'documents', label: 'Documentos' },
     { id: 'messages', label: 'Mensajes' },
     { id: 'notifications', label: 'Notificaciones' },
+    { id: 'templates', label: 'Plantillas y Procesos' },
+    { id: 'profile', label: 'Perfiles de Usuarios' },
     { id: 'settings', label: 'Configuración' },
-    { id: 'audit', label: 'Auditoría' },
   ];
 
+  const getCompletedTabOrder = (savedOrder?: string[]) => {
+    const list = savedOrder && Array.isArray(savedOrder) ? [...savedOrder] : defaultTabs.map(t => t.id);
+    // filter out any stale IDs that are no longer in defaultTabs
+    const validIds = defaultTabs.map(t => t.id);
+    const filteredList = list.filter(id => validIds.includes(id));
+    
+    defaultTabs.forEach(t => {
+      if (!filteredList.includes(t.id)) {
+        const defaultIdx = defaultTabs.findIndex(dt => dt.id === t.id);
+        filteredList.splice(defaultIdx, 0, t.id);
+      }
+    });
+    return filteredList;
+  };
+
   const [tabOrderState, setTabOrderState] = useState<string[]>(() => {
-    return state.systemSettings?.tabOrder || defaultTabs.map(t => t.id);
+    return getCompletedTabOrder(state.systemSettings?.tabOrder);
   });
 
   // Sync tabOrderState if state updates from server
   React.useEffect(() => {
     if (state.systemSettings?.tabOrder) {
-      setTabOrderState(state.systemSettings.tabOrder);
+      setTabOrderState(getCompletedTabOrder(state.systemSettings.tabOrder));
     }
   }, [state.systemSettings?.tabOrder]);
+
+  // Sync allowAdminManagerTemplates if state updates from server
+  React.useEffect(() => {
+    if (state.systemSettings?.allowAdminManagerTemplates !== undefined) {
+      setAllowAdminManagerTemplates(state.systemSettings.allowAdminManagerTemplates);
+    }
+  }, [state.systemSettings?.allowAdminManagerTemplates]);
 
   const moveTab = (index: number, direction: 'up' | 'down') => {
     if (direction === 'up' && index === 0) return;
@@ -212,6 +241,38 @@ export default function SystemSettings({
 
       setRoleConfigs(updatedConfigs as any);
       setSuccessMsg(`Configuración de mensajería para ${role === 'ASESOR' ? 'Asesores' : role === 'MANAGER' ? 'Managers' : role} actualizada con éxito.`);
+      await loadState();
+    } catch (err: any) {
+      setErrorMsg(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleToggleTemplatePermission = async () => {
+    setLoading(true);
+    setSuccessMsg(null);
+    setErrorMsg(null);
+    try {
+      const newValue = !allowAdminManagerTemplates;
+      const res = await fetch('/api/system-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          settings: {
+            allowAdminManagerTemplates: newValue
+          },
+          currentUserId: currentUser.id
+        })
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || 'Error al actualizar permisos de plantillas.');
+      }
+
+      setAllowAdminManagerTemplates(newValue);
+      setSuccessMsg(`Permiso de gestión de plantillas para Administradores y Managers actualizado con éxito.`);
       await loadState();
     } catch (err: any) {
       setErrorMsg(err.message);
@@ -515,6 +576,44 @@ export default function SystemSettings({
               </div>
             )}
           </div>
+        </div>
+
+        {/* Card 5: Templates and Digitalization Permission */}
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center gap-2 text-indigo-600 mb-3">
+              <FolderKanban className="w-5 h-5" />
+              <h2 className="font-bold text-slate-800 text-base">Permisos de Plantillas de Procesos</h2>
+            </div>
+            <p className="text-xs text-slate-500 leading-relaxed mb-4">
+              Determina si los Administradores y Managers tienen permitido crear, editar, duplicar, digitalizar y eliminar plantillas de procesos. El Superadmin siempre tendrá acceso sin restricciones. Los Asesores nunca podrán gestionar plantillas.
+            </p>
+
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/60 space-y-3">
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-bold text-slate-700 uppercase tracking-wider font-mono">
+                  Admins & Managers
+                </span>
+                <button
+                  type="button"
+                  disabled={loading || !isSuperAdmin}
+                  onClick={handleToggleTemplatePermission}
+                  className={`px-3 py-1 text-xs font-extrabold uppercase rounded-full border transition-all cursor-pointer ${
+                    allowAdminManagerTemplates
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                      : 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
+                  } disabled:cursor-not-allowed`}
+                >
+                  {allowAdminManagerTemplates ? 'Habilitado' : 'Deshabilitado'}
+                </button>
+              </div>
+            </div>
+          </div>
+          {!isSuperAdmin && (
+            <div className="text-[10px] text-amber-600 bg-amber-50 p-2 rounded-lg border border-amber-100 mt-2">
+              * Solo modificable por el Superadmin.
+            </div>
+          )}
         </div>
 
       </div>

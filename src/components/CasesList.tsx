@@ -336,7 +336,9 @@ export default function CasesList({
                     <div className="text-left sm:text-right space-y-1">
                       <div className="text-[10px] text-slate-400 uppercase tracking-widest font-mono">Etapa actual</div>
                       <p className="text-xs font-bold text-slate-700">
-                        {template?.stages[c.currentStageIndex]?.name || 'Finalizado'}
+                        {template && template.stages && template.stages.length > 0
+                          ? (template.stages[c.currentStageIndex]?.name || 'Finalizado')
+                          : 'Plantilla Digital'}
                       </p>
                     </div>
                   )}

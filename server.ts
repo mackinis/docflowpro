@@ -9,6 +9,7 @@ import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, getDoc, setDoc } from 'firebase/firestore';
 import { INITIAL_STATE } from './src/data';
 import { AppDataState, Case, Document, Task, Observation, Notification, AuditLog, ProcessTemplate, User } from './src/types';
+import mammoth from 'mammoth';
 
 // Load env variables
 dotenv.config();
@@ -122,20 +123,21 @@ if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_API_KEY) {
 async function syncToFirestore(state: AppDataState) {
   if (!firestoreDb) return;
   try {
-    await setDoc(doc(firestoreDb, 'docflow', 'users'), { data: state.users });
-    await setDoc(doc(firestoreDb, 'docflow', 'templates'), { data: state.templates });
-    await setDoc(doc(firestoreDb, 'docflow', 'cases'), { data: state.cases });
-    await setDoc(doc(firestoreDb, 'docflow', 'documents'), { data: state.documents });
-    await setDoc(doc(firestoreDb, 'docflow', 'tasks'), { data: state.tasks });
-    await setDoc(doc(firestoreDb, 'docflow', 'observations'), { data: state.observations });
-    await setDoc(doc(firestoreDb, 'docflow', 'notifications'), { data: state.notifications });
-    await setDoc(doc(firestoreDb, 'docflow', 'auditLogs'), { data: state.auditLogs });
-    await setDoc(doc(firestoreDb, 'docflow', 'formSubmissions'), { data: state.formSubmissions });
+    const cleanState = JSON.parse(JSON.stringify(state));
+    await setDoc(doc(firestoreDb, 'docflow', 'users'), { data: cleanState.users || [] });
+    await setDoc(doc(firestoreDb, 'docflow', 'templates'), { data: cleanState.templates || [] });
+    await setDoc(doc(firestoreDb, 'docflow', 'cases'), { data: cleanState.cases || [] });
+    await setDoc(doc(firestoreDb, 'docflow', 'documents'), { data: cleanState.documents || [] });
+    await setDoc(doc(firestoreDb, 'docflow', 'tasks'), { data: cleanState.tasks || [] });
+    await setDoc(doc(firestoreDb, 'docflow', 'observations'), { data: cleanState.observations || [] });
+    await setDoc(doc(firestoreDb, 'docflow', 'notifications'), { data: cleanState.notifications || [] });
+    await setDoc(doc(firestoreDb, 'docflow', 'auditLogs'), { data: cleanState.auditLogs || [] });
+    await setDoc(doc(firestoreDb, 'docflow', 'formSubmissions'), { data: cleanState.formSubmissions || [] });
     await setDoc(doc(firestoreDb, 'docflow', 'config'), { 
-      activeIndustry: state.activeIndustry || 'Inmobiliaria',
-      verificationPolicies: state.verificationPolicies || null,
-      systemSettings: state.systemSettings || null,
-      systemMessages: state.systemMessages || null
+      activeIndustry: cleanState.activeIndustry || 'Inmobiliaria',
+      verificationPolicies: cleanState.verificationPolicies || null,
+      systemSettings: cleanState.systemSettings || null,
+      systemMessages: cleanState.systemMessages || null
     });
   } catch (e) {
     console.error('Error syncing to Firestore:', e);
@@ -231,6 +233,46 @@ function cleanDummyData(state: AppDataState) {
     ensureSuperadmin(state);
   }
 
+  // Strictly de-duplicate users by email (case-insensitive) to prevent any duplicate accounts
+  if (state.users && Array.isArray(state.users)) {
+    const seenEmails = new Set<string>();
+    state.users = state.users.filter(user => {
+      if (!user || !user.email) return false;
+      const emailLower = user.email.toLowerCase();
+      if (seenEmails.has(emailLower)) {
+        return false;
+      }
+      seenEmails.add(emailLower);
+      return true;
+    });
+  }
+
+  // Strictly de-duplicate process templates by ID
+  if (state.templates && Array.isArray(state.templates)) {
+    const seenTemplateIds = new Set<string>();
+    state.templates = state.templates.filter(tmpl => {
+      if (!tmpl || !tmpl.id) return false;
+      if (seenTemplateIds.has(tmpl.id)) {
+        return false;
+      }
+      seenTemplateIds.add(tmpl.id);
+      return true;
+    });
+  }
+
+  // Strictly de-duplicate cases by ID
+  if (state.cases && Array.isArray(state.cases)) {
+    const seenCaseIds = new Set<string>();
+    state.cases = state.cases.filter(c => {
+      if (!c || !c.id) return false;
+      if (seenCaseIds.has(c.id)) {
+        return false;
+      }
+      seenCaseIds.add(c.id);
+      return true;
+    });
+  }
+
   // Initialize arrays only if they are missing or falsy, do NOT clear active records!
   if (!state.cases) state.cases = [];
   if (!state.documents) state.documents = [];
@@ -257,6 +299,7 @@ function cleanDummyData(state: AppDataState) {
     };
   }
   state.systemMessages = state.systemMessages || [];
+  state.sharedDocuments = state.sharedDocuments || [];
 }
 
 // Initialize database from Firestore or file
@@ -309,6 +352,7 @@ async function initDbFromCloud() {
     if (cloudState.verificationPolicies) dbState.verificationPolicies = cloudState.verificationPolicies;
     if (cloudState.systemSettings) dbState.systemSettings = cloudState.systemSettings;
     if (cloudState.systemMessages) dbState.systemMessages = cloudState.systemMessages;
+    if (cloudState.sharedDocuments) dbState.sharedDocuments = cloudState.sharedDocuments;
     
     cleanDummyData(dbState);
     fs.writeFileSync(DB_FILE, JSON.stringify(dbState, null, 2), 'utf-8');
@@ -482,8 +526,8 @@ app.post('/api/auth/verify', (req, res) => {
 
   // Mark as verified
   user.isVerified = true;
-  user.verificationToken = undefined;
-  user.tokenCreatedAt = undefined;
+  delete user.verificationToken;
+  delete user.tokenCreatedAt;
   saveDB(dbState);
 
   createAudit(user.id, 'Cuenta verificada con éxito', 'User', user.id, `${user.name} ${user.lastName}`);
@@ -561,7 +605,7 @@ app.post('/api/auth/update-profile', (req, res) => {
 
 app.put('/api/users/:id', (req, res) => {
   const { id } = req.params;
-  const { name, lastName, email, phone, role, active, address, city, province, country, password, currentUserId } = req.body;
+  const { name, lastName, email, phone, role, active, address, city, province, country, password, avatar, currentUserId } = req.body;
 
   const targetUser = dbState.users.find(u => u.id === id);
   if (!targetUser) {
@@ -574,24 +618,32 @@ app.put('/api/users/:id', (req, res) => {
   }
 
   // Permission Hierarchy Verification
-  const isEditingSensitive = email !== undefined || password !== undefined || role !== undefined || active !== undefined;
+  const { hasSensitiveEditPermissionOverride } = req.body;
+  const isEditingSensitive = email !== undefined || password !== undefined || role !== undefined || active !== undefined || hasSensitiveEditPermissionOverride !== undefined;
 
   if (isEditingSensitive) {
     const actorRole = currentUser.role;
     const targetRole = targetUser.role;
     let allowed = false;
 
-    if (actorRole === 'SUPERADMIN') {
-      if (targetRole === 'ADMIN' || targetRole === 'SUPERADMIN' || targetRole === 'ASESOR') {
+    // Support override flags
+    if (currentUser.hasSensitiveEditPermissionOverride === false) {
+      allowed = false;
+    } else if (currentUser.hasSensitiveEditPermissionOverride === true) {
+      allowed = targetRole !== 'SUPERADMIN' || actorRole === 'SUPERADMIN';
+    } else {
+      // Default hierarchy rules
+      if (actorRole === 'SUPERADMIN') {
+        // Superadmin has full access to manage anyone
         allowed = true;
-      }
-    } else if (actorRole === 'ADMIN') {
-      if (targetRole === 'MANAGER' || targetRole === 'ASESOR') {
-        allowed = true;
-      }
-    } else if (actorRole === 'MANAGER') {
-      if (targetRole === 'ASESOR') {
-        allowed = true;
+      } else if (actorRole === 'ADMIN') {
+        if (targetRole === 'MANAGER' || targetRole === 'ASESOR') {
+          allowed = true;
+        }
+      } else if (actorRole === 'MANAGER') {
+        if (targetRole === 'ASESOR') {
+          allowed = true;
+        }
       }
     }
 
@@ -607,10 +659,14 @@ app.put('/api/users/:id', (req, res) => {
   if (city !== undefined) targetUser.city = city;
   if (province !== undefined) targetUser.province = province;
   if (country !== undefined) targetUser.country = country;
+  if (avatar !== undefined) targetUser.avatar = avatar;
 
   if (email !== undefined) targetUser.email = email.toLowerCase();
   if (role !== undefined) targetUser.role = role.toUpperCase() as any;
   if (active !== undefined) targetUser.active = active;
+  if (hasSensitiveEditPermissionOverride !== undefined) {
+    targetUser.hasSensitiveEditPermissionOverride = hasSensitiveEditPermissionOverride;
+  }
   if (password) {
     targetUser.passwordHash = hashPassword(password);
   }
@@ -787,21 +843,41 @@ app.post('/api/system-messages/delete-permanent', (req, res) => {
   res.status(404).json({ error: 'Mensaje no encontrado' });
 });
 
+// Helper to check template permissions
+function canUserManageTemplates(userId: string): boolean {
+  const user = dbState.users.find(u => u.id === userId);
+  if (!user) return false;
+  if (user.role === 'SUPERADMIN') return true;
+  if (user.role === 'ASESOR') return false;
+  
+  // ADMIN or MANAGER
+  const allowAdminManager = dbState.systemSettings?.allowAdminManagerTemplates !== false;
+  return allowAdminManager;
+}
+
 // 2. Templates
 app.get('/api/templates', (req, res) => {
   res.json(dbState.templates);
 });
 
 app.post('/api/templates', (req, res) => {
-  const { name, description, industry, stages } = req.body;
+  const { name, description, industry, stages, originalDocumentContent, showDocumentToAll, sharedViewMode, currentUserId } = req.body;
+  const creatorId = currentUserId || 'usr-system';
+  
+  if (!canUserManageTemplates(creatorId)) {
+    return res.status(403).json({ error: 'No tienes permisos suficientes para crear o modificar plantillas de procesos.' });
+  }
+
   const newTemplate: ProcessTemplate = {
     id: `tmpl-${Date.now()}`,
     name,
     description,
     industry,
-    stages: stages || []
+    stages: stages || [],
+    originalDocumentContent: originalDocumentContent || '',
+    showDocumentToAll: showDocumentToAll !== undefined ? showDocumentToAll : true,
+    sharedViewMode: sharedViewMode || 'both'
   };
-  const creatorId = req.body.currentUserId || 'usr-system';
   dbState.templates.push(newTemplate);
   saveDB(dbState);
   createAudit(creatorId, 'Plantilla de proceso creada', 'ProcessTemplate', newTemplate.id, name);
@@ -810,7 +886,13 @@ app.post('/api/templates', (req, res) => {
 
 app.put('/api/templates/:id', (req, res) => {
   const { id } = req.params;
-  const { name, description, industry, stages, currentUserId } = req.body;
+  const { name, description, industry, stages, originalDocumentContent, showDocumentToAll, sharedViewMode, currentUserId } = req.body;
+  const editorId = currentUserId || 'usr-system';
+  
+  if (!canUserManageTemplates(editorId)) {
+    return res.status(403).json({ error: 'No tienes permisos suficientes para modificar plantillas de procesos.' });
+  }
+
   const templateIndex = dbState.templates.findIndex(t => t.id === id);
   if (templateIndex === -1) {
     return res.status(404).json({ error: 'Plantilla de proceso no encontrada.' });
@@ -820,12 +902,35 @@ app.put('/api/templates/:id', (req, res) => {
     name: name || dbState.templates[templateIndex].name,
     description: description !== undefined ? description : dbState.templates[templateIndex].description,
     industry: industry || dbState.templates[templateIndex].industry,
-    stages: stages !== undefined ? stages : dbState.templates[templateIndex].stages
+    stages: stages !== undefined ? stages : dbState.templates[templateIndex].stages,
+    originalDocumentContent: originalDocumentContent !== undefined ? originalDocumentContent : dbState.templates[templateIndex].originalDocumentContent,
+    showDocumentToAll: showDocumentToAll !== undefined ? showDocumentToAll : (dbState.templates[templateIndex].showDocumentToAll ?? true),
+    sharedViewMode: sharedViewMode !== undefined ? sharedViewMode : (dbState.templates[templateIndex].sharedViewMode ?? 'both')
   };
   dbState.templates[templateIndex] = updatedTemplate;
   saveDB(dbState);
-  createAudit(currentUserId || 'usr-system', 'Plantilla de proceso actualizada', 'ProcessTemplate', id, updatedTemplate.name);
+  createAudit(editorId, 'Plantilla de proceso actualizada', 'ProcessTemplate', id, updatedTemplate.name);
   res.json(updatedTemplate);
+});
+
+app.delete('/api/templates/:id', (req, res) => {
+  const { id } = req.params;
+  const deleterId = (req.query.currentUserId as string) || 'usr-system';
+  
+  if (!canUserManageTemplates(deleterId)) {
+    return res.status(403).json({ error: 'No tienes permisos suficientes para eliminar plantillas de procesos.' });
+  }
+
+  const templateIndex = dbState.templates.findIndex(t => t.id === id);
+  if (templateIndex === -1) {
+    return res.status(404).json({ error: 'Plantilla de proceso no encontrada.' });
+  }
+  
+  const deletedTemplate = dbState.templates[templateIndex];
+  dbState.templates.splice(templateIndex, 1);
+  saveDB(dbState);
+  createAudit(deleterId, 'Plantilla de proceso eliminada', 'ProcessTemplate', id, deletedTemplate.name);
+  res.json({ success: true, id });
 });
 
 // 3. Cases (Expedientes)
@@ -859,7 +964,10 @@ app.post('/api/cases', (req, res) => {
     assignedManagerId: finalManagerId,
     participants: participants || [],
     createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
+    updatedAt: new Date().toISOString(),
+    documentContent: template.originalDocumentContent || '',
+    showDocumentToAll: template.showDocumentToAll !== undefined ? template.showDocumentToAll : true,
+    sharedViewMode: template.sharedViewMode || 'both'
   };
 
   dbState.cases.unshift(newCase);
@@ -939,7 +1047,7 @@ app.post('/api/cases/:id/assign-manager', (req, res) => {
 // Update case basic details
 app.put('/api/cases/:id', (req, res) => {
   const { id } = req.params;
-  const { title, description, assignedAdvisorId, status, participants } = req.body;
+  const { title, description, assignedAdvisorId, status, participants, documentContent, showDocumentToAll, sharedViewMode } = req.body;
   
   const caseIdx = dbState.cases.findIndex(c => c.id === id);
   if (caseIdx === -1) {
@@ -954,6 +1062,9 @@ app.put('/api/cases/:id', (req, res) => {
     assignedAdvisorId: assignedAdvisorId || oldCase.assignedAdvisorId,
     status: status || oldCase.status,
     participants: participants || oldCase.participants,
+    documentContent: documentContent !== undefined ? documentContent : oldCase.documentContent,
+    showDocumentToAll: showDocumentToAll !== undefined ? showDocumentToAll : (oldCase.showDocumentToAll ?? true),
+    sharedViewMode: sharedViewMode !== undefined ? sharedViewMode : (oldCase.sharedViewMode ?? 'both'),
     updatedAt: new Date().toISOString()
   };
 
@@ -1152,6 +1263,126 @@ app.get('/api/cases/:id/validate', (req, res) => {
 
   const validation = validateStageRequirements(caseObj.id, currentStage.id, template);
   res.json(validation);
+});
+
+// Shared Documents Library (Biblioteca de Documentos)
+app.get('/api/shared-documents', (req, res) => {
+  const userId = req.query.userId as string;
+  const userRole = req.query.role as string;
+
+  if (!userId || !userRole) {
+    return res.status(400).json({ error: 'Se requiere userId y role.' });
+  }
+
+  // If SUPERADMIN, return all shared documents
+  if (userRole === 'SUPERADMIN') {
+    return res.json(dbState.sharedDocuments || []);
+  }
+
+  // Filter based on allowedRoles or allowedUserIds
+  const visible = (dbState.sharedDocuments || []).filter(doc => {
+    const roleAllowed = doc.allowedRoles && doc.allowedRoles.includes(userRole);
+    const userAllowed = doc.allowedUserIds && doc.allowedUserIds.includes(userId);
+    return roleAllowed || userAllowed;
+  });
+
+  res.json(visible);
+});
+
+app.post('/api/shared-documents', (req, res) => {
+  const { name, fileName, fileSize, fileBase64, allowedRoles, allowedUserIds, currentUserId } = req.body;
+
+  // Only superadmin or authorized template managers can upload shared documents
+  const user = dbState.users.find(u => u.id === currentUserId);
+  if (!user || (user.role !== 'SUPERADMIN' && !canUserManageTemplates(currentUserId))) {
+    return res.status(403).json({ error: 'No tienes permisos suficientes para subir documentos compartidos.' });
+  }
+
+  if (!name || !fileName || !fileBase64) {
+    return res.status(400).json({ error: 'Faltan campos obligatorios (nombre, nombre de archivo o contenido).' });
+  }
+
+  const newDoc = {
+    id: `sh-doc-${Date.now()}`,
+    name,
+    fileName,
+    fileSize: fileSize || 0,
+    uploadedBy: `${user.name} ${user.lastName} (${user.role})`,
+    uploadedAt: new Date().toISOString(),
+    allowedRoles: allowedRoles || ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR'],
+    allowedUserIds: allowedUserIds || [],
+    dataUrl: fileBase64
+  };
+
+  dbState.sharedDocuments = dbState.sharedDocuments || [];
+  dbState.sharedDocuments.push(newDoc);
+  saveDB(dbState);
+
+  createAudit(user.id, `Subió documento compartido "${name}"`, 'SharedDocument', newDoc.id, name);
+
+  // Notify target users
+  const targetRoles = allowedRoles || [];
+  dbState.users.forEach(u => {
+    if (u.id !== user.id && (targetRoles.includes(u.role) || (allowedUserIds && allowedUserIds.includes(u.id)))) {
+      createNotification(
+        u.id,
+        'Nuevo Documento Compartido',
+        `El Superadmin ha subido el documento "${name}" a la biblioteca para tu descarga.`,
+        'info'
+      );
+    }
+  });
+
+  res.status(201).json(newDoc);
+});
+
+app.put('/api/shared-documents/:id', (req, res) => {
+  const { id } = req.params;
+  const { allowedRoles, allowedUserIds, currentUserId, name } = req.body;
+
+  const user = dbState.users.find(u => u.id === currentUserId);
+  if (!user || user.role !== 'SUPERADMIN') {
+    return res.status(403).json({ error: 'Sólo el Superadmin puede actualizar permisos de documentos.' });
+  }
+
+  dbState.sharedDocuments = dbState.sharedDocuments || [];
+  const doc = dbState.sharedDocuments.find(d => d.id === id);
+  if (!doc) {
+    return res.status(404).json({ error: 'Documento no encontrado.' });
+  }
+
+  if (name) doc.name = name;
+  if (allowedRoles) doc.allowedRoles = allowedRoles;
+  if (allowedUserIds) doc.allowedUserIds = allowedUserIds;
+
+  saveDB(dbState);
+  createAudit(user.id, `Actualizó permisos/datos del documento compartido "${doc.name}"`, 'SharedDocument', id, doc.name);
+
+  res.json({ success: true, doc });
+});
+
+app.delete('/api/shared-documents/:id', (req, res) => {
+  const { id } = req.params;
+  const currentUserId = req.query.currentUserId as string;
+
+  const user = dbState.users.find(u => u.id === currentUserId);
+  if (!user || user.role !== 'SUPERADMIN') {
+    return res.status(403).json({ error: 'Sólo el Superadmin puede eliminar documentos de la biblioteca.' });
+  }
+
+  dbState.sharedDocuments = dbState.sharedDocuments || [];
+  const index = dbState.sharedDocuments.findIndex(d => d.id === id);
+  if (index === -1) {
+    return res.status(404).json({ error: 'Documento no encontrado en la biblioteca.' });
+  }
+
+  const deletedDoc = dbState.sharedDocuments[index];
+  dbState.sharedDocuments.splice(index, 1);
+  saveDB(dbState);
+
+  createAudit(user.id, `Eliminó documento compartido "${deletedDoc.name}"`, 'SharedDocument', id, deletedDoc.name);
+
+  res.json({ success: true, id });
 });
 
 // 5. Document Management
@@ -1672,17 +1903,39 @@ Retorna UNICAMENTE un objeto JSON estructurado así (sin markdown de código de 
   }
 });
 
+// Helper to clean and parse JSON responses from Gemini safely
+function cleanAndParseJSON(rawText: string): any {
+  let cleaned = (rawText || '').trim();
+  if (cleaned.startsWith('```')) {
+    const firstLineEnd = cleaned.indexOf('\n');
+    const lastBackticks = cleaned.lastIndexOf('```');
+    if (firstLineEnd !== -1 && lastBackticks !== -1 && lastBackticks > firstLineEnd) {
+      cleaned = cleaned.substring(firstLineEnd, lastBackticks).trim();
+    }
+  }
+  // Remove any leftover markers
+  cleaned = cleaned.replace(/^```json/, '').replace(/```$/, '').trim();
+  return JSON.parse(cleaned);
+}
+
 // AI Process Template Generation
 app.post('/api/gemini/generate-template', async (req, res) => {
-  const { industry, promptDescription } = req.body;
+  const { industry, promptDescription, prompt: bodyPrompt, createdBy } = req.body;
+  
+  if (createdBy && !canUserManageTemplates(createdBy)) {
+    return res.status(403).json({ error: 'No tienes permisos suficientes para generar plantillas de procesos.' });
+  }
+
+  const finalDescription = promptDescription || bodyPrompt || 'Proceso general';
+  const finalIndustry = industry || 'Administrativo';
 
   if (!ai) {
     // Fallback template builder if no key
     const newTmpl: ProcessTemplate = {
       id: `tmpl-${Date.now()}`,
-      name: `Proceso IA: ${promptDescription.substring(0, 30)}...`,
-      description: `Proceso auto-generado para el rubro ${industry}. Basado en la descripción: ${promptDescription}`,
-      industry: industry || 'Inmobiliaria',
+      name: `Proceso IA: ${finalDescription.substring(0, 30)}...`,
+      description: `Proceso auto-generado para el rubro ${finalIndustry}. Basado en la descripción: ${finalDescription}`,
+      industry: (finalIndustry as any) || 'Inmobiliaria',
       stages: [
         {
           id: `stg-ia-1-${Date.now()}`,
@@ -1710,13 +1963,13 @@ app.post('/api/gemini/generate-template', async (req, res) => {
     };
     dbState.templates.push(newTmpl);
     saveDB(dbState);
-    createAudit('usr-admin', 'Plantilla IA Creada (Offline Fallback)', 'ProcessTemplate', newTmpl.id, newTmpl.name);
+    createAudit(createdBy || 'usr-admin', 'Plantilla IA Creada (Offline Fallback)', 'ProcessTemplate', newTmpl.id, newTmpl.name);
     return res.json({ success: true, template: newTmpl });
   }
 
   try {
-    const prompt = `Actúa como un Ingeniero de Procesos experto en el rubro: "${industry}".
-Un cliente requiere una plantilla de proceso automatizado reutilizable basada en la siguiente descripción: "${promptDescription}".
+    const promptText = `Actúa como un Ingeniero de Procesos experto en el rubro: "${finalIndustry}".
+Un cliente requiere una plantilla de proceso automatizado reutilizable basada en la siguiente descripción: "${finalDescription}".
 
 Genera una estructura de plantilla completa de 2 a 4 etapas coherentes y realistas para este rubro. Cada etapa debe contener de 2 a 3 requisitos obligatorios distribuidos racionalmente entre "document" (carga de PDF/foto), "form" (campos interactivos para rellenar) y "task" (tareas operacionales con casilla de verificación). Para los requisitos de tipo "form", define una lista de 'formFields' estructurados.
 
@@ -1749,20 +2002,20 @@ interface ProcessTemplate {
 
     const response = await ai.models.generateContent({
       model: 'gemini-3.5-flash',
-      contents: prompt,
+      contents: promptText,
       config: {
         responseMimeType: 'application/json'
       }
     });
 
-    const parsedTemplate = JSON.parse(response.text || '{}');
+    const parsedTemplate = cleanAndParseJSON(response.text || '{}');
     
     // Add stable IDs
     const finalTemplate: ProcessTemplate = {
       id: `tmpl-ia-${Date.now()}`,
-      name: parsedTemplate.name || `Proceso IA - ${industry}`,
+      name: parsedTemplate.name || `Proceso IA - ${finalIndustry}`,
       description: parsedTemplate.description || `Proceso generado mediante Inteligencia Artificial.`,
-      industry: parsedTemplate.industry || industry || 'Administrativo',
+      industry: parsedTemplate.industry || (finalIndustry as any) || 'Administrativo',
       stages: (parsedTemplate.stages || []).map((stg: any, sIdx: number) => ({
         id: `stg-ia-${sIdx}-${Date.now()}`,
         name: stg.name,
@@ -1780,12 +2033,218 @@ interface ProcessTemplate {
 
     dbState.templates.push(finalTemplate);
     saveDB(dbState);
-    createAudit('usr-admin', 'Plantilla IA Creada con Gemini', 'ProcessTemplate', finalTemplate.id, finalTemplate.name);
+    createAudit(createdBy || 'usr-admin', 'Plantilla IA Creada con Gemini', 'ProcessTemplate', finalTemplate.id, finalTemplate.name);
 
     res.json({ success: true, template: finalTemplate });
   } catch (err: any) {
     console.error('Error in Gemini Template Generation:', err);
     res.status(500).json({ error: 'Error generando plantilla inteligente', details: err.message });
+  }
+});
+
+
+// AI Process Template 100% Digitizer Route
+app.post('/api/gemini/digitize-template', async (req, res) => {
+  const { fileBase64, mimeType, fileName, textProposal, industry, generateFlow, currentUserId } = req.body;
+  
+  if (currentUserId && !canUserManageTemplates(currentUserId)) {
+    return res.status(403).json({ error: 'No tienes permisos suficientes para digitalizar plantillas de procesos.' });
+  }
+
+  const shouldGenerateFlow = generateFlow === true;
+
+  if (!ai) {
+    // Fallback digitizer
+    const newTemplate: ProcessTemplate = {
+      id: `tmpl-dig-${Date.now()}`,
+      name: `Plantilla Digitalizada: ${industry || 'General'}`,
+      description: `Plantilla digitalizada a partir del documento subido para el rubro ${industry || 'General'}.`,
+      industry: industry || 'Administrativo',
+      originalDocumentContent: `DOCUMENTO COMPROMISO DIGITALIZADO
+
+En la ciudad de Buenos Aires, se establece el siguiente acuerdo entre las partes firmantes en base al documento original digitalizado.
+
+DATOS DEL CLIENTE / TITULAR:
+- Nombre Completo: [Nombre del Titular]
+- Documento de Identidad: [DNI/Pasaporte]
+- Fecha de Nacimiento: [Fecha]
+- Rubro del Proceso: ${industry || 'Administrativo'}
+
+CLAUSULAS PRINCIPALES:
+1. Las partes aceptan y reconocen en un 100% el contenido del documento tal cual fue subido y digitalizado en la plataforma DocFlow Pro.
+2. Este documento digitalizado se encuentra listo para completar y ser editado digitalmente de forma íntegra.
+3. Se procederá a realizar las tareas y etapas de verificación correspondientes que se desprenden del proceso.
+
+Leído y firmado de conformidad por los participantes en el expediente.`,
+      showDocumentToAll: true,
+      stages: shouldGenerateFlow ? [
+        {
+          id: `stg-ia-1-${Date.now()}`,
+          name: '1. Validación y Carga del Documento Digitalizado',
+          description: 'Carga de datos obtenidos a partir de la digitalización inicial.',
+          requirements: [
+            { id: `req-ia-1-doc-${Date.now()}`, name: 'Documento Original Digitalizado', type: 'document', description: 'Copia digital que dio origen a este proceso.', isRequired: true },
+            { id: `req-ia-1-frm-${Date.now()}`, name: 'Formulario de Datos Extraídos', type: 'form', description: 'Revisión y completitud de datos extraídos por la IA.', isRequired: true, formFields: [
+                { id: 'f-ia-ext-data', label: 'Datos del Cliente o Expediente', type: 'text', required: true }
+              ] 
+            }
+          ]
+        }
+      ] : []
+    };
+
+    dbState.templates.push(newTemplate);
+    saveDB(dbState);
+    createAudit(currentUserId || 'usr-admin', 'Plantilla Digitalizada (Offline Fallback)', 'ProcessTemplate', newTemplate.id, newTemplate.name);
+    return res.json({ success: true, template: newTemplate });
+  }
+
+  try {
+    let promptText = '';
+    
+    if (shouldGenerateFlow) {
+      promptText = `Actúa como un transcriptor y digitalizador de documentos profesional y extremadamente minucioso para el rubro: "${industry || 'Administrativo'}".
+Tu objetivo absoluto es DIGITALIZAR AL 100% el documento adjunto o el texto provisto de forma totalmente LITERAL, sin agregarle ni cambiarle nada, absolutamente nada. No quiero que agregues, inventes ni modifiques nada del contenido.
+
+Debes realizar dos tareas y retornarlas en un formato JSON estructurado:
+
+TAREA 1 (Trascripción y Preservación Literal Absoluta):
+- Transcribe el 100% del documento provisto. Debe ser una copia exacta, letra por letra, palabra por palabra, signo por signo, párrafo por párrafo, título por título.
+- REGLA DE ORO CRÍTICA: NO agregues comentarios, aclaraciones, prefacios, explicaciones, notas introductorias, firmas de la IA, ni pies de página. El texto debe comenzar y terminar exactamente donde comienza y termina el documento original.
+- REGLA DE ORO CRÍTICA DE VARIABLES Y SUBRAYADOS: NO inventes placeholders ni variables que no estén escritas en el documento original (por ejemplo, NO inventes ni agregues cosas como "[Nombres y Apellidos Completos] / [DNI Comprador]" ni similares). Si el original tiene líneas en blanco o líneas de subrayado para completar (ej. "Nombre: _________"), consérvalas EXACTAMENTE como líneas de subrayado literales "_________". NO las reemplaces con placeholders ni con etiquetas inventadas. El texto debe ser 100% original e idéntico al que figura en el documento.
+
+TAREA 2 (Estructura de Control de Procesos por Etapas):
+- Crea una propuesta de flujo interactivo estructurado de 2 a 5 etapas lógicas basado en el ciclo operativo del documento. Cada etapa tendrá requisitos lógicos (document, form o task).
+
+Retorna ÚNICAMENTE un objeto JSON que se ajuste al siguiente esquema de Typescript de manera estricta y sin markdown de código (solo el JSON puro para parsear directamente):
+
+interface ProcessTemplate {
+  name: string; // Título formal idéntico del proceso o de la plantilla
+  description: string; // Breve descripción detallada basada únicamente en el documento
+  industry: "Inmobiliaria" | "Jurídico" | "Seguros" | "Financiera" | "Recursos Humanos" | "Administrativo";
+  originalDocumentContent: string; // Trascripción 100% IDÉNTICA, literal y exacta del documento, conservando párrafos, espaciados y líneas de subrayado exactas. Sin comentarios ni prefacios de la IA.
+  stages: {
+    name: string; // Nombre de la etapa (ej: "1. Recepción", "2. Tasación")
+    description: string; // Qué se debe lograr en esta etapa
+    requirements: {
+      name: string; // Título del requisito
+      type: "document" | "form" | "task";
+      description: string; // Instrucciones del requisito para el asesor
+      isRequired: boolean;
+      formFields?: {
+        id: string; // clave única del campo
+        label: string; // etiqueta visible para el formulario (ej: "Monto Solicitado")
+        type: "text" | "number" | "date" | "select" | "boolean";
+        required: boolean;
+        options?: string[]; // sólo si type es "select"
+      }[];
+    }[];
+  }[];
+}`;
+    } else {
+      promptText = `Actúa como un transcriptor y digitalizador de documentos profesional y extremadamente minucioso para el rubro: "${industry || 'Administrativo'}".
+Tu única tarea es TRANSCRIBIR y DIGITALIZAR AL 100% el documento adjunto o texto provisto, manteniéndolo TOTALMENTE IDÉNTICO, respetando todas las cláusulas, títulos, párrafos y estructura literal sin agregarle ni cambiarle nada de nada.
+
+REGLAS DE ORO ABSOLUTAS Y CRÍTICAS:
+1. TRASCRIPCIÓN 100% LITERAL: No omitas palabras, no resumas secciones, no alteres ninguna coma, punto o palabra. Debe ser idéntico al documento que se sube.
+2. SIN AGREGAR COMENTARIOS: No coloques prefacios, explicaciones, introducciones de la IA, notas aclaratorias, firmas del modelo, ni conclusiones. El texto debe comenzar y finalizar exactamente donde empieza y termina el original.
+3. PRESERVACIÓN DE LÍNEAS DE SUBRAYADO: Si en el texto original hay líneas en blanco, guiones o subrayados para rellenar (por ejemplo: "________" o "............"), déjalos EXACTAMENTE como están. NO inventes etiquetas, placeholders ni corchetes que no existan literalmente en el texto (por ejemplo, NO inventes ni coloques "[Nombres y Apellidos Completos] / [DNI Comprador]" ni similares).
+4. SIN FLUJO DE ETAPAS: Como no se solicitó un Flujo Inteligente de Etapas, el arreglo de stages DEBE ser un arreglo vacío: [].
+
+Retorna ÚNICAMENTE un objeto JSON que se ajuste a esta interfaz de TypeScript de forma estricta (retorna solo el JSON puro, sin bloques de código ni markdown):
+
+interface ProcessTemplate {
+  name: string; // Título formal idéntico del proceso o de la plantilla
+  description: string; // Breve descripción detallada basada únicamente en el documento
+  industry: "Inmobiliaria" | "Jurídico" | "Seguros" | "Financiera" | "Recursos Humanos" | "Administrativo";
+  originalDocumentContent: string; // El texto completo, continuo e íntegro del documento original trascrito al 100% idéntico y literal, conservando subrayados, sin comentarios ni modificaciones de la IA.
+  stages: []; // Debe ser obligatoriamente un arreglo vacío [] ya que no se solicitó un flujo de etapas.
+}`;
+    }
+
+    const parts: any[] = [];
+    if (fileBase64) {
+      const base64Data = fileBase64.includes(',') ? fileBase64.split(',')[1] : fileBase64;
+      const detectedMimeType = mimeType || (fileBase64.includes(',') ? fileBase64.split(';')[0].split(':')[1] : 'application/pdf');
+
+      const isDocx = detectedMimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || (fileName && fileName.endsWith('.docx'));
+      const isDoc = detectedMimeType === 'application/msword' || (fileName && fileName.endsWith('.doc'));
+
+      if (isDocx || isDoc) {
+        try {
+          const buffer = Buffer.from(base64Data, 'base64');
+          const result = await mammoth.extractRawText({ buffer });
+          const textContent = result.value;
+          parts.push({ text: `Contenido extraído del documento Word (${fileName || 'documento'}):\n${textContent}` });
+          console.log(`Word document text extracted successfully with mammoth. Length: ${textContent.length}`);
+        } catch (docxErr: any) {
+          console.error('Error parsing Word document with mammoth:', docxErr);
+          parts.push({ text: `[Error leyendo documento Word de forma nativa. Nombre de archivo: ${fileName || 'documento'}]` });
+        }
+      } else if (detectedMimeType.startsWith('text/')) {
+        try {
+          const textContent = Buffer.from(base64Data, 'base64').toString('utf-8');
+          parts.push({ text: `Contenido del documento de texto:\n${textContent}` });
+        } catch (e) {
+          console.error('Error decoding plain text base64 in backend:', e);
+          if (textProposal) {
+            parts.push({ text: `Texto o contenido provisto para digitalizar:\n${textProposal}` });
+          }
+        }
+      } else {
+        parts.push({
+          inlineData: {
+            mimeType: detectedMimeType,
+            data: base64Data
+          }
+        });
+      }
+    } else if (textProposal) {
+      parts.push({ text: `Texto o contenido provisto para digitalizar:\n${textProposal}` });
+    }
+    parts.push({ text: promptText });
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.5-flash',
+      contents: { parts },
+      config: {
+        responseMimeType: 'application/json'
+      }
+    });
+
+    const parsedTemplate = cleanAndParseJSON(response.text || '{}');
+
+    // Add stable IDs
+    const finalTemplate: ProcessTemplate = {
+      id: `tmpl-dig-${Date.now()}`,
+      name: parsedTemplate.name || `Proceso Digitalizado - ${industry || 'General'}`,
+      description: parsedTemplate.description || `Proceso digitalizado mediante Inteligencia Artificial Gemini 3.5.`,
+      industry: parsedTemplate.industry || (industry as any) || 'Administrativo',
+      originalDocumentContent: parsedTemplate.originalDocumentContent || '',
+      showDocumentToAll: true,
+      stages: (parsedTemplate.stages || []).map((stg: any, sIdx: number) => ({
+        id: `stg-dig-${sIdx}-${Date.now()}`,
+        name: stg.name,
+        description: stg.description,
+        requirements: (stg.requirements || []).map((req: any, rIdx: number) => ({
+          id: `req-dig-${sIdx}-${rIdx}-${Date.now()}`,
+          name: req.name,
+          type: req.type,
+          description: req.description,
+          isRequired: req.isRequired !== undefined ? req.isRequired : true,
+          formFields: req.formFields
+        }))
+      }))
+    };
+
+    dbState.templates.push(finalTemplate);
+    saveDB(dbState);
+    createAudit(currentUserId || 'usr-admin', 'Plantilla Digitalizada con Gemini', 'ProcessTemplate', finalTemplate.id, finalTemplate.name);
+
+    res.json({ success: true, template: finalTemplate });
+  } catch (err: any) {
+    console.error('Error in Gemini Template Digitization:', err);
+    res.status(500).json({ error: 'Error digitalizando plantilla inteligente', details: err.message });
   }
 });
 

@@ -17,6 +17,7 @@ export interface User {
   isVerified?: boolean;
   verificationToken?: string;
   tokenCreatedAt?: string;
+  hasSensitiveEditPermissionOverride?: boolean; // Superadmin manual toggle
 }
 
 export type ParticipantType = 'Cliente' | 'Comprador' | 'Vendedor' | 'Titular' | 'Garante' | 'Apoderado';
@@ -49,6 +50,9 @@ export interface Requirement {
   description: string;
   isRequired: boolean;
   formFields?: FormField[]; // Only populated for type 'form'
+  documentSourceType?: 'digital_contract' | 'download_asset' | 'manual_upload';
+  linkedTemplateId?: string;
+  linkedSharedDocumentId?: string;
 }
 
 export interface Stage {
@@ -64,6 +68,9 @@ export interface ProcessTemplate {
   description: string;
   industry: 'Inmobiliaria' | 'Jurídico' | 'Seguros' | 'Financiera' | 'Recursos Humanos' | 'Administrativo';
   stages: Stage[];
+  originalDocumentContent?: string; // 100% recognized continuous document text
+  showDocumentToAll?: boolean; // Toggle to decide if other roles can see the digital document
+  sharedViewMode?: 'both' | 'flow' | 'document'; // Shared view mode for normal users (chosen by superadmin)
 }
 
 export type CaseStatus = 'active' | 'pending_review' | 'observed' | 'completed' | 'pending_assignment';
@@ -81,6 +88,9 @@ export interface Case {
   participants: Participant[];
   createdAt: string;
   updatedAt: string;
+  documentContent?: string; // Case-specific digital document for completing
+  showDocumentToAll?: boolean; // Copied from template, customizable per case
+  sharedViewMode?: 'both' | 'flow' | 'document'; // Custom shared view mode configured per case
 }
 
 export type DocStatus = 'pending' | 'uploaded' | 'in_review' | 'approved' | 'rejected' | 'expired';
@@ -184,6 +194,19 @@ export interface AppDataState {
   };
   systemMessages?: SystemMessage[];
   systemSettings?: SystemSettings;
+  sharedDocuments?: SharedDocument[];
+}
+
+export interface SharedDocument {
+  id: string;
+  name: string;
+  fileName: string;
+  fileSize: number;
+  uploadedBy: string;
+  uploadedAt: string;
+  allowedRoles?: string[]; // e.g. ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR']
+  allowedUserIds?: string[]; // specific user IDs
+  dataUrl?: string; // base64 URL of content
 }
 
 export interface SystemMessage {
@@ -220,5 +243,6 @@ export interface SystemSettings {
     ASESOR: RoleMessagingConfig;
   };
   tabOrder?: string[];
+  allowAdminManagerTemplates?: boolean;
 }
 

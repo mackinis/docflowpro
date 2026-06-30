@@ -5,7 +5,8 @@ import {
   Layers, 
   HelpCircle,
   FileCheck2,
-  AlertCircle
+  AlertCircle,
+  Menu
 } from 'lucide-react';
 import { AppDataState, User, Case, ProcessTemplate, Participant } from './types';
 import Sidebar from './components/Sidebar';
@@ -20,10 +21,14 @@ import UserProfile from './components/UserProfile';
 import SystemSettings from './components/SystemSettings';
 import NotificationsCenter from './components/NotificationsCenter';
 import MessagesCenter from './components/MessagesCenter';
+import SharedDocumentsManager from './components/SharedDocumentsManager';
 
 export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Mobile responsive sidebar state
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   
   // App data state
   const [state, setState] = useState<AppDataState | null>(null);
@@ -128,6 +133,16 @@ export default function App() {
     setActiveCaseId(null);
   };
 
+  // Handle current user updating (from UserProfile settings)
+  const handleUpdateCurrentUser = (updatedUser: User) => {
+    setCurrentUser(updatedUser);
+    sessionStorage.setItem('docflow_user', JSON.stringify(updatedUser));
+    if (realUser && updatedUser.id === realUser.id) {
+      setRealUser(updatedUser);
+      sessionStorage.setItem('docflow_real_user', JSON.stringify(updatedUser));
+    }
+  };
+
   // Create new Expediente (Case)
   const handleCreateCase = async (caseData: {
     title: string;
@@ -196,6 +211,20 @@ export default function App() {
       body: JSON.stringify({
         status,
         completedBy: currentUser.id
+      })
+    });
+  };
+
+  // Update digital document content of a Case
+  const handleUpdateCaseDocument = async (caseId: string, content: string, showDocumentToAll?: boolean, sharedViewMode?: 'both' | 'flow' | 'document') => {
+    if (!currentUser) return;
+    await syncOperation(`/api/cases/${caseId}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        documentContent: content,
+        showDocumentToAll: showDocumentToAll !== undefined ? showDocumentToAll : undefined,
+        sharedViewMode: sharedViewMode !== undefined ? sharedViewMode : undefined,
+        currentUserId: currentUser.id
       })
     });
   };
@@ -381,22 +410,36 @@ export default function App() {
         onMarkAllNotificationsRead={handleMarkAllNotificationsRead}
         onOpenCase={handleOpenCase}
         tabOrder={state.systemSettings?.tabOrder}
+        mobileSidebarOpen={mobileSidebarOpen}
+        onCloseMobileSidebar={() => setMobileSidebarOpen(false)}
       />
 
       {/* 2. Main content view */}
-      <main className="flex-1 flex flex-col h-screen overflow-hidden">
+      <main className="flex-1 flex flex-col h-screen overflow-hidden w-full">
         {/* Workspace banner / navbar info */}
-        <header className="h-14 bg-white border-b border-slate-200/80 px-8 flex items-center justify-between shrink-0 select-none">
-          <div className="flex items-center gap-1.5 text-xs text-slate-400">
-            <Layers className="w-4 h-4 text-slate-400" />
-            <span>Sistema</span>
-            <span>/</span>
-            <span className="font-semibold text-slate-600 uppercase font-mono tracking-wider">
-              {activeCaseId ? `Detalle Expediente` : activeTab}
-            </span>
+        <header className="h-14 bg-white border-b border-slate-200/80 px-4 sm:px-8 flex items-center justify-between shrink-0 select-none">
+          <div className="flex items-center gap-3">
+            {/* Hamburger Button for mobile/tablets (< lg) */}
+            <button 
+              onClick={() => setMobileSidebarOpen(true)}
+              className="lg:hidden p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition-colors cursor-pointer"
+              aria-label="Abrir menú"
+              title="Abrir menú"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-1.5 text-xs text-slate-400">
+              <Layers className="w-4 h-4 text-slate-400" />
+              <span className="hidden sm:inline">Sistema</span>
+              <span className="hidden sm:inline">/</span>
+              <span className="font-semibold text-slate-600 uppercase font-mono tracking-wider">
+                {activeCaseId ? `Detalle Expediente` : activeTab}
+              </span>
+            </div>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 sm:gap-4">
             <span className="flex h-2 w-2 relative">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
@@ -405,8 +448,8 @@ export default function App() {
           </div>
         </header>
 
-        {/* Dynamic Inner views */}
-        <div className="flex-1 overflow-y-auto p-8 bg-slate-50/50">
+        {/* Dynamic Inner views with responsive paddings */}
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 bg-slate-50/50">
           <div className="max-w-7xl mx-auto">
             {activeCaseId ? (
               <CaseDetail
@@ -428,6 +471,7 @@ export default function App() {
                 onResolveObservation={handleResolveObservation}
                 onAdvanceStage={handleAdvanceStage}
                 onAddParticipant={handleAddParticipant}
+                onUpdateCaseDocument={handleUpdateCaseDocument}
               />
             ) : (
               <>
@@ -473,7 +517,7 @@ export default function App() {
                   <UserProfile
                     currentUser={currentUser}
                     state={state}
-                    onUpdateCurrentUser={setCurrentUser}
+                    onUpdateCurrentUser={handleUpdateCurrentUser}
                     loadState={loadState}
                   />
                 )}
@@ -506,6 +550,13 @@ export default function App() {
                 {activeTab === 'audit' && (
                   <AuditLogs
                     logs={state.auditLogs}
+                    users={state.users}
+                  />
+                )}
+
+                {activeTab === 'documents' && (
+                  <SharedDocumentsManager
+                    currentUser={currentUser}
                     users={state.users}
                   />
                 )}

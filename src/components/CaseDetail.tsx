@@ -19,7 +19,8 @@ import {
   Eye, 
   Loader2,
   X,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Settings
 } from 'lucide-react';
 import { 
   Case, 
@@ -52,6 +53,7 @@ interface CaseDetailProps {
   onResolveObservation: (obsId: string, response: string) => void;
   onAdvanceStage: () => void;
   onAddParticipant: (participant: Participant) => void;
+  onUpdateCaseDocument: (caseId: string, content: string, showDocumentToAll?: boolean, sharedViewMode?: 'both' | 'flow' | 'document') => void;
 }
 
 export default function CaseDetail({
@@ -72,7 +74,8 @@ export default function CaseDetail({
   onAddObservation,
   onResolveObservation,
   onAdvanceStage,
-  onAddParticipant
+  onAddParticipant,
+  onUpdateCaseDocument
 }: CaseDetailProps) {
   const caseObj = cases.find(c => c.id === caseId);
   if (!caseObj) {
@@ -118,6 +121,42 @@ export default function CaseDetail({
   // Advancing Stage strict validations state
   const [validation, setValidation] = useState<{ isValid: boolean; missing: string[] }>({ isValid: true, missing: [] });
   const [isAdvancing, setIsAdvancing] = useState(false);
+
+  // View mode switcher: 'flow' (checklist stages) or 'document' (100% digitalized word document)
+  const [caseViewMode, setCaseViewMode] = useState<'flow' | 'document'>('flow');
+  const [editableDocText, setEditableDocText] = useState('');
+  const [isEditingDocText, setIsEditingDocText] = useState(false);
+  const [isSavingDoc, setIsSavingDoc] = useState(false);
+  const [showDocumentToAllLocal, setShowDocumentToAllLocal] = useState(true);
+  const [sharedViewModeLocal, setSharedViewModeLocal] = useState<'both' | 'flow' | 'document'>('both');
+  const [sharedDocs, setSharedDocs] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchSharedDocs = async () => {
+      try {
+        const res = await fetch(`/api/shared-documents?userId=${currentUser.id}&role=${currentUser.role}`);
+        if (res.ok) {
+          const data = await res.json();
+          setSharedDocs(data);
+        }
+      } catch (err) {
+        console.error('Error fetching shared docs in CaseDetail:', err);
+      }
+    };
+    fetchSharedDocs();
+  }, [currentUser]);
+
+  useEffect(() => {
+    setEditableDocText(caseObj.documentContent || template?.originalDocumentContent || '');
+  }, [caseObj.documentContent, template?.originalDocumentContent]);
+
+  useEffect(() => {
+    setShowDocumentToAllLocal(caseObj.showDocumentToAll !== undefined ? caseObj.showDocumentToAll : true);
+  }, [caseObj.showDocumentToAll]);
+
+  useEffect(() => {
+    setSharedViewModeLocal(caseObj.sharedViewMode || 'both');
+  }, [caseObj.sharedViewMode]);
 
   // Re-run stage compliance check locally
   useEffect(() => {
@@ -296,8 +335,173 @@ export default function CaseDetail({
     setShowAddPart(false);
   };
 
+  // 100% Digital Document Autocomplete Logic
+  const handleAutoFillDocument = () => {
+    let text = editableDocText || caseObj.documentContent || template?.originalDocumentContent || '';
+    if (!text) {
+      alert('El documento digital no tiene contenido para autocompletar.');
+      return;
+    }
+
+    // 1. Case generic variables
+    text = text.replace(/\[Fecha\]/gi, new Date().getDate().toString());
+    const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    text = text.replace(/\[Mes\]/gi, monthNames[new Date().getMonth()]);
+    text = text.replace(/\[Año\]/gi, new Date().getFullYear().toString());
+    text = text.replace(/\[Título del Caso\]/gi, caseObj.title);
+    text = text.replace(/\[Código del Expediente\]/gi, caseObj.code);
+    text = text.replace(/\[Código\]/gi, caseObj.code);
+    text = text.replace(/\[Descripción\]/gi, caseObj.description);
+    text = text.replace(/\[Asesor\]/gi, advisor ? `${advisor.name} ${advisor.lastName}` : '');
+    text = text.replace(/\[Manager\]/gi, manager ? `${manager.name} ${manager.lastName}` : '');
+
+    // 2. Form submission variables
+    template?.stages.forEach(stg => {
+      stg.requirements.forEach(req => {
+        if (req.type === 'form' && req.formFields) {
+          const sub = formSubmissions.find(s => s.requirementId === req.id);
+          if (sub && sub.values) {
+            req.formFields.forEach(f => {
+              const val = sub.values[f.id];
+              if (val !== undefined && val !== null && val !== '') {
+                // Replace by [Label] (e.g. [Monto de Reserva (USD)])
+                const escapedLabel = f.label.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+                const regexLabel = new RegExp(`\\[${escapedLabel}\\]`, 'gi');
+                text = text.replace(regexLabel, String(val));
+
+                // Also replace by [Id] (e.g. [f-comp-nombre])
+                const regexId = new RegExp(`\\[${f.id}\\]`, 'gi');
+                text = text.replace(regexId, String(val));
+              }
+            });
+          }
+        }
+      });
+    });
+
+    // 3. Participant variables
+    caseObj.participants.forEach(p => {
+      const role = p.comments?.split(':')[0]?.trim() || '';
+      const rolesToTry = role ? [role] : ['Cliente', 'Comprador', 'Vendedor', 'Titular', 'Garante', 'Apoderado'];
+      
+      rolesToTry.forEach(r => {
+        text = text.replace(new RegExp(`\\[Nombre Completo ${r}\\]`, 'gi'), `${p.name} ${p.lastName}`);
+        text = text.replace(new RegExp(`\\[DNI ${r}\\]`, 'gi'), p.dni);
+        text = text.replace(new RegExp(`\\[CUIT ${r}\\]`, 'gi'), p.cuitCuil);
+        text = text.replace(new RegExp(`\\[Email ${r}\\]`, 'gi'), p.email);
+        text = text.replace(new RegExp(`\\[Teléfono ${r}\\]`, 'gi'), p.phone || '');
+        text = text.replace(new RegExp(`\\[${r}\\]`, 'gi'), `${p.name} ${p.lastName}`);
+      });
+    });
+
+    setEditableDocText(text);
+    alert('¡Sincronización exitosa! Los datos del expediente se han volcado en los campos del documento.');
+  };
+
+  // Save the edited document content back to the server
+  const handleSaveDocument = async () => {
+    setIsSavingDoc(true);
+    try {
+      await onUpdateCaseDocument(caseObj.id, editableDocText, showDocumentToAllLocal, sharedViewModeLocal);
+      
+      // Auto-validate/upload any requirement of type digital_contract in current stage
+      if (currentStage) {
+        const digitalReqs = currentStage.requirements.filter(r => r.type === 'document' && r.documentSourceType === 'digital_contract');
+        for (const req of digitalReqs) {
+          const existing = documents.find(d => d.caseId === caseObj.id && d.requirementId === req.id);
+          if (!existing) {
+            await onUploadDoc(
+              currentStage.id, 
+              req.id, 
+              req.name, 
+              `${req.name.replace(/\s+/g, '_')}_digital_completado.pdf`, 
+              editableDocText.length
+            );
+          }
+        }
+      }
+
+      setIsEditingDocText(false);
+      alert('¡Documento digitalizado guardado con éxito!');
+    } catch (e) {
+      console.error(e);
+      alert('Error guardando los cambios del documento.');
+    } finally {
+      setIsSavingDoc(false);
+    }
+  };
+
+  // Update sharedViewMode in real-time
+  const handleUpdateSharedViewMode = async (newMode: 'both' | 'flow' | 'document') => {
+    setSharedViewModeLocal(newMode);
+    try {
+      await onUpdateCaseDocument(caseObj.id, editableDocText, showDocumentToAllLocal, newMode);
+    } catch (e) {
+      console.error('Error al actualizar el modo de vista compartido:', e);
+    }
+  };
+
+  // Render document with variables highlighted in an orange badge style
+  const renderDocumentWithHighlights = (text: string) => {
+    if (!text) {
+      return (
+        <p className="text-slate-400 italic text-center py-8 font-sans">
+          El documento digitalizado se encuentra vacío. Presiona "Editar Texto" para agregar contenido.
+        </p>
+      );
+    }
+    const parts = text.split(/(\[[^\]]+\])/g);
+    return (
+      <div className="whitespace-pre-wrap leading-relaxed text-slate-800 font-serif text-sm md:text-base space-y-1">
+        {parts.map((part, index) => {
+          if (part.startsWith('[') && part.endsWith(']')) {
+            return (
+              <span 
+                key={index} 
+                className="inline-flex items-center px-1.5 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-700 font-mono text-xs font-semibold mx-0.5 hover:bg-amber-100 transition-colors cursor-help"
+                title="Sincroniza desde el checklist para completar automáticamente"
+              >
+                {part}
+              </span>
+            );
+          }
+          return <span key={index}>{part}</span>;
+        })}
+      </div>
+    );
+  };
+
   const isAsesor = currentUser.role === 'ASESOR';
   const isManagerOrAdmin = ['SUPERADMIN', 'ADMIN', 'MANAGER'].includes(currentUser.role);
+  const isSuperAdmin = currentUser.role === 'SUPERADMIN';
+  const isAdmin = currentUser.role === 'ADMIN';
+  const isAdminOrSuperAdmin = isSuperAdmin || isAdmin;
+
+  // Decide which tabs/modes are allowed for the current user
+  const hasStages = !!(template && template.stages && template.stages.length > 0);
+  const allowFlow = hasStages && (isAdminOrSuperAdmin || sharedViewModeLocal !== 'document');
+  const allowDoc = !hasStages || isAdminOrSuperAdmin || (sharedViewModeLocal !== 'flow' && caseObj.showDocumentToAll !== false);
+
+  useEffect(() => {
+    if (template) {
+      const hasStagesLocal = !!(template.stages && template.stages.length > 0);
+      if (!hasStagesLocal) {
+        setCaseViewMode('document');
+      } else if (caseObj.sharedViewMode === 'document') {
+        setCaseViewMode('document');
+      } else if (caseObj.sharedViewMode === 'flow') {
+        setCaseViewMode('flow');
+      }
+    }
+  }, [template, caseObj.sharedViewMode]);
+
+  useEffect(() => {
+    if (!allowFlow && caseViewMode === 'flow') {
+      setCaseViewMode('document');
+    } else if (!allowDoc && caseViewMode === 'document') {
+      setCaseViewMode('flow');
+    }
+  }, [allowFlow, allowDoc, caseViewMode]);
 
   return (
     <div className="space-y-6">
@@ -337,7 +541,147 @@ export default function CaseDetail({
         </div>
       </div>
 
-      {/* STAGE TIMELINE / PROCESS STEPPER */}
+      {/* PANEL DE CONTROL SUPERADMIN: CONFIGURACIÓN DE VISIBILIDAD PARA EL RESTO DE USUARIOS */}
+      {isAdminOrSuperAdmin && (
+        <div className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white p-5 rounded-2xl border border-slate-800 shadow-lg space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-3">
+            <div className="flex items-center gap-2.5">
+              <span className="p-1.5 bg-indigo-500/20 text-indigo-300 rounded-lg border border-indigo-500/30">
+                <Settings className="w-4 h-4 text-indigo-400" />
+              </span>
+              <div>
+                <h4 className="text-xs font-bold tracking-wide uppercase text-indigo-200">Panel de Control Administrativo (Superadmin)</h4>
+                <p className="text-[11px] text-slate-300">Determina cuál de los dos entornos operativos se comparte y visualiza para el resto de los usuarios (Asesores, Managers, etc.):</p>
+              </div>
+            </div>
+            <span className="text-[10px] font-mono bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 px-2 py-0.5 rounded uppercase font-bold tracking-wider select-none">
+              Configuración en Tiempo Real
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {/* Option 1: Both */}
+            <button
+              type="button"
+              onClick={() => handleUpdateSharedViewMode('both')}
+              className={`p-3.5 rounded-xl border text-left transition-all relative cursor-pointer flex flex-col justify-between h-full ${
+                sharedViewModeLocal === 'both'
+                  ? 'bg-indigo-600/20 border-indigo-500 text-white ring-1 ring-indigo-500/50'
+                  : 'bg-slate-900/50 border-slate-800 text-slate-300 hover:border-slate-700 hover:bg-slate-900'
+              }`}
+            >
+              <div>
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <span className="text-xs font-bold">Ambos Entornos Disponibles</span>
+                  <input
+                    type="radio"
+                    checked={sharedViewModeLocal === 'both'}
+                    onChange={() => handleUpdateSharedViewMode('both')}
+                    className="text-indigo-500 focus:ring-indigo-500 bg-slate-950 border-slate-800 w-3.5 h-3.5 cursor-pointer animate-none"
+                  />
+                </div>
+                <p className="text-[10px] text-slate-400 leading-relaxed">
+                  Los asesores y managers tendrán acceso tanto al Flujo de Etapas como al Documento Digitalizado Word.
+                </p>
+              </div>
+            </button>
+
+            {/* Option 2: Flow Only */}
+            <button
+              type="button"
+              onClick={() => handleUpdateSharedViewMode('flow')}
+              className={`p-3.5 rounded-xl border text-left transition-all relative cursor-pointer flex flex-col justify-between h-full ${
+                sharedViewModeLocal === 'flow'
+                  ? 'bg-indigo-600/20 border-indigo-500 text-white ring-1 ring-indigo-500/50'
+                  : 'bg-slate-900/50 border-slate-800 text-slate-300 hover:border-slate-700 hover:bg-slate-900'
+              }`}
+            >
+              <div>
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <span className="text-xs font-bold">Solo Flujo Inteligente por Etapas</span>
+                  <input
+                    type="radio"
+                    checked={sharedViewModeLocal === 'flow'}
+                    onChange={() => handleUpdateSharedViewMode('flow')}
+                    className="text-indigo-500 focus:ring-indigo-500 bg-slate-950 border-slate-800 w-3.5 h-3.5 cursor-pointer animate-none"
+                  />
+                </div>
+                <p className="text-[10px] text-slate-400 leading-relaxed">
+                  Se oculta el Documento Digitalizado para otros roles. Solo podrán seguir el proceso secuencialmente.
+                </p>
+              </div>
+              <span className="text-[8px] bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 px-1.5 py-0.5 rounded font-mono font-bold uppercase tracking-wider self-start mt-2 select-none">
+                Documento restringido a Admin
+              </span>
+            </button>
+
+            {/* Option 3: Document Only */}
+            <button
+              type="button"
+              onClick={() => handleUpdateSharedViewMode('document')}
+              className={`p-3.5 rounded-xl border text-left transition-all relative cursor-pointer flex flex-col justify-between h-full ${
+                sharedViewModeLocal === 'document'
+                  ? 'bg-indigo-600/20 border-indigo-500 text-white ring-1 ring-indigo-500/50'
+                  : 'bg-slate-900/50 border-slate-800 text-slate-300 hover:border-slate-700 hover:bg-slate-900'
+              }`}
+            >
+              <div>
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <span className="text-xs font-bold">Solo Documento 100% Digitalizado</span>
+                  <input
+                    type="radio"
+                    checked={sharedViewModeLocal === 'document'}
+                    onChange={() => handleUpdateSharedViewMode('document')}
+                    className="text-indigo-500 focus:ring-indigo-500 bg-slate-950 border-slate-800 w-3.5 h-3.5 cursor-pointer animate-none"
+                  />
+                </div>
+                <p className="text-[10px] text-slate-400 leading-relaxed">
+                  Se oculta el Flujo de Etapas para otros roles. Solo completarán y previsualizarán el documento original directamente.
+                </p>
+              </div>
+              <span className="text-[8px] bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 px-1.5 py-0.5 rounded font-mono font-bold uppercase tracking-wider self-start mt-2 select-none">
+                Flujo restringido a Admin
+              </span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Visual Workspace Mode Tab Selector */}
+      {(allowFlow && allowDoc) && (
+        <div className="flex border-b border-slate-200 bg-white/60 p-1 rounded-xl shadow-xs gap-1">
+          {allowFlow && (
+            <button
+              onClick={() => setCaseViewMode('flow')}
+              className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold tracking-wide uppercase rounded-lg transition-all cursor-pointer ${
+                caseViewMode === 'flow'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50 font-semibold'
+              }`}
+            >
+              <Calendar className="w-4 h-4" />
+              Control de Flujo por Etapas
+            </button>
+          )}
+          {allowDoc && (
+            <button
+              onClick={() => setCaseViewMode('document')}
+              className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold tracking-wide uppercase rounded-lg transition-all cursor-pointer ${
+                caseViewMode === 'document'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50 font-semibold'
+              }`}
+            >
+              <Sparkles className="w-4 h-4 text-amber-500 animate-pulse" />
+              Documento 100% Digitalizado (Word)
+            </button>
+          )}
+        </div>
+      )}
+
+      {caseViewMode === 'flow' ? (
+        <>
+          {/* STAGE TIMELINE / PROCESS STEPPER */}
       <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
         <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider font-mono mb-4">Etapas del Proceso</h3>
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-y-4 relative">
@@ -536,6 +880,9 @@ export default function CaseDetail({
                       .filter(r => r.type === 'document')
                       .map((req) => {
                         const doc = documents.find(d => d.caseId === caseObj.id && d.requirementId === req.id);
+                        const isDigitalContract = req.documentSourceType === 'digital_contract';
+                        const isDownloadAsset = req.documentSourceType === 'download_asset';
+                        const linkedSharedDoc = isDownloadAsset ? sharedDocs.find(d => d.id === req.linkedSharedDocumentId) : null;
                         
                         return (
                           <div key={req.id} className="p-4 bg-slate-50 rounded-xl border border-slate-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-4 group">
@@ -547,6 +894,39 @@ export default function CaseDetail({
                               </div>
                               <p className="text-[11px] text-slate-400 leading-normal">{req.description}</p>
                               
+                              {/* Extra information for special document types */}
+                              {isDigitalContract && (
+                                <div className="mt-1.5 flex items-center gap-1.5 text-[10px] text-indigo-600 font-semibold bg-indigo-50/50 px-2 py-1 rounded border border-indigo-100 w-fit">
+                                  <Sparkles className="w-3.5 h-3.5 animate-pulse text-indigo-500" />
+                                  <span>✍️ Contrato Digitalizado: Edítalo en la pestaña "Documento 100% Digitalizado"</span>
+                                </div>
+                              )}
+                              
+                              {isDownloadAsset && linkedSharedDoc && (
+                                <div className="mt-1.5 space-y-1 bg-emerald-50/50 p-2 rounded border border-emerald-100 text-left w-fit max-w-sm">
+                                  <span className="text-[9px] text-emerald-800 font-bold uppercase tracking-wider block">📥 Archivo de la Biblioteca:</span>
+                                  <p className="text-[10px] text-emerald-700 font-medium">Debe descargarse: <strong>{linkedSharedDoc.name}</strong></p>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (linkedSharedDoc.dataUrl) {
+                                        const link = document.createElement('a');
+                                        link.href = linkedSharedDoc.dataUrl;
+                                        link.download = linkedSharedDoc.fileName;
+                                        document.body.appendChild(link);
+                                        link.click();
+                                        document.body.removeChild(link);
+                                      } else {
+                                        alert('Contenido descargable no disponible.');
+                                      }
+                                    }}
+                                    className="mt-1 flex items-center gap-1 px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[9px] font-bold cursor-pointer transition-colors"
+                                  >
+                                    Descargar {linkedSharedDoc.fileName}
+                                  </button>
+                                </div>
+                              )}
+
                               {/* Loaded file link */}
                               {doc && doc.fileName && (
                                 <div className="flex items-center gap-1.5 pt-1 text-[11px] text-slate-500 font-mono">
@@ -578,13 +958,25 @@ export default function CaseDetail({
 
                               {/* Operations for advisors */}
                               {isAsesor && (
-                                <button
-                                  onClick={() => handleMockFileUpload(req.id, req.name)}
-                                  className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-[10px] font-bold rounded-lg shadow-xs flex items-center gap-1.5 transition-all"
-                                >
-                                  <Upload className="w-3.5 h-3.5 text-slate-400" />
-                                  <span>{doc ? 'Reemplazar' : 'Subir Documento'}</span>
-                                </button>
+                                <div className="flex items-center gap-1.5">
+                                  {isDigitalContract && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setCaseViewMode('document')}
+                                      className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-bold rounded-lg shadow-xs flex items-center gap-1 transition-all cursor-pointer"
+                                    >
+                                      <FileText className="w-3.5 h-3.5 text-indigo-500" />
+                                      <span>Completar Contrato</span>
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={() => handleMockFileUpload(req.id, req.name)}
+                                    className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-[10px] font-bold rounded-lg shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                                  >
+                                    <Upload className="w-3.5 h-3.5 text-slate-400" />
+                                    <span>{doc ? 'Reemplazar' : 'Subir Documento'}</span>
+                                  </button>
+                                </div>
                               )}
 
                               {/* Operations for Managers/Admins */}
@@ -960,6 +1352,122 @@ export default function CaseDetail({
           </div>
         </div>
       </div>
+    </>
+  ) : (
+        <div className="space-y-6">
+          {/* Header/Tools Panel */}
+          <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div>
+              <span className="text-[10px] text-indigo-600 uppercase font-mono font-bold tracking-wider">Documento Digital Activo</span>
+              <h3 className="text-base font-bold text-slate-800 mt-0.5">Editor de Plantilla Completa</h3>
+              <p className="text-xs text-slate-500 mb-2">
+                Visualiza, edita y autocompleta el documento original al 100% conservando sus condiciones y estructura literal.
+              </p>
+              {isSuperAdmin && (
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-indigo-50/70 border border-indigo-100 rounded-lg text-xs font-semibold text-indigo-900 select-none">
+                  <input
+                    type="checkbox"
+                    id="case-share-toggle"
+                    checked={showDocumentToAllLocal}
+                    onChange={(e) => setShowDocumentToAllLocal(e.target.checked)}
+                    className="rounded border-indigo-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
+                  />
+                  <label htmlFor="case-share-toggle" className="cursor-pointer">
+                    Compartir este documento con el resto de los usuarios (Asesores, Managers, etc.)
+                  </label>
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Autofill Button */}
+              <button
+                onClick={handleAutoFillDocument}
+                className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer active:scale-95"
+                title="Rellenar placeholders automáticamente con datos de formularios y participantes"
+              >
+                <Sparkles className="w-4 h-4 text-amber-500" />
+                <span>Autocompletar Datos</span>
+              </button>
+
+              {/* Edit/View Toggle */}
+              <button
+                onClick={() => setIsEditingDocText(!isEditingDocText)}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer active:scale-95 border ${
+                  isEditingDocText 
+                    ? 'bg-slate-100 border-slate-300 text-slate-700 hover:bg-slate-200' 
+                    : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <FileText className="w-4 h-4 text-indigo-500" />
+                <span>{isEditingDocText ? 'Ver Documento' : 'Editar Texto'}</span>
+              </button>
+
+              {/* Save Button */}
+              <button
+                onClick={handleSaveDocument}
+                disabled={isSavingDoc}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSavingDoc ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-white" />
+                    <span>Guardando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-4 h-4 text-white" />
+                    <span>Guardar Cambios</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Guidelines info card */}
+          <div className="bg-indigo-50/50 border border-indigo-100 p-4 rounded-xl text-xs text-indigo-800 leading-normal flex gap-2.5 items-start">
+            <Sparkles className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold mb-0.5">¿Cómo completar el documento digital?</p>
+              <p className="opacity-90">
+                Los textos resaltados en naranja/amarillo como <code className="bg-amber-100 px-1 rounded text-amber-800 font-mono text-[11px]">[Nombre]</code> representan variables pendientes. 
+                Completa los <strong>Formularios de la etapa</strong> o agrega <strong>Participantes</strong> del expediente, y luego haz clic en <strong>"Autocompletar Datos"</strong> para volcar la información de manera inmediata sobre el documento tal como se lee en el Word.
+              </p>
+            </div>
+          </div>
+
+          {/* Actual Sheet of paper */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+            <div className="bg-slate-50 px-6 py-3 border-b border-slate-200 flex items-center justify-between text-xs text-slate-500">
+              <span className="font-mono tracking-wider uppercase font-semibold">Previsualización (A4 Layout - Word Integrado)</span>
+              <span className="font-sans font-medium text-[11px]">Sincronizado al 100%</span>
+            </div>
+
+            <div className="bg-slate-100/60 p-4 sm:p-8 md:p-12 min-h-[700px] flex items-start justify-center">
+              <div className="bg-white w-full max-w-2xl min-h-[800px] shadow-lg border border-slate-200 px-8 py-12 md:px-16 md:py-20 rounded-md flex flex-col justify-between">
+                {isEditingDocText ? (
+                  <textarea
+                    value={editableDocText}
+                    onChange={(e) => setEditableDocText(e.target.value)}
+                    placeholder="Escribe o pega el documento original aquí..."
+                    className="w-full h-[650px] resize-none focus:outline-hidden text-sm md:text-base font-mono text-slate-800 leading-relaxed border-0 bg-slate-50/50 p-4 rounded-lg focus:ring-1 focus:ring-indigo-500"
+                  />
+                ) : (
+                  <div>
+                    {renderDocumentWithHighlights(editableDocText)}
+                  </div>
+                )}
+                
+                {/* Footer of the sheet */}
+                <div className="mt-16 pt-6 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between text-[11px] text-slate-400 font-mono">
+                  <span>EXPEDIENTE: {caseObj.code}</span>
+                  <span>GENERADO POR DOCFLOW PRO</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* AI COMPLIANCE AUDIT DISPLAY MODAL */}
       {auditResult && (

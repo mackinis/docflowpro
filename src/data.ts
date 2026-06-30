@@ -59,6 +59,17 @@ export const INITIAL_TEMPLATES: ProcessTemplate[] = [
     name: 'Venta Inmobiliaria Estándar',
     description: 'Proceso completo para la compraventa de propiedades inmuebles residenciales o comerciales.',
     industry: 'Inmobiliaria',
+    originalDocumentContent: `CONTRATO DE RESERVA DE COMPRAVENTA INMOBILIARIA
+
+En la Ciudad Autónoma de Buenos Aires, a los [Fecha] días del mes de [Mes] del año 2026, entre el Sr./Sra. [Nombre Completo Vendedor], DNI N° [DNI Vendedor], en adelante "EL VENDEDOR", y el Sr./Sra. [Nombre Completo Comprador], DNI N° [DNI Comprador], en adelante "EL COMPRADOR", se conviene celebrar el presente boleto de reserva ad-referendum de las siguientes cláusulas:
+
+PRIMERA: EL COMPRADOR entrega en este acto la suma de [Monto de Reserva (USD)] Dólares Estadounidenses (USD) en concepto de RESERVA DE COMPRA para la adquisición de la propiedad inmueble sita en la calle Av. Las Heras 2300, 4° Piso, Recoleta.
+
+SEGUNDA: La presente operación queda condicionada a la conformidad de EL VENDEDOR dentro del plazo de diez días hábiles, y a la aprobación del correspondiente Estudio de Títulos a cargo del Escribano Designado [Escribano Designado].
+
+TERCERA: En caso de no aceptarse la reserva por parte de EL VENDEDOR, se restituirá la suma entregada de forma inmediata sin penalidad alguna para las partes. En caso de aceptación, las partes se obligan a la firma del boleto de compraventa definitivo dentro de los 30 días posteriores.
+
+En prueba de conformidad, se firman dos ejemplares del mismo tenor y a un solo efecto.`,
     stages: [
       {
         id: 'stg-v1',
@@ -576,6 +587,18 @@ export const INITIAL_STATE: AppDataState = {
       content: 'Hola Lucía, te doy la bienvenida al sistema de Gestión Documental. Por favor, revisa tus expedientes asignados y no dudes en escribirme si tienes alguna consulta sobre los checklists.',
       createdAt: new Date(Date.now() - 3600000 * 24).toISOString(), // 1 day ago
       read: false
+    }
+  ],
+  sharedDocuments: [
+    {
+      id: 'sh-doc-1',
+      name: 'Manual de Procedimientos DocFlow',
+      fileName: 'Manual_DocFlow_Pro.pdf',
+      fileSize: 1024000,
+      uploadedBy: 'Carlos Gómez (SUPERADMIN)',
+      uploadedAt: '2026-06-25T11:00:00Z',
+      allowedRoles: ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR'],
+      allowedUserIds: []
     }
   ]
 };
