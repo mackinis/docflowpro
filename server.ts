@@ -6,7 +6,7 @@ import { GoogleGenAI, Type } from '@google/genai';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, doc, getDoc, setDoc } from 'firebase/firestore';
+import { initializeFirestore, doc, getDoc, setDoc } from 'firebase/firestore';
 import { INITIAL_STATE } from './src/data';
 import { AppDataState, Case, Document, Task, Observation, Notification, AuditLog, ProcessTemplate, User } from './src/types';
 import mammoth from 'mammoth';
@@ -112,8 +112,10 @@ let firestoreDb: any = null;
 if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_API_KEY) {
   try {
     const firebaseApp = initializeApp(firebaseConfig);
-    firestoreDb = getFirestore(firebaseApp);
-    console.log('Connected to Google Firestore successfully.');
+    firestoreDb = initializeFirestore(firebaseApp, {
+      experimentalForceLongPolling: true,
+    });
+    console.log('Connected to Google Firestore with long polling enabled.');
   } catch (e) {
     console.error('Failed to connect to Google Firestore:', e);
   }
@@ -124,23 +126,47 @@ async function syncToFirestore(state: AppDataState) {
   if (!firestoreDb) return;
   try {
     const cleanState = JSON.parse(JSON.stringify(state));
-    await setDoc(doc(firestoreDb, 'docflow', 'users'), { data: cleanState.users || [] });
-    await setDoc(doc(firestoreDb, 'docflow', 'templates'), { data: cleanState.templates || [] });
-    await setDoc(doc(firestoreDb, 'docflow', 'cases'), { data: cleanState.cases || [] });
-    await setDoc(doc(firestoreDb, 'docflow', 'documents'), { data: cleanState.documents || [] });
-    await setDoc(doc(firestoreDb, 'docflow', 'tasks'), { data: cleanState.tasks || [] });
-    await setDoc(doc(firestoreDb, 'docflow', 'observations'), { data: cleanState.observations || [] });
-    await setDoc(doc(firestoreDb, 'docflow', 'notifications'), { data: cleanState.notifications || [] });
-    await setDoc(doc(firestoreDb, 'docflow', 'auditLogs'), { data: cleanState.auditLogs || [] });
-    await setDoc(doc(firestoreDb, 'docflow', 'formSubmissions'), { data: cleanState.formSubmissions || [] });
-    await setDoc(doc(firestoreDb, 'docflow', 'config'), { 
+
+    const safeSetDoc = async (docName: string, payload: any) => {
+      try {
+        await setDoc(doc(firestoreDb, 'docflow', docName), payload);
+      } catch (err: any) {
+        console.error(`Error syncing ${docName} to Firestore:`, err.message || err);
+        // Fallback: if it's too large, let's try to clean it if it's sharedDocuments
+        if (docName === 'sharedDocuments' && Array.isArray(payload.data)) {
+          console.warn(`Attempting to sync cleaned sharedDocuments (without large dataUrl base64) to Firestore...`);
+          const cleanedDocs = payload.data.map((d: any) => ({
+            ...d,
+            dataUrl: (d.dataUrl && d.dataUrl.length > 100000) ? '[Contenido grande guardado localmente en servidor]' : d.dataUrl
+          }));
+          try {
+            await setDoc(doc(firestoreDb, 'docflow', 'sharedDocuments'), { data: cleanedDocs });
+            console.log(`Successfully synced cleaned sharedDocuments to Firestore.`);
+          } catch (retryErr: any) {
+            console.error(`Failed to sync cleaned sharedDocuments:`, retryErr.message || retryErr);
+          }
+        }
+      }
+    };
+
+    await safeSetDoc('users', { data: cleanState.users || [] });
+    await safeSetDoc('templates', { data: cleanState.templates || [] });
+    await safeSetDoc('cases', { data: cleanState.cases || [] });
+    await safeSetDoc('documents', { data: cleanState.documents || [] });
+    await safeSetDoc('tasks', { data: cleanState.tasks || [] });
+    await safeSetDoc('observations', { data: cleanState.observations || [] });
+    await safeSetDoc('notifications', { data: cleanState.notifications || [] });
+    await safeSetDoc('auditLogs', { data: cleanState.auditLogs || [] });
+    await safeSetDoc('formSubmissions', { data: cleanState.formSubmissions || [] });
+    await safeSetDoc('sharedDocuments', { data: cleanState.sharedDocuments || [] });
+    await safeSetDoc('config', { 
       activeIndustry: cleanState.activeIndustry || 'Inmobiliaria',
       verificationPolicies: cleanState.verificationPolicies || null,
       systemSettings: cleanState.systemSettings || null,
       systemMessages: cleanState.systemMessages || null
     });
   } catch (e) {
-    console.error('Error syncing to Firestore:', e);
+    console.error('Error in syncToFirestore top level:', e);
   }
 }
 
@@ -157,6 +183,7 @@ async function loadFromFirestore(): Promise<Partial<AppDataState> | null> {
     const notificationsDoc = await getDoc(doc(firestoreDb, 'docflow', 'notifications'));
     const auditLogsDoc = await getDoc(doc(firestoreDb, 'docflow', 'auditLogs'));
     const formSubmissionsDoc = await getDoc(doc(firestoreDb, 'docflow', 'formSubmissions'));
+    const sharedDocumentsDoc = await getDoc(doc(firestoreDb, 'docflow', 'sharedDocuments'));
     const configDoc = await getDoc(doc(firestoreDb, 'docflow', 'config'));
 
     return {
@@ -169,6 +196,7 @@ async function loadFromFirestore(): Promise<Partial<AppDataState> | null> {
       notifications: notificationsDoc.exists() ? notificationsDoc.data().data : undefined,
       auditLogs: auditLogsDoc.exists() ? auditLogsDoc.data().data : undefined,
       formSubmissions: formSubmissionsDoc.exists() ? formSubmissionsDoc.data().data : undefined,
+      sharedDocuments: sharedDocumentsDoc.exists() ? sharedDocumentsDoc.data().data : undefined,
       activeIndustry: configDoc.exists() ? configDoc.data().activeIndustry : undefined,
       verificationPolicies: configDoc.exists() ? configDoc.data().verificationPolicies : undefined,
       systemSettings: configDoc.exists() ? configDoc.data().systemSettings : undefined,
@@ -260,20 +288,26 @@ function cleanDummyData(state: AppDataState) {
     });
   }
 
-  // Strictly de-duplicate cases by ID
-  if (state.cases && Array.isArray(state.cases)) {
-    const seenCaseIds = new Set<string>();
-    state.cases = state.cases.filter(c => {
-      if (!c || !c.id) return false;
-      if (seenCaseIds.has(c.id)) {
-        return false;
-      }
-      seenCaseIds.add(c.id);
-      return true;
-    });
+  // Remove pre-seeded dummy cases
+  if (state.cases) {
+    state.cases = state.cases.filter(c => c.id !== 'case-recoleta' && c.id !== 'case-comercial');
+  } else {
+    state.cases = [];
   }
 
-  // Initialize arrays only if they are missing or falsy, do NOT clear active records!
+  // Keep only active user & active case resources to completely wipe pre-seeded simulation records
+  const activeCaseIds = new Set(state.cases.map(c => c.id));
+  const activeUserIds = new Set(state.users.map(u => u.id));
+
+  state.documents = (state.documents || []).filter(d => activeCaseIds.has(d.caseId));
+  state.tasks = (state.tasks || []).filter(t => activeCaseIds.has(t.caseId));
+  state.observations = (state.observations || []).filter(o => activeCaseIds.has(o.caseId));
+  state.formSubmissions = (state.formSubmissions || []).filter(f => activeUserIds.has(f.submittedBy));
+  state.notifications = (state.notifications || []).filter(n => activeUserIds.has(n.userId));
+  state.systemMessages = (state.systemMessages || []).filter(m => activeUserIds.has(m.receiverId) || activeUserIds.has(m.senderId));
+  state.auditLogs = (state.auditLogs || []).filter(log => activeUserIds.has(log.userId));
+
+  // Initialize arrays only if they are missing or falsy
   if (!state.cases) state.cases = [];
   if (!state.documents) state.documents = [];
   if (!state.tasks) state.tasks = [];
@@ -356,6 +390,7 @@ async function initDbFromCloud() {
     
     cleanDummyData(dbState);
     fs.writeFileSync(DB_FILE, JSON.stringify(dbState, null, 2), 'utf-8');
+    await syncToFirestore(dbState);
   }
 }
 initDbFromCloud();
@@ -379,6 +414,75 @@ if (apiKey && apiKey !== 'MY_GEMINI_API_KEY') {
   }
 } else {
   console.log('Gemini API Key is not set or using placeholder. Running in fallback mode for AI features.');
+}
+
+// Robust Gemini execution helper with retry and model fallback
+async function generateContentWithRetryAndFallback(params: any): Promise<any> {
+  if (!ai) {
+    throw new Error('Gemini API is not initialized. Please configure GEMINI_API_KEY.');
+  }
+
+  const maxRetries = 3;
+  const modelsToTry = Array.from(new Set([
+    params.model || 'gemini-2.5-flash',
+    'gemini-2.5-flash',
+    'gemini-1.5-flash',
+    'gemini-2.5-pro',
+    'gemini-1.5-pro'
+  ]));
+
+  for (let mIdx = 0; mIdx < modelsToTry.length; mIdx++) {
+    const model = modelsToTry[mIdx];
+    let delay = 1000;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`Trying Gemini generation with model ${model} (attempt ${attempt}/${maxRetries})...`);
+        const currentParams = {
+          ...params,
+          model,
+        };
+        const response = await ai.models.generateContent(currentParams);
+        return response;
+      } catch (err: any) {
+        const errMsg = err.message || (typeof err === 'object' ? JSON.stringify(err) : String(err));
+        console.error(`Gemini generation failed for model ${model} on attempt ${attempt}:`, errMsg);
+
+        const isUnavailable = err.status === 'UNAVAILABLE' || 
+                              err.statusCode === 503 || 
+                              err.status === 503 ||
+                              err.code === 503 ||
+                              errMsg.includes('503') ||
+                              errMsg.toLowerCase().includes('unavailable') ||
+                              errMsg.toLowerCase().includes('high demand') ||
+                              errMsg.toLowerCase().includes('resource_exhausted') ||
+                              errMsg.toLowerCase().includes('quota');
+
+        if (isUnavailable) {
+          console.warn(`Model ${model} is experiencing high demand/unavailable. Handled as 503/UNAVAILABLE.`);
+          if (mIdx < modelsToTry.length - 1) {
+            console.warn(`Immediately falling back to the next model: ${modelsToTry[mIdx + 1]}`);
+            break; // Break the attempt loop for the current model, so it moves to the next model in the outer loop
+          }
+        }
+
+        // If this was the last attempt for the current model
+        if (attempt === maxRetries) {
+          if (mIdx < modelsToTry.length - 1) {
+            console.warn(`All ${maxRetries} attempts failed for model ${model}. Falling back to next model...`);
+            break; // Break the attempt loop to try next model
+          } else {
+            throw err; // Last model failed all attempts, rethrow the error
+          }
+        }
+
+        // Exponential backoff wait for retry on the same model
+        console.log(`Waiting ${delay}ms before retrying ${model} (attempt ${attempt + 1}/${maxRetries})...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        delay *= 2;
+      }
+    }
+  }
 }
 
 // Helpers for auditing
@@ -1338,11 +1442,11 @@ app.post('/api/shared-documents', (req, res) => {
 
 app.put('/api/shared-documents/:id', (req, res) => {
   const { id } = req.params;
-  const { allowedRoles, allowedUserIds, currentUserId, name } = req.body;
+  const { allowedRoles, allowedUserIds, currentUserId, name, dataUrl, fileSize } = req.body;
 
   const user = dbState.users.find(u => u.id === currentUserId);
-  if (!user || user.role !== 'SUPERADMIN') {
-    return res.status(403).json({ error: 'Sólo el Superadmin puede actualizar permisos de documentos.' });
+  if (!user) {
+    return res.status(401).json({ error: 'Usuario no autenticado o no encontrado.' });
   }
 
   dbState.sharedDocuments = dbState.sharedDocuments || [];
@@ -1352,11 +1456,19 @@ app.put('/api/shared-documents/:id', (req, res) => {
   }
 
   if (name) doc.name = name;
-  if (allowedRoles) doc.allowedRoles = allowedRoles;
-  if (allowedUserIds) doc.allowedUserIds = allowedUserIds;
+  if (dataUrl !== undefined) doc.dataUrl = dataUrl;
+  if (fileSize !== undefined) doc.fileSize = fileSize;
+
+  // Only allow SUPERADMIN to modify allowedRoles or allowedUserIds
+  if (user.role === 'SUPERADMIN') {
+    if (allowedRoles) doc.allowedRoles = allowedRoles;
+    if (allowedUserIds) doc.allowedUserIds = allowedUserIds;
+  } else if (allowedRoles || allowedUserIds) {
+    return res.status(403).json({ error: 'Sólo el Superadmin puede actualizar los permisos de acceso.' });
+  }
 
   saveDB(dbState);
-  createAudit(user.id, `Actualizó permisos/datos del documento compartido "${doc.name}"`, 'SharedDocument', id, doc.name);
+  createAudit(user.id, `Actualizó o editó el documento compartido "${doc.name}"`, 'SharedDocument', id, doc.name);
 
   res.json({ success: true, doc });
 });
@@ -1838,7 +1950,7 @@ Retorna UNICAMENTE un objeto JSON estructurado así (sin markdown de código de 
   "suggestedObservation": "observación concisa en caso de que approved sea false"
 }`;
 
-    const response = await ai.models.generateContent({
+    const response = await generateContentWithRetryAndFallback({
       model: 'gemini-3.5-flash',
       contents: prompt,
       config: {
@@ -1906,16 +2018,45 @@ Retorna UNICAMENTE un objeto JSON estructurado así (sin markdown de código de 
 // Helper to clean and parse JSON responses from Gemini safely
 function cleanAndParseJSON(rawText: string): any {
   let cleaned = (rawText || '').trim();
-  if (cleaned.startsWith('```')) {
-    const firstLineEnd = cleaned.indexOf('\n');
-    const lastBackticks = cleaned.lastIndexOf('```');
-    if (firstLineEnd !== -1 && lastBackticks !== -1 && lastBackticks > firstLineEnd) {
-      cleaned = cleaned.substring(firstLineEnd, lastBackticks).trim();
+  
+  // Try to find a valid JSON block starting with { or [
+  const firstBrace = cleaned.indexOf('{');
+  const firstBracket = cleaned.indexOf('[');
+  
+  let startIdx = -1;
+  let endToken = '';
+  
+  if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
+    startIdx = firstBrace;
+    endToken = '}';
+  } else if (firstBracket !== -1) {
+    startIdx = firstBracket;
+    endToken = ']';
+  }
+  
+  if (startIdx !== -1) {
+    const lastTokenIdx = cleaned.lastIndexOf(endToken);
+    if (lastTokenIdx !== -1 && lastTokenIdx > startIdx) {
+      cleaned = cleaned.substring(startIdx, lastTokenIdx + 1);
     }
   }
-  // Remove any leftover markers
+
+  // Remove any leftover markers just in case
   cleaned = cleaned.replace(/^```json/, '').replace(/```$/, '').trim();
-  return JSON.parse(cleaned);
+
+  try {
+    return JSON.parse(cleaned);
+  } catch (err: any) {
+    console.error('Initial JSON parse failed. Attempting cleanup of control characters. Raw text length:', rawText.length);
+    // Fallback: If there are unescaped control characters like newlines within strings, we can try to sanitize them or trim
+    cleaned = cleaned.trim();
+    try {
+      return JSON.parse(cleaned);
+    } catch (innerErr: any) {
+      console.error('Final JSON parse failed. Error:', innerErr.message, 'Cleaned text was:', cleaned);
+      throw innerErr;
+    }
+  }
 }
 
 // AI Process Template Generation
@@ -2000,7 +2141,7 @@ interface ProcessTemplate {
   }[];
 }`;
 
-    const response = await ai.models.generateContent({
+    const response = await generateContentWithRetryAndFallback({
       model: 'gemini-3.5-flash',
       contents: promptText,
       config: {
@@ -2204,7 +2345,7 @@ interface ProcessTemplate {
     }
     parts.push({ text: promptText });
 
-    const response = await ai.models.generateContent({
+    const response = await generateContentWithRetryAndFallback({
       model: 'gemini-3.5-flash',
       contents: { parts },
       config: {

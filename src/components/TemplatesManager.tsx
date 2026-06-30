@@ -452,12 +452,12 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
 
     try {
       const payload = {
-        name: editMode === 'digital_doc' ? editName : editingTemplate.name,
-        description: editMode === 'digital_doc' ? editDescription : editingTemplate.description,
-        industry: editMode === 'digital_doc' ? editIndustry : editingTemplate.industry,
+        name: editName,
+        description: editDescription,
+        industry: editIndustry,
         originalDocumentContent: editMode === 'digital_doc' ? editOriginalDocumentContent : (editingTemplate.originalDocumentContent || ''),
         showDocumentToAll: editMode === 'digital_doc' ? editShowDocumentToAll : (editingTemplate.showDocumentToAll !== undefined ? editingTemplate.showDocumentToAll : true),
-        stages: editMode === 'stages' ? editStages : editingTemplate.stages,
+        stages: editStages,
         currentUserId: currentUser.id
       };
 
@@ -630,25 +630,22 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                   
                   {canManageTemplates && (
                     <div className="flex items-center gap-1">
-                      {isDigitalDoc ? (
-                        <button
-                          onClick={() => handleStartEdit(tpl, 'digital_doc')}
-                          className="px-2.5 py-1.5 text-[11px] font-bold text-slate-500 hover:text-amber-700 hover:bg-amber-50 rounded-xl transition-all border border-transparent hover:border-amber-100 cursor-pointer flex items-center gap-1"
-                          title="Editar Plantilla Digital (Metadatos y Documento Base)"
-                        >
-                          <Edit className="w-3.5 h-3.5" />
-                          <span>Editar Plantilla</span>
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => handleStartEdit(tpl, 'stages')}
-                          className="px-2.5 py-1.5 text-[11px] font-bold text-slate-500 hover:text-indigo-700 hover:bg-indigo-50 rounded-xl transition-all border border-transparent hover:border-indigo-100 cursor-pointer flex items-center gap-1"
-                          title="Configurar Etapas del Proceso (Completamente separado)"
-                        >
-                          <Layers className="w-3.5 h-3.5" />
-                          <span>Configurar Etapas</span>
-                        </button>
-                      )}
+                      <button
+                        onClick={() => handleStartEdit(tpl, 'digital_doc')}
+                        className="px-2.5 py-1.5 text-[11px] font-bold text-slate-500 hover:text-amber-700 hover:bg-amber-50 rounded-xl transition-all border border-transparent hover:border-amber-100 cursor-pointer flex items-center gap-1"
+                        title="Editar Plantilla Digital (Metadatos y Documento Base)"
+                      >
+                        <Edit className="w-3.5 h-3.5" />
+                        <span>Editar Plantilla</span>
+                      </button>
+                      <button
+                        onClick={() => handleStartEdit(tpl, 'stages')}
+                        className="px-2.5 py-1.5 text-[11px] font-bold text-slate-500 hover:text-indigo-700 hover:bg-indigo-50 rounded-xl transition-all border border-transparent hover:border-indigo-100 cursor-pointer flex items-center gap-1"
+                        title="Configurar Etapas del Proceso (Checklists y Requisitos)"
+                      >
+                        <Layers className="w-3.5 h-3.5" />
+                        <span>Configurar Etapas</span>
+                      </button>
                       
                       <button
                         onClick={() => handleDuplicateTemplate(tpl)}

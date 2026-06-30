@@ -479,6 +479,7 @@ export default function App() {
                   currentUser.role === 'ASESOR' ? (
                     <DashboardAdvisor
                       state={state}
+                      currentUser={currentUser}
                       onOpenCase={handleOpenCase}
                       onToggleTask={handleToggleTask}
                       onReplaceDoc={handleReplaceDoc}

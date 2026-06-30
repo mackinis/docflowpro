@@ -11,10 +11,11 @@ import {
   Upload,
   UserCheck
 } from 'lucide-react';
-import { Case, Document, Task, Observation, AppDataState } from '../types';
+import { Case, Document, Task, Observation, AppDataState, User } from '../types';
 
 interface DashboardAdvisorProps {
   state: AppDataState;
+  currentUser: User;
   onOpenCase: (caseId: string) => void;
   onToggleTask: (taskId: string, status: 'pending' | 'completed') => void;
   onReplaceDoc: (caseId: string, stageId: string, reqId: string, docName: string, file: File) => void;
@@ -23,13 +24,14 @@ interface DashboardAdvisorProps {
 
 export default function DashboardAdvisor({ 
   state, 
+  currentUser,
   onOpenCase, 
   onToggleTask,
   onReplaceDoc,
   onResolveObs
 }: DashboardAdvisorProps) {
   const { cases, documents, tasks, observations } = state;
-  const currentAdvisorId = 'usr-asesor1'; // Lucía (standard advisor)
+  const currentAdvisorId = currentUser.id; // dynamic current advisor ID
 
   // Filter items for current advisor
   const myCases = cases.filter(c => c.assignedAdvisorId === currentAdvisorId);
@@ -69,7 +71,7 @@ export default function DashboardAdvisor({
         </div>
         <div className="flex items-center gap-2 px-3.5 py-1.5 bg-blue-50 border border-blue-100 rounded-lg text-xs font-semibold text-blue-700">
           <UserCheck className="w-4 h-4" />
-          <span>Lucía Fernández (Asesor)</span>
+          <span>{currentUser.name} {currentUser.lastName || ''} (Asesor)</span>
         </div>
       </div>
 

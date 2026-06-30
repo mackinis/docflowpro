@@ -17,7 +17,8 @@ import {
   Search,
   X,
   FileCheck2,
-  Settings
+  Settings,
+  Edit
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User, SharedDocument } from '../types';
@@ -59,6 +60,86 @@ export default function SharedDocumentsManager({ currentUser, users, onAddAudit 
   const [editAllowedRoles, setEditAllowedRoles] = useState<string[]>(['ADMIN', 'MANAGER', 'ASESOR']);
   const [editAllowedUserIds, setEditAllowedUserIds] = useState<string[]>([]);
   const [updatingPermissions, setUpdatingPermissions] = useState(false);
+
+  // Document Editing State (For name & digitized content)
+  const [editingDoc, setEditingDoc] = useState<SharedDocument | null>(null);
+  const [editNameField, setEditNameField] = useState('');
+  const [editContentField, setEditContentField] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  // Unicode-safe Base64 helpers
+  const base64ToUnicode = (str: string) => {
+    try {
+      const base64Part = str.includes(',') ? str.split(',')[1] : str;
+      return decodeURIComponent(escape(atob(base64Part)));
+    } catch (e) {
+      try {
+        const base64Part = str.includes(',') ? str.split(',')[1] : str;
+        return atob(base64Part);
+      } catch (err) {
+        return '';
+      }
+    }
+  };
+
+  const unicodeToBase64 = (str: string) => {
+    return btoa(unescape(encodeURIComponent(str)));
+  };
+
+  const handleOpenDocEditor = (doc: SharedDocument) => {
+    setEditingDoc(doc);
+    setEditNameField(doc.name);
+    
+    const isDigital = doc.name.toLowerCase().includes('digitalizado') || doc.fileName.endsWith('_digitalizado.txt') || doc.fileName.endsWith('.txt');
+    if (isDigital && doc.dataUrl) {
+      setEditContentField(base64ToUnicode(doc.dataUrl));
+    } else {
+      setEditContentField('');
+    }
+  };
+
+  const handleEditDocSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingDoc) return;
+
+    try {
+      setSavingEdit(true);
+      setError(null);
+      setSuccess(null);
+
+      const isDigital = editingDoc.name.toLowerCase().includes('digitalizado') || editingDoc.fileName.endsWith('_digitalizado.txt') || editingDoc.fileName.endsWith('.txt');
+      
+      const payload: any = {
+        name: editNameField.trim(),
+        currentUserId: currentUser.id
+      };
+
+      if (isDigital) {
+        const encodedContent = `data:text/plain;base64,${unicodeToBase64(editContentField)}`;
+        payload.dataUrl = encodedContent;
+        payload.fileSize = editContentField.length;
+      }
+
+      const res = await fetch(`/api/shared-documents/${editingDoc.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || 'Error al guardar los cambios.');
+      }
+
+      setSuccess(`Documento "${editNameField}" actualizado con éxito.`);
+      setEditingDoc(null);
+      loadDocuments();
+    } catch (err: any) {
+      setError(err.message || 'Error al guardar los cambios.');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
 
   const handleOpenPermissionsEditor = (doc: SharedDocument) => {
     setEditingPermissionsDoc(doc);
@@ -703,6 +784,15 @@ export default function SharedDocumentsManager({ currentUser, users, onAddAudit 
                           <span>Descargar</span>
                         </button>
 
+                        <button
+                          onClick={() => handleOpenDocEditor(doc)}
+                          className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-all border border-slate-200"
+                          title={isDigital ? "Editar contenido y nombre del documento" : "Editar nombre del documento"}
+                        >
+                          <Edit className="w-3.5 h-3.5" />
+                          <span>Editar</span>
+                        </button>
+
                         {currentUser.role === 'SUPERADMIN' && (
                           <>
                             <button
@@ -871,6 +961,100 @@ export default function SharedDocumentsManager({ currentUser, users, onAddAudit 
           </motion.div>
         </div>
       )}
+
+      {/* Edit Document Modal */}
+      {editingDoc && (() => {
+        const isDigital = editingDoc.name.toLowerCase().includes('digitalizado') || editingDoc.fileName.endsWith('_digitalizado.txt') || editingDoc.fileName.endsWith('.txt');
+        return (
+          <div className="fixed inset-0 bg-slate-950/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="bg-white rounded-2xl border border-slate-100 shadow-xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[90vh]"
+            >
+              {/* Modal Header */}
+              <div className="bg-slate-50 px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-2">
+                  <Edit className="w-5 h-5 text-indigo-500" />
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-800">
+                      Editar Documento {isDigital ? 'Digitalizado' : ''}
+                    </h3>
+                    <p className="text-[11px] text-slate-400">
+                      {isDigital 
+                        ? 'Puedes modificar el nombre descriptivo y el contenido de texto del documento.' 
+                        : 'Para documentos subidos, sólo se permite editar el nombre descriptivo.'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setEditingDoc(null)}
+                  className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleEditDocSubmit} className="flex-1 flex flex-col overflow-hidden">
+                <div className="p-6 space-y-4 overflow-y-auto flex-1">
+                  <div>
+                    <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                      Nombre Descriptivo
+                    </label>
+                    <input
+                      type="text"
+                      value={editNameField}
+                      onChange={(e) => setEditNameField(e.target.value)}
+                      className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium"
+                      required
+                    />
+                  </div>
+
+                  {isDigital ? (
+                    <div className="flex-1 flex flex-col min-h-[250px]">
+                      <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                        Contenido del Documento Digitalizado
+                      </label>
+                      <textarea
+                        value={editContentField}
+                        onChange={(e) => setEditContentField(e.target.value)}
+                        className="w-full flex-1 min-h-[250px] text-xs p-3 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono resize-y"
+                        placeholder="Escribe o pega el contenido de texto del documento aquí..."
+                        required
+                      />
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl text-xs space-y-1">
+                      <p className="font-semibold">⚠️ Documento no digitalizado</p>
+                      <p className="text-[11px] text-amber-700">
+                        Este archivo (<span className="font-mono">{editingDoc.fileName}</span>) fue subido manualmente por un usuario. No se puede editar su contenido de texto binario o de imagen directamente, por lo que únicamente puedes cambiar su nombre descriptivo en el sistema.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex gap-2 justify-end p-6 border-t border-slate-100 bg-slate-50 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setEditingDoc(null)}
+                    className="px-4 py-2 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-all"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingEdit}
+                    className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-all flex items-center gap-2 disabled:opacity-50"
+                  >
+                    {savingEdit && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    <span>Guardar Cambios</span>
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        );
+      })()}
 
       {/* Delete Confirmation Modal */}
       {deleteDoc && (
