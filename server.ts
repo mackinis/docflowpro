@@ -264,8 +264,7 @@ app.use('/api', async (req, res, next) => {
   next();
 });
 
-// Database file path
-const DB_FILE = path.join(process.cwd(), 'data-store.json');
+// Database is 100% remote Firestore, no local DB_FILE used
 
 const DEFAULT_SUPERADMIN_EMAIL = 'superadmin@docflowpro.com';
 const DEFAULT_SUPERADMIN_PASSWORD_HASH = hashPassword('superadmin123');
@@ -379,19 +378,8 @@ function cleanDummyData(state: AppDataState) {
   state.sharedDocuments = state.sharedDocuments || [];
 }
 
-// Initialize database from Firestore or file
-function loadDB(): AppDataState {
-  try {
-    if (fs.existsSync(DB_FILE)) {
-      const raw = fs.readFileSync(DB_FILE, 'utf-8');
-      const state = JSON.parse(raw);
-      cleanDummyData(state);
-      return state;
-    }
-  } catch (err) {
-    console.error('Error reading database file:', err);
-  }
-  // Seeding initial state (100% clean, no fake/dummy users, no fake/dummy cases!)
+// Initialize database 100% in-memory and load remotely from Firestore
+function loadInitialInMemoryDB(): AppDataState {
   const state: AppDataState = {
     users: [], // Will be filled with ensureSuperadmin()
     templates: JSON.parse(JSON.stringify(INITIAL_STATE.templates || [])),
@@ -422,22 +410,16 @@ function loadDB(): AppDataState {
     activeIndustry: 'Inmobiliaria'
   };
   cleanDummyData(state);
-  saveDB(state);
   return state;
 }
 
 function saveDB(state: AppDataState) {
-  try {
-    fs.writeFileSync(DB_FILE, JSON.stringify(state, null, 2), 'utf-8');
-    // Sync to Firestore asynchronously
-    syncToFirestore(state);
-  } catch (err) {
-    console.error('Error writing to database file:', err);
-  }
+  // Sync to Google Cloud Firestore asynchronously, no local files written
+  syncToFirestore(state);
 }
 
-// Load DBState
-let dbState = loadDB();
+// In-Memory state
+let dbState = loadInitialInMemoryDB();
 
 let lastCloudRefreshTime = 0;
 const CLOUD_REFRESH_THROTTLE_MS = 2500; // 2.5 seconds
@@ -446,10 +428,15 @@ let activeRefreshPromise: Promise<void> | null = null;
 // Async startup to load from Firestore
 async function initDbFromCloud() {
   const cloudState = await loadFromFirestore();
-  if (cloudState && cloudState.users && Array.isArray(cloudState.users) && cloudState.users.length > 0) {
-    console.log('Successfully hydrated state from Google Firestore.');
+  if (cloudState === null) {
+    console.error('[DB-SAFE] Failed to fetch state from Google Firestore. Skipping initialization to prevent overwriting cloud data.');
+    return;
+  }
+
+  const hasUsersInCloud = Array.isArray(cloudState.users) && cloudState.users.length > 0;
+  if (hasUsersInCloud) {
+    console.log('[DB-SAFE] Successfully hydrated state from Google Firestore.');
     
-    // Assign properties from cloudState directly to dbState to overwrite any default/dummy data
     dbState.users = cloudState.users || [];
     dbState.templates = cloudState.templates || [];
     dbState.cases = cloudState.cases || [];
@@ -467,11 +454,9 @@ async function initDbFromCloud() {
     if (cloudState.systemMessages) dbState.systemMessages = cloudState.systemMessages;
 
     cleanDummyData(dbState);
-    fs.writeFileSync(DB_FILE, JSON.stringify(dbState, null, 2), 'utf-8');
-    console.log('Firestore state loaded and cached locally.');
   } else {
-    console.log('Firestore is empty or unavailable. Syncing local clean database state to cloud.');
-    // If cloud is empty or fails, sync our local clean initial state (which contains only the superadmin) up to Firestore
+    console.log('[DB-SAFE] Google Firestore is empty. Seeding initial templates and superadmin to remote cloud database...');
+    cleanDummyData(dbState);
     await syncToFirestore(dbState);
   }
 }
@@ -481,7 +466,7 @@ activeRefreshPromise = (async () => {
   try {
     await initDbFromCloud();
   } catch (err) {
-    console.error('Error in initial startup Firestore hydration:', err);
+    console.error('[DB-SAFE] Error in initial startup Firestore hydration:', err);
   } finally {
     activeRefreshPromise = null;
     lastCloudRefreshTime = Date.now();
