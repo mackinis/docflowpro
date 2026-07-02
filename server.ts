@@ -150,6 +150,7 @@ const firebaseConfig = {
 };
 
 let firestoreDb: any = null;
+let activeSyncPromise: Promise<void> | null = null;
 if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_API_KEY) {
   try {
     const firebaseApp = initializeApp(firebaseConfig);
@@ -263,10 +264,57 @@ app.use(express.json({ limit: '10mb' }));
 // Middleware to ensure we are always serving fresh data from Firestore
 app.use('/api', async (req, res, next) => {
   try {
+    // 1. ALWAYS block and ensure we have the absolute latest state from Google Firestore before executing the route handler
     await ensureFreshDbState();
   } catch (err) {
     console.error('Error ensuring fresh database state in middleware:', err);
   }
+
+  // 2. Intercept response methods to ensure any writes triggered during this request are fully completed in Firestore before the response is sent to the client
+  const originalJson = res.json;
+  res.json = function (body) {
+    if (activeSyncPromise) {
+      activeSyncPromise.then(() => {
+        originalJson.call(res, body);
+      }).catch((err) => {
+        console.error('Error waiting for Firestore sync on res.json:', err);
+        originalJson.call(res, body);
+      });
+    } else {
+      originalJson.call(res, body);
+    }
+    return res;
+  };
+
+  const originalSend = res.send;
+  res.send = function (body) {
+    if (activeSyncPromise) {
+      activeSyncPromise.then(() => {
+        originalSend.call(res, body);
+      }).catch((err) => {
+        console.error('Error waiting for Firestore sync on res.send:', err);
+        originalSend.call(res, body);
+      });
+    } else {
+      originalSend.call(res, body);
+    }
+    return res;
+  };
+
+  const originalEnd = res.end;
+  (res as any).end = function (...args: any[]) {
+    if (activeSyncPromise) {
+      activeSyncPromise.then(() => {
+        originalEnd.apply(res, args);
+      }).catch((err) => {
+        console.error('Error waiting for Firestore sync on res.end:', err);
+        originalEnd.apply(res, args);
+      });
+    } else {
+      originalEnd.apply(res, args);
+    }
+  };
+
   next();
 });
 
@@ -427,8 +475,8 @@ function saveDB(state: AppDataState) {
     console.warn('[DB-SAFE] Blocked saveDB() call because memory state is not hydrated from Firestore yet.');
     return;
   }
-  // Sync to Google Cloud Firestore asynchronously, no local files written
-  syncToFirestore(state);
+  // Sync to Google Cloud Firestore, and store the promise so middleware can wait for it to finish
+  activeSyncPromise = syncToFirestore(state);
 }
 
 // In-Memory state
@@ -498,49 +546,24 @@ activeRefreshPromise = (async () => {
   }
 })();
 
-// Helper to guarantee fresh data on API requests with throttling to avoid rate limits
+// Helper to guarantee fresh data on API requests by always fetching synchronously from Firestore
 async function ensureFreshDbState() {
-  // If not hydrated yet, we MUST block the request and load it immediately, ignoring any throttle!
-  if (!isHydratedFromCloud) {
-    if (activeRefreshPromise) {
-      await activeRefreshPromise;
-      if (isHydratedFromCloud) return;
-    }
-    
-    console.log('[DB-SAFE] Memory state not hydrated. Forcing a synchronous block until hydrated from Firestore...');
-    activeRefreshPromise = (async () => {
-      try {
-        await initDbFromCloud();
-      } catch (err) {
-        console.error('[DB-SAFE] Error forcing hydration from Firestore:', err);
-      } finally {
-        activeRefreshPromise = null;
-      }
-    })();
+  if (activeRefreshPromise) {
     await activeRefreshPromise;
     return;
   }
 
-  // If already hydrated, we can use the throttle for background refreshes
-  if (activeRefreshPromise) {
-    return activeRefreshPromise;
-  }
-
-  const now = Date.now();
-  if (now - lastCloudRefreshTime > CLOUD_REFRESH_THROTTLE_MS) {
-    lastCloudRefreshTime = now;
-    activeRefreshPromise = (async () => {
-      try {
-        await initDbFromCloud();
-      } catch (err) {
-        console.error('Error auto-refreshing from Firestore:', err);
-      } finally {
-        activeRefreshPromise = null;
-      }
-    })();
-    // We do NOT block on background auto-refreshes to maintain sub-millisecond local request latency!
-    // But we let the promise start
-  }
+  // ALWAYS force a synchronous block until hydrated or refreshed from Google Firestore
+  activeRefreshPromise = (async () => {
+    try {
+      await initDbFromCloud();
+    } catch (err) {
+      console.error('[DB-SAFE] Error forcing fresh hydration from Firestore:', err);
+    } finally {
+      activeRefreshPromise = null;
+    }
+  })();
+  await activeRefreshPromise;
 }
 
 // Initialize Gemini Client safely
