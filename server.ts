@@ -190,42 +190,48 @@ async function syncToFirestore(state: AppDataState) {
       }
     };
 
-    await safeSetDoc('users', { data: cleanState.users || [] });
-    await safeSetDoc('templates', { data: cleanState.templates || [] });
-    await safeSetDoc('cases', { data: cleanState.cases || [] });
-    await safeSetDoc('documents', { data: cleanState.documents || [] });
-    await safeSetDoc('tasks', { data: cleanState.tasks || [] });
-    await safeSetDoc('observations', { data: cleanState.observations || [] });
-    await safeSetDoc('notifications', { data: cleanState.notifications || [] });
-    await safeSetDoc('auditLogs', { data: cleanState.auditLogs || [] });
-    await safeSetDoc('formSubmissions', { data: cleanState.formSubmissions || [] });
-    await safeSetDoc('sharedDocuments', { data: cleanState.sharedDocuments || [] });
-    await safeSetDoc('config', { 
-      activeIndustry: cleanState.activeIndustry || 'Inmobiliaria',
-      verificationPolicies: cleanState.verificationPolicies || null,
-      systemSettings: cleanState.systemSettings || null,
-      systemMessages: cleanState.systemMessages || null
-    });
+    // Parallelize all setDoc calls to maximize database write performance
+    await Promise.all([
+      safeSetDoc('users', { data: cleanState.users || [] }),
+      safeSetDoc('templates', { data: cleanState.templates || [] }),
+      safeSetDoc('cases', { data: cleanState.cases || [] }),
+      safeSetDoc('documents', { data: cleanState.documents || [] }),
+      safeSetDoc('tasks', { data: cleanState.tasks || [] }),
+      safeSetDoc('observations', { data: cleanState.observations || [] }),
+      safeSetDoc('notifications', { data: cleanState.notifications || [] }),
+      safeSetDoc('auditLogs', { data: cleanState.auditLogs || [] }),
+      safeSetDoc('formSubmissions', { data: cleanState.formSubmissions || [] }),
+      safeSetDoc('sharedDocuments', { data: cleanState.sharedDocuments || [] }),
+      safeSetDoc('config', { 
+        activeIndustry: cleanState.activeIndustry || 'Inmobiliaria',
+        verificationPolicies: cleanState.verificationPolicies || null,
+        systemSettings: cleanState.systemSettings || null,
+        systemMessages: cleanState.systemMessages || null
+      })
+    ]);
   } catch (e) {
     console.error('Error in syncToFirestore top level:', e);
   }
 }
 
-// Load State from Firestore
+// Load State from Firestore in Parallel
 async function loadFromFirestore(): Promise<Partial<AppDataState> | null> {
   if (!firestoreDb) return null;
   try {
-    const usersDoc = await getDoc(doc(firestoreDb, 'docflow', 'users'));
-    const templatesDoc = await getDoc(doc(firestoreDb, 'docflow', 'templates'));
-    const casesDoc = await getDoc(doc(firestoreDb, 'docflow', 'cases'));
-    const documentsDoc = await getDoc(doc(firestoreDb, 'docflow', 'documents'));
-    const tasksDoc = await getDoc(doc(firestoreDb, 'docflow', 'tasks'));
-    const observationsDoc = await getDoc(doc(firestoreDb, 'docflow', 'observations'));
-    const notificationsDoc = await getDoc(doc(firestoreDb, 'docflow', 'notifications'));
-    const auditLogsDoc = await getDoc(doc(firestoreDb, 'docflow', 'auditLogs'));
-    const formSubmissionsDoc = await getDoc(doc(firestoreDb, 'docflow', 'formSubmissions'));
-    const sharedDocumentsDoc = await getDoc(doc(firestoreDb, 'docflow', 'sharedDocuments'));
-    const configDoc = await getDoc(doc(firestoreDb, 'docflow', 'config'));
+    const keys = [
+      'users', 'templates', 'cases', 'documents', 'tasks', 
+      'observations', 'notifications', 'auditLogs', 'formSubmissions', 
+      'sharedDocuments', 'config'
+    ];
+    // Fetch all documents concurrently to avoid sequential roundtrip network delay
+    const promises = keys.map(k => getDoc(doc(firestoreDb, 'docflow', k)));
+    const docs = await Promise.all(promises);
+    
+    const [
+      usersDoc, templatesDoc, casesDoc, documentsDoc, tasksDoc,
+      observationsDoc, notificationsDoc, auditLogsDoc, formSubmissionsDoc,
+      sharedDocumentsDoc, configDoc
+    ] = docs;
 
     return {
       users: usersDoc.exists() ? usersDoc.data().data : undefined,
@@ -244,7 +250,7 @@ async function loadFromFirestore(): Promise<Partial<AppDataState> | null> {
       systemMessages: configDoc.exists() ? configDoc.data().systemMessages : undefined,
     };
   } catch (e) {
-    console.error('Error reading from Firestore, using file backup:', e);
+    console.error('Error reading from Firestore:', e);
     return null;
   }
 }
@@ -413,7 +419,14 @@ function loadInitialInMemoryDB(): AppDataState {
   return state;
 }
 
+// Global hydration status flag to protect remote data integrity
+let isHydratedFromCloud = false;
+
 function saveDB(state: AppDataState) {
+  if (!isHydratedFromCloud) {
+    console.warn('[DB-SAFE] Blocked saveDB() call because memory state is not hydrated from Firestore yet.');
+    return;
+  }
   // Sync to Google Cloud Firestore asynchronously, no local files written
   syncToFirestore(state);
 }
@@ -433,8 +446,12 @@ async function initDbFromCloud() {
     return;
   }
 
-  const hasUsersInCloud = Array.isArray(cloudState.users) && cloudState.users.length > 0;
-  if (hasUsersInCloud) {
+  // Check if there is any data at all in the cloud state
+  const hasCloudData = (cloudState.users && cloudState.users.length > 0) || 
+                       (cloudState.cases && cloudState.cases.length > 0) ||
+                       (cloudState.templates && cloudState.templates.length > 0);
+
+  if (hasCloudData) {
     console.log('[DB-SAFE] Successfully hydrated state from Google Firestore.');
     
     dbState.users = cloudState.users || [];
@@ -454,10 +471,18 @@ async function initDbFromCloud() {
     if (cloudState.systemMessages) dbState.systemMessages = cloudState.systemMessages;
 
     cleanDummyData(dbState);
+    isHydratedFromCloud = true;
+    console.log('[DB-SAFE] In-memory database is now marked as HYDRATED.');
   } else {
     console.log('[DB-SAFE] Google Firestore is empty. Seeding initial templates and superadmin to remote cloud database...');
+    // Seed initial state
+    dbState = loadInitialInMemoryDB();
     cleanDummyData(dbState);
+    
+    // We mark it as hydrated BEFORE syncing, so that syncToFirestore is allowed to write!
+    isHydratedFromCloud = true; 
     await syncToFirestore(dbState);
+    console.log('[DB-SAFE] Firestore seeded and marked as HYDRATED.');
   }
 }
 
@@ -475,6 +500,28 @@ activeRefreshPromise = (async () => {
 
 // Helper to guarantee fresh data on API requests with throttling to avoid rate limits
 async function ensureFreshDbState() {
+  // If not hydrated yet, we MUST block the request and load it immediately, ignoring any throttle!
+  if (!isHydratedFromCloud) {
+    if (activeRefreshPromise) {
+      await activeRefreshPromise;
+      if (isHydratedFromCloud) return;
+    }
+    
+    console.log('[DB-SAFE] Memory state not hydrated. Forcing a synchronous block until hydrated from Firestore...');
+    activeRefreshPromise = (async () => {
+      try {
+        await initDbFromCloud();
+      } catch (err) {
+        console.error('[DB-SAFE] Error forcing hydration from Firestore:', err);
+      } finally {
+        activeRefreshPromise = null;
+      }
+    })();
+    await activeRefreshPromise;
+    return;
+  }
+
+  // If already hydrated, we can use the throttle for background refreshes
   if (activeRefreshPromise) {
     return activeRefreshPromise;
   }
@@ -491,7 +538,8 @@ async function ensureFreshDbState() {
         activeRefreshPromise = null;
       }
     })();
-    return activeRefreshPromise;
+    // We do NOT block on background auto-refreshes to maintain sub-millisecond local request latency!
+    // But we let the promise start
   }
 }
 
