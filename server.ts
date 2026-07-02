@@ -7,7 +7,7 @@ import dotenv from 'dotenv';
 import crypto from 'crypto';
 import { initializeApp } from 'firebase/app';
 import { initializeFirestore, doc, getDoc, setDoc } from 'firebase/firestore';
-import { INITIAL_STATE } from './src/data';
+import { INITIAL_STATE, PRESET_AVATARS } from './src/data';
 import { AppDataState, Case, Document, Task, Observation, Notification, AuditLog, ProcessTemplate, User } from './src/types';
 import mammoth from 'mammoth';
 
@@ -54,48 +54,89 @@ async function sendVerificationEmail(email: string, fullName: string, token: str
   }
   
   if (!apiKey || apiKey === 'MY_RESEND_API_KEY') {
-    console.log(`[SIMULACIÓN EMAIL] Para: ${email}, Token: ${token}`);
-    return;
+    throw new Error('La clave API de Resend (RESEND_API_KEY) no está configurada en el servidor. Configure la clave real para enviar correos de verificación.');
   }
 
-  try {
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: fromEmail,
-        to: email,
-        subject: 'Código de Verificación - DocFlow Pro',
-        html: `
-          <div style="font-family: sans-serif; padding: 20px; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #eee; border-radius: 8px;">
-            <h2 style="color: #2563eb; margin-top: 0;">¡Bienvenido a DocFlow Pro!</h2>
-            <p>Hola <strong>${fullName}</strong>,</p>
-            <p>Para completar tu registro y acceder por primera vez a tu cuenta, utiliza el siguiente código de verificación:</p>
-            <div style="background: #f3f4f6; padding: 15px; border-radius: 6px; font-size: 24px; font-weight: bold; text-align: center; letter-spacing: 4px; color: #1e3a8a; margin: 20px 0;">
-              ${token}
-            </div>
-            <p style="font-size: 13px; color: #666;">
-              Si no solicitaste este código, puedes ignorar este correo de forma segura.
-              Este token es válido por 30 minutos antes de expirar.
-            </p>
-            <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
-            <p style="font-size: 11px; color: #999; text-align: center;">DocFlow Pro - Soluciones de Gestión Documental</p>
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: fromEmail,
+      to: email,
+      subject: 'Código de Verificación - DocFlow Pro',
+      html: `
+        <div style="font-family: sans-serif; padding: 20px; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #eee; border-radius: 8px;">
+          <h2 style="color: #2563eb; margin-top: 0;">¡Bienvenido a DocFlow Pro!</h2>
+          <p>Hola <strong>${fullName}</strong>,</p>
+          <p>Para completar tu registro y acceder por primera vez a tu cuenta, utiliza el siguiente código de verificación:</p>
+          <div style="background: #f3f4f6; padding: 15px; border-radius: 6px; font-size: 24px; font-weight: bold; text-align: center; letter-spacing: 4px; color: #1e3a8a; margin: 20px 0;">
+            ${token}
           </div>
-        `
-      }),
-    });
+          <p style="font-size: 13px; color: #666;">
+            Si no solicitaste este código, puedes ignorar este correo de forma segura.
+            Este token es válido por 30 minutos antes de expirar.
+          </p>
+          <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
+          <p style="font-size: 11px; color: #999; text-align: center;">DocFlow Pro - Soluciones de Gestión Documental</p>
+        </div>
+      `
+    }),
+  });
 
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error('Failed to send verification email via Resend:', errText);
-    } else {
-      console.log(`Verification email sent successfully to ${email}`);
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Error de la API de Resend (${response.status}): ${errText}`);
+  } else {
+    console.log(`Verification email sent successfully to ${email}`);
+  }
+}
+
+// Twilio SMS Helper to send real MFA verification codes to cell phones
+async function sendVerificationSms(phone: string, token: string) {
+  const accountSid = process.env.TWILIO_ACCOUNT_SID;
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+  const fromNumber = process.env.TWILIO_FROM_NUMBER;
+
+  if (!accountSid || !authToken || !fromNumber) {
+    throw new Error('La configuración de Twilio (Account SID, Auth Token o From Number) no está completa en el servidor. Configure las credenciales en Secrets para poder enviar mensajes SMS.');
+  }
+
+  // Ensure phone is in E.164 format or try to format it if possible
+  let formattedPhone = phone.trim();
+  if (!formattedPhone.startsWith('+')) {
+    if (/^\d+$/.test(formattedPhone)) {
+      formattedPhone = '+' + formattedPhone;
     }
-  } catch (error) {
-    console.error('Error sending email via Resend API:', error);
+  }
+
+  const messageBody = `Tu código de verificación de DocFlow Pro es: ${token}. Válido por 30 minutos.`;
+
+  const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
+  const auth = Buffer.from(`${accountSid}:${authToken}`).toString('base64');
+
+  const params = new URLSearchParams();
+  params.append('To', formattedPhone);
+  params.append('From', fromNumber);
+  params.append('Body', messageBody);
+
+  console.log(`[SMS-TWILIO] Intentando enviar SMS a ${formattedPhone} desde ${fromNumber}...`);
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Basic ${auth}`,
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body: params.toString()
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Error de la API de Twilio (${response.status}): ${errText}`);
+  } else {
+    console.log(`[SMS-TWILIO] SMS enviado con éxito a ${formattedPhone}`);
   }
 }
 
@@ -213,6 +254,16 @@ const PORT = 3000;
 
 app.use(express.json({ limit: '10mb' }));
 
+// Middleware to ensure we are always serving fresh data from Firestore
+app.use('/api', async (req, res, next) => {
+  try {
+    await ensureFreshDbState();
+  } catch (err) {
+    console.error('Error ensuring fresh database state in middleware:', err);
+  }
+  next();
+});
+
 // Database file path
 const DB_FILE = path.join(process.cwd(), 'data-store.json');
 
@@ -237,6 +288,7 @@ function ensureSuperadmin(state: AppDataState) {
       country: 'Argentina',
       passwordHash: DEFAULT_SUPERADMIN_PASSWORD_HASH,
       isVerified: true,
+      avatar: PRESET_AVATARS[0].url,
     };
     state.users.push(superadmin);
   } else {
@@ -246,17 +298,17 @@ function ensureSuperadmin(state: AppDataState) {
     if (!superadmin.passwordHash) {
       superadmin.passwordHash = DEFAULT_SUPERADMIN_PASSWORD_HASH;
     }
+    if (!superadmin.avatar) {
+      superadmin.avatar = PRESET_AVATARS[0].url;
+    }
   }
 }
 
 function cleanDummyData(state: AppDataState) {
-  // Ensure we keep templates and clean dummy records
+  // Ensure we keep templates and clean dummy records safely without deleting anything that already exists
   ensureSuperadmin(state);
   
-  // Clean users that are dummy (Lucia, Marcos, Sofía, Esteban unless they have dynamic password hashes or are superadmin)
-  if (state.users) {
-    state.users = state.users.filter(u => u.email.toLowerCase() === DEFAULT_SUPERADMIN_EMAIL.toLowerCase() || u.passwordHash);
-  } else {
+  if (!state.users) {
     state.users = [];
     ensureSuperadmin(state);
   }
@@ -275,6 +327,11 @@ function cleanDummyData(state: AppDataState) {
     });
   }
 
+  // Ensure we have templates
+  if (!state.templates || !Array.isArray(state.templates) || state.templates.length === 0) {
+    state.templates = JSON.parse(JSON.stringify(INITIAL_STATE.templates || []));
+  }
+
   // Strictly de-duplicate process templates by ID
   if (state.templates && Array.isArray(state.templates)) {
     const seenTemplateIds = new Set<string>();
@@ -288,25 +345,6 @@ function cleanDummyData(state: AppDataState) {
     });
   }
 
-  // Remove pre-seeded dummy cases
-  if (state.cases) {
-    state.cases = state.cases.filter(c => c.id !== 'case-recoleta' && c.id !== 'case-comercial');
-  } else {
-    state.cases = [];
-  }
-
-  // Keep only active user & active case resources to completely wipe pre-seeded simulation records
-  const activeCaseIds = new Set(state.cases.map(c => c.id));
-  const activeUserIds = new Set(state.users.map(u => u.id));
-
-  state.documents = (state.documents || []).filter(d => activeCaseIds.has(d.caseId));
-  state.tasks = (state.tasks || []).filter(t => activeCaseIds.has(t.caseId));
-  state.observations = (state.observations || []).filter(o => activeCaseIds.has(o.caseId));
-  state.formSubmissions = (state.formSubmissions || []).filter(f => activeUserIds.has(f.submittedBy));
-  state.notifications = (state.notifications || []).filter(n => activeUserIds.has(n.userId));
-  state.systemMessages = (state.systemMessages || []).filter(m => activeUserIds.has(m.receiverId) || activeUserIds.has(m.senderId));
-  state.auditLogs = (state.auditLogs || []).filter(log => activeUserIds.has(log.userId));
-
   // Initialize arrays only if they are missing or falsy
   if (!state.cases) state.cases = [];
   if (!state.documents) state.documents = [];
@@ -315,13 +353,18 @@ function cleanDummyData(state: AppDataState) {
   if (!state.notifications) state.notifications = [];
   if (!state.auditLogs) state.auditLogs = [];
   if (!state.formSubmissions) state.formSubmissions = [];
+  state.uploadRequests = state.uploadRequests || [];
   
   state.activeIndustry = state.activeIndustry || 'Inmobiliaria';
   state.verificationPolicies = state.verificationPolicies || {
+    global: 'email',
     ASESOR: 'email',
     MANAGER: 'email',
     ADMIN: 'email'
   };
+  if (state.verificationPolicies && !state.verificationPolicies.global) {
+    state.verificationPolicies.global = state.verificationPolicies.ASESOR || 'email';
+  }
   if (!state.systemSettings || !state.systemSettings.roleMessagingConfigs) {
     state.systemSettings = {
       roleMessagingConfigs: {
@@ -348,8 +391,36 @@ function loadDB(): AppDataState {
   } catch (err) {
     console.error('Error reading database file:', err);
   }
-  // Seeding initial state
-  const state = { ...INITIAL_STATE };
+  // Seeding initial state (100% clean, no fake/dummy users, no fake/dummy cases!)
+  const state: AppDataState = {
+    users: [], // Will be filled with ensureSuperadmin()
+    templates: JSON.parse(JSON.stringify(INITIAL_STATE.templates || [])),
+    cases: [],
+    documents: [],
+    tasks: [],
+    observations: [],
+    notifications: [],
+    auditLogs: [],
+    formSubmissions: [],
+    uploadRequests: [],
+    verificationPolicies: {
+      global: 'email',
+      ASESOR: 'email',
+      MANAGER: 'email',
+      ADMIN: 'email'
+    },
+    systemSettings: {
+      roleMessagingConfigs: {
+        SUPERADMIN: { allowed: true, rule: 'free' },
+        ADMIN: { allowed: true, rule: 'free' },
+        MANAGER: { allowed: true, rule: 'free' },
+        ASESOR: { allowed: true, rule: 'free' }
+      }
+    },
+    systemMessages: [],
+    sharedDocuments: [],
+    activeIndustry: 'Inmobiliaria'
+  };
   cleanDummyData(state);
   saveDB(state);
   return state;
@@ -368,32 +439,76 @@ function saveDB(state: AppDataState) {
 // Load DBState
 let dbState = loadDB();
 
+let lastCloudRefreshTime = 0;
+const CLOUD_REFRESH_THROTTLE_MS = 2500; // 2.5 seconds
+let activeRefreshPromise: Promise<void> | null = null;
+
 // Async startup to load from Firestore
 async function initDbFromCloud() {
   const cloudState = await loadFromFirestore();
-  if (cloudState) {
+  if (cloudState && cloudState.users && Array.isArray(cloudState.users) && cloudState.users.length > 0) {
     console.log('Successfully hydrated state from Google Firestore.');
-    if (cloudState.users) dbState.users = cloudState.users;
-    if (cloudState.templates) dbState.templates = cloudState.templates;
-    if (cloudState.cases) dbState.cases = cloudState.cases;
-    if (cloudState.documents) dbState.documents = cloudState.documents;
-    if (cloudState.tasks) dbState.tasks = cloudState.tasks;
-    if (cloudState.observations) dbState.observations = cloudState.observations;
-    if (cloudState.notifications) dbState.notifications = cloudState.notifications;
-    if (cloudState.auditLogs) dbState.auditLogs = cloudState.auditLogs;
-    if (cloudState.formSubmissions) dbState.formSubmissions = cloudState.formSubmissions;
+    
+    // Assign properties from cloudState directly to dbState to overwrite any default/dummy data
+    dbState.users = cloudState.users || [];
+    dbState.templates = cloudState.templates || [];
+    dbState.cases = cloudState.cases || [];
+    dbState.documents = cloudState.documents || [];
+    dbState.tasks = cloudState.tasks || [];
+    dbState.observations = cloudState.observations || [];
+    dbState.notifications = cloudState.notifications || [];
+    dbState.auditLogs = cloudState.auditLogs || [];
+    dbState.formSubmissions = cloudState.formSubmissions || [];
+    dbState.sharedDocuments = cloudState.sharedDocuments || [];
+    dbState.uploadRequests = cloudState.uploadRequests || [];
     if (cloudState.activeIndustry) dbState.activeIndustry = cloudState.activeIndustry;
     if (cloudState.verificationPolicies) dbState.verificationPolicies = cloudState.verificationPolicies;
     if (cloudState.systemSettings) dbState.systemSettings = cloudState.systemSettings;
     if (cloudState.systemMessages) dbState.systemMessages = cloudState.systemMessages;
-    if (cloudState.sharedDocuments) dbState.sharedDocuments = cloudState.sharedDocuments;
-    
+
     cleanDummyData(dbState);
     fs.writeFileSync(DB_FILE, JSON.stringify(dbState, null, 2), 'utf-8');
+    console.log('Firestore state loaded and cached locally.');
+  } else {
+    console.log('Firestore is empty or unavailable. Syncing local clean database state to cloud.');
+    // If cloud is empty or fails, sync our local clean initial state (which contains only the superadmin) up to Firestore
     await syncToFirestore(dbState);
   }
 }
-initDbFromCloud();
+
+// Initial hydration from cloud on startup
+activeRefreshPromise = (async () => {
+  try {
+    await initDbFromCloud();
+  } catch (err) {
+    console.error('Error in initial startup Firestore hydration:', err);
+  } finally {
+    activeRefreshPromise = null;
+    lastCloudRefreshTime = Date.now();
+  }
+})();
+
+// Helper to guarantee fresh data on API requests with throttling to avoid rate limits
+async function ensureFreshDbState() {
+  if (activeRefreshPromise) {
+    return activeRefreshPromise;
+  }
+
+  const now = Date.now();
+  if (now - lastCloudRefreshTime > CLOUD_REFRESH_THROTTLE_MS) {
+    lastCloudRefreshTime = now;
+    activeRefreshPromise = (async () => {
+      try {
+        await initDbFromCloud();
+      } catch (err) {
+        console.error('Error auto-refreshing from Firestore:', err);
+      } finally {
+        activeRefreshPromise = null;
+      }
+    })();
+    return activeRefreshPromise;
+  }
+}
 
 // Initialize Gemini Client safely
 const apiKey = process.env.GEMINI_API_KEY;
@@ -524,7 +639,57 @@ function createNotification(userId: string, title: string, message: string, type
 // REST API Routes
 
 app.get('/api/state', (req, res) => {
-  res.json(dbState);
+  const virtualTemplates = (dbState.sharedDocuments || []).map(doc => {
+    let decodedContent = '';
+    if (doc.dataUrl) {
+      try {
+        const base64Part = doc.dataUrl.includes(',') ? doc.dataUrl.split(',')[1] : doc.dataUrl;
+        decodedContent = decodeURIComponent(escape(atob(base64Part)));
+      } catch (e) {
+        try {
+          const base64Part = doc.dataUrl.includes(',') ? doc.dataUrl.split(',')[1] : doc.dataUrl;
+          decodedContent = atob(base64Part);
+        } catch (err) {
+          decodedContent = '';
+        }
+      }
+    }
+
+    return {
+      id: `doc-${doc.id}`,
+      name: `Documento: ${doc.name}`,
+      description: `Proceso creado a partir del documento compartido: ${doc.name}`,
+      industry: (dbState.activeIndustry || 'Inmobiliaria') as any,
+      stages: [
+        {
+          id: `stage-digital-${doc.id}`,
+          name: 'Revisión y Firma',
+          description: 'Etapa inicial para la edición, revisión y firma del documento digitalizado',
+          requirements: [
+            {
+              id: `req-digital-${doc.id}`,
+              name: doc.name,
+              type: 'document',
+              description: `Complete los campos y firme el documento: ${doc.name}`,
+              isRequired: true,
+              documentSourceType: 'digital_contract',
+              linkedSharedDocumentId: doc.id
+            }
+          ]
+        }
+      ],
+      originalDocumentContent: decodedContent,
+      showDocumentToAll: true,
+      sharedViewMode: 'both'
+    };
+  });
+
+  const stateWithVirtualTemplates = {
+    ...dbState,
+    templates: [...(dbState.templates || []), ...virtualTemplates]
+  };
+
+  res.json(stateWithVirtualTemplates);
 });
 
 // 1. Auth & Users
@@ -549,7 +714,17 @@ app.post('/api/auth/register', async (req, res) => {
     return res.status(400).json({ error: 'El correo electrónico ya está registrado.' });
   }
 
-  const token = generateVerificationToken(6);
+  const verificationPolicy = dbState.verificationPolicies?.global || 'email';
+  const token = (verificationPolicy === 'email' || verificationPolicy === 'both') ? generateVerificationToken(6) : undefined;
+  
+  let tokenSms: string | undefined = undefined;
+  if (verificationPolicy === 'sms' || verificationPolicy === 'both') {
+    tokenSms = generateVerificationToken(6);
+    while (tokenSms === token) {
+      tokenSms = generateVerificationToken(6);
+    }
+  }
+
   const newUser: User = {
     id: `usr-${Date.now()}`,
     name,
@@ -565,23 +740,62 @@ app.post('/api/auth/register', async (req, res) => {
     active: true,
     isVerified: false,
     verificationToken: token,
+    verificationTokenSms: tokenSms,
     tokenCreatedAt: new Date().toISOString(),
-    avatar: `https://images.unsplash.com/photo-${Math.floor(1500000000000 + Math.random() * 100000000000)}?w=100&h=100&fit=crop&crop=faces`
+    avatar: PRESET_AVATARS && PRESET_AVATARS.length > 0 
+      ? PRESET_AVATARS[Math.floor(Math.random() * PRESET_AVATARS.length)].url 
+      : ''
   };
 
   dbState.users.push(newUser);
   saveDB(dbState);
 
-  // Send real email via Resend
-  await sendVerificationEmail(newUser.email, `${name} ${lastName}`, token);
+  let emailFailed = false;
+  let emailErrorMsg = '';
+  let smsFailed = false;
+  let smsErrorMsg = '';
+
+  // Only send real email via Resend if email verification is required
+  if (token) {
+    try {
+      await sendVerificationEmail(newUser.email, `${name} ${lastName}`, token);
+    } catch (err: any) {
+      console.warn('No se pudo enviar el correo de verificación vía Resend:', err.message || err);
+      emailFailed = true;
+      emailErrorMsg = err.message || 'Error desconocido';
+    }
+  }
+
+  // Send real SMS via Twilio if SMS verification is required
+  if (tokenSms) {
+    try {
+      await sendVerificationSms(newUser.phone, tokenSms);
+    } catch (err: any) {
+      console.warn('No se pudo enviar el SMS de verificación vía Twilio:', err.message || err);
+      smsFailed = true;
+      smsErrorMsg = err.message || 'Error de envío de SMS';
+    }
+  }
+
+  // Log the generated tokens in the server console for clean local/development inspection
+  console.log(`[VERIFICACIÓN] Código de verificación generado para ${newUser.email}: Email=${token || 'N/A'}, SMS=${tokenSms || 'N/A'}`);
 
   createAudit(newUser.id, 'Registro de usuario', 'User', newUser.id, `${name} ${lastName}`);
 
-  const { passwordHash, verificationToken, tokenCreatedAt, ...safeUser } = newUser as any;
-  res.status(201).json(safeUser);
+  const { passwordHash, verificationToken, verificationTokenSms, ...safeUser } = newUser as any;
+  res.status(201).json({
+    ...safeUser,
+    verificationPolicy,
+    emailFailed,
+    emailErrorMsg,
+    smsFailed,
+    smsErrorMsg,
+    devEmailToken: token,
+    devSmsToken: tokenSms
+  });
 });
 
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
     return res.status(400).json({ error: 'Email y contraseña requeridos.' });
@@ -598,21 +812,104 @@ app.post('/api/auth/login', (req, res) => {
 
   // If not verified, they must verify first
   if (user.isVerified === false) {
+    const now = Date.now();
+    const createdTime = user.tokenCreatedAt ? new Date(user.tokenCreatedAt).getTime() : 0;
+    const diff = now - createdTime;
+
+    const verificationPolicy = dbState.verificationPolicies?.global || 'email';
+    let message = 'Debe verificar su cuenta para poder iniciar sesión.';
+    let isNew = false;
+    let emailFailed = false;
+    let emailErrorMsg = '';
+    let smsFailed = false;
+    let smsErrorMsg = '';
+
+    const needsEmail = verificationPolicy === 'email' || verificationPolicy === 'both';
+    const needsSms = verificationPolicy === 'sms' || verificationPolicy === 'both';
+
+    const hasTokens = (needsEmail ? !!user.verificationToken : true) && (needsSms ? !!user.verificationTokenSms : true);
+
+    if (!hasTokens || diff >= 30 * 60 * 1000) {
+      const emailToken = needsEmail ? generateVerificationToken(6) : undefined;
+      
+      let smsToken: string | undefined = undefined;
+      if (needsSms) {
+        smsToken = generateVerificationToken(6);
+        while (smsToken === emailToken) {
+          smsToken = generateVerificationToken(6);
+        }
+      }
+
+      user.verificationToken = emailToken;
+      user.verificationTokenSms = smsToken;
+      user.tokenCreatedAt = new Date().toISOString();
+      saveDB(dbState);
+      isNew = true;
+      
+      if (emailToken) {
+        try {
+          await sendVerificationEmail(user.email, `${user.name} ${user.lastName}`, emailToken);
+        } catch (err: any) {
+          console.warn('No se pudo enviar el correo automático de verificación en el login:', err.message || err);
+          emailFailed = true;
+          emailErrorMsg = err.message || 'Error de envío de correo';
+        }
+      }
+
+      smsFailed = false;
+      smsErrorMsg = '';
+      if (smsToken) {
+        try {
+          await sendVerificationSms(user.phone, smsToken);
+        } catch (err: any) {
+          console.warn('No se pudo enviar el SMS de verificación en el login vía Twilio:', err.message || err);
+          smsFailed = true;
+          smsErrorMsg = err.message || 'Error de envío de SMS';
+        }
+      }
+
+      console.log(`[VERIFICACIÓN] Código de verificación login generado para ${user.email}: Email=${emailToken || 'N/A'}, SMS=${smsToken || 'N/A'}`);
+
+      if (verificationPolicy === 'both') {
+        message = 'Se han generado nuevos códigos de verificación para email y SMS (duración máxima 30 minutos).';
+      } else if (verificationPolicy === 'sms') {
+        message = 'Se ha generado un nuevo código de verificación por SMS (duración máxima 30 minutos).';
+      } else {
+        message = 'Se ha generado un nuevo código de verificación enviado a su correo (duración máxima 30 minutos).';
+      }
+    } else {
+      if (verificationPolicy === 'both') {
+        message = 'Debe ingresar el código de verificación de 6 dígitos enviado a su correo y el código SMS enviado a su celular.';
+      } else if (verificationPolicy === 'sms') {
+        message = 'Debe ingresar el código de verificación de 6 dígitos enviado por SMS a su celular.';
+      } else {
+        message = 'Debe ingresar el código de verificación de 6 dígitos enviado a su correo electrónico.';
+      }
+    }
+
     return res.json({
-      error: 'Debe verificar su cuenta con el código de seguridad enviado a su email.',
+      error: message,
       requiresVerification: true,
-      email: user.email
+      email: user.email,
+      verificationPolicy: verificationPolicy,
+      emailFailed,
+      emailErrorMsg,
+      smsFailed,
+      smsErrorMsg,
+      devEmailToken: user.verificationToken,
+      devSmsToken: user.verificationTokenSms
     });
   }
 
   const { passwordHash, verificationToken, tokenCreatedAt, ...safeUser } = user as any;
+  createAudit(user.id, 'Inicio de sesión exitoso', 'User', user.id, `${user.name} ${user.lastName}`);
   res.json({ success: true, user: safeUser });
 });
 
 app.post('/api/auth/verify', (req, res) => {
-  const { email, token } = req.body;
-  if (!email || !token) {
-    return res.status(400).json({ error: 'Email y código requeridos.' });
+  const { email, token, smsToken } = req.body;
+  if (!email) {
+    return res.status(400).json({ error: 'Email requerido.' });
   }
 
   const user = dbState.users.find(u => u.email.toLowerCase() === email.toLowerCase());
@@ -624,13 +921,49 @@ app.post('/api/auth/verify', (req, res) => {
     return res.status(400).json({ error: 'La cuenta ya se encuentra verificada.' });
   }
 
-  if (user.verificationToken !== token) {
-    return res.status(400).json({ error: 'Código de verificación incorrecto.' });
+  const now = Date.now();
+  const createdTime = user.tokenCreatedAt ? new Date(user.tokenCreatedAt).getTime() : 0;
+  const diff = now - createdTime;
+
+  if (diff >= 30 * 60 * 1000) {
+    return res.status(400).json({ 
+      error: 'El código de verificación ha expirado (duración máxima 30 minutos). Intente iniciar sesión para generar un nuevo código automáticamente.' 
+    });
+  }
+
+  const verificationPolicy = dbState.verificationPolicies?.global || 'email';
+
+  if (verificationPolicy === 'email') {
+    if (!token) {
+      return res.status(400).json({ error: 'Código de verificación de Email requerido.' });
+    }
+    if (user.verificationToken !== token) {
+      return res.status(400).json({ error: 'Código de verificación de Email incorrecto.' });
+    }
+  } else if (verificationPolicy === 'sms') {
+    const codeToVerify = smsToken || token;
+    if (!codeToVerify) {
+      return res.status(400).json({ error: 'Código de verificación por SMS requerido.' });
+    }
+    if (user.verificationTokenSms !== codeToVerify) {
+      return res.status(400).json({ error: 'Código de verificación por SMS incorrecto.' });
+    }
+  } else if (verificationPolicy === 'both') {
+    if (!token || !smsToken) {
+      return res.status(400).json({ error: 'Se requieren ambos códigos de verificación (Email y SMS).' });
+    }
+    if (user.verificationToken !== token) {
+      return res.status(400).json({ error: 'Código de verificación de Email incorrecto.' });
+    }
+    if (user.verificationTokenSms !== smsToken) {
+      return res.status(400).json({ error: 'Código de verificación por SMS incorrecto.' });
+    }
   }
 
   // Mark as verified
   user.isVerified = true;
   delete user.verificationToken;
+  delete user.verificationTokenSms;
   delete user.tokenCreatedAt;
   saveDB(dbState);
 
@@ -655,28 +988,74 @@ app.post('/api/auth/resend-token', async (req, res) => {
     return res.status(400).json({ error: 'La cuenta ya se encuentra verificada.' });
   }
 
-  // Check timestamp (30 mins = 1800000 ms)
+  const verificationPolicy = dbState.verificationPolicies?.global || 'email';
+  const needsEmail = verificationPolicy === 'email' || verificationPolicy === 'both';
+  const needsSms = verificationPolicy === 'sms' || verificationPolicy === 'both';
+
   const now = Date.now();
   const createdTime = user.tokenCreatedAt ? new Date(user.tokenCreatedAt).getTime() : 0;
   const diff = now - createdTime;
 
-  let token = user.verificationToken;
+  const hasTokens = (needsEmail ? !!user.verificationToken : true) && (needsSms ? !!user.verificationTokenSms : true);
   let isNew = false;
 
-  if (!token || diff >= 30 * 60 * 1000) {
-    token = generateVerificationToken(6);
-    user.verificationToken = token;
+  if (!hasTokens || diff >= 30 * 60 * 1000) {
+    const emailToken = needsEmail ? generateVerificationToken(6) : undefined;
+    
+    let smsToken: string | undefined = undefined;
+    if (needsSms) {
+      smsToken = generateVerificationToken(6);
+      while (smsToken === emailToken) {
+        smsToken = generateVerificationToken(6);
+      }
+    }
+
+    user.verificationToken = emailToken;
+    user.verificationTokenSms = smsToken;
     user.tokenCreatedAt = new Date().toISOString();
     saveDB(dbState);
     isNew = true;
   }
 
-  // Send email via Resend
-  await sendVerificationEmail(user.email, `${user.name} ${user.lastName}`, token!);
+  let emailFailed = false;
+  let emailErrorMsg = '';
+  let smsFailed = false;
+  let smsErrorMsg = '';
+
+  // Only send real email via Resend if email verification is required
+  if (needsEmail && user.verificationToken) {
+    try {
+      await sendVerificationEmail(user.email, `${user.name} ${user.lastName}`, user.verificationToken);
+    } catch (err: any) {
+      console.warn('No se pudo enviar el correo de verificación reenviado:', err.message || err);
+      emailFailed = true;
+      emailErrorMsg = err.message || 'Error de envío de correo';
+    }
+  }
+
+  // Send real SMS via Twilio if SMS verification is required
+  if (needsSms && user.verificationTokenSms) {
+    try {
+      await sendVerificationSms(user.phone, user.verificationTokenSms);
+    } catch (err: any) {
+      console.warn('No se pudo enviar el SMS de verificación reenviado vía Twilio:', err.message || err);
+      smsFailed = true;
+      smsErrorMsg = err.message || 'Error de envío de SMS';
+    }
+  }
+
+  console.log(`[VERIFICACIÓN] Código de verificación reenviado para ${user.email}: Email=${user.verificationToken || 'N/A'}, SMS=${user.verificationTokenSms || 'N/A'}`);
 
   res.json({
     success: true,
-    message: isNew ? 'Se generó y envió un nuevo código de verificación.' : 'Se reenvió el código de verificación existente.'
+    message: isNew ? 'Se generó y envió un nuevo código de verificación.' : 'Se reenvió el código de verificación existente.',
+    verificationPolicy,
+    emailFailed,
+    emailErrorMsg,
+    smsFailed,
+    smsErrorMsg,
+    devEmailToken: user.verificationToken,
+    devSmsToken: user.verificationTokenSms
   });
 });
 
@@ -811,8 +1190,8 @@ app.post('/api/verification-policy', (req, res) => {
 app.post('/api/system-settings', (req, res) => {
   const { settings, currentUserId } = req.body;
   const currentUser = dbState.users.find(u => u.id === currentUserId);
-  if (!currentUser || currentUser.role !== 'SUPERADMIN') {
-    return res.status(403).json({ error: 'Solo el Superadmin puede decidir las configuraciones de la plataforma.' });
+  if (!currentUser || !['SUPERADMIN', 'ADMIN', 'MANAGER'].includes(currentUser.role)) {
+    return res.status(403).json({ error: 'Solo el Superadmin, Admin o Manager pueden decidir las configuraciones de la plataforma.' });
   }
 
   dbState.systemSettings = {
@@ -827,7 +1206,9 @@ app.post('/api/system-settings', (req, res) => {
 app.post('/api/system-messages', (req, res) => {
   const { senderId, receiverId, subject, content, attachments } = req.body;
   const sender = dbState.users.find(u => u.id === senderId);
-  const receiver = dbState.users.find(u => u.id === receiverId);
+  const receiver = receiverId === 'system' 
+    ? { id: 'system', name: 'Sistema', lastName: 'de Reasignaciones', role: 'SYSTEM' } 
+    : dbState.users.find(u => u.id === receiverId);
   
   if (!sender || !receiver) {
     return res.status(404).json({ error: 'Remitente o destinatario no encontrado.' });
@@ -909,10 +1290,11 @@ app.post('/api/system-messages/trash', (req, res) => {
   const msg = dbState.systemMessages.find(m => m.id === messageId);
   if (msg) {
     const isTrash = action === 'trash';
+    const isUserAdminOrSuper = dbState.users.find(u => u.id === userId && ['SUPERADMIN', 'ADMIN'].includes(u.role));
     if (msg.senderId === userId) {
       msg.deletedBySender = isTrash;
     }
-    if (msg.receiverId === userId) {
+    if (msg.receiverId === userId || (msg.receiverId === 'system' && isUserAdminOrSuper)) {
       msg.deletedByReceiver = isTrash;
     }
     saveDB(dbState);
@@ -927,16 +1309,17 @@ app.post('/api/system-messages/delete-permanent', (req, res) => {
   const index = dbState.systemMessages.findIndex(m => m.id === messageId);
   if (index !== -1) {
     const msg = dbState.systemMessages[index];
+    const isUserAdminOrSuper = dbState.users.find(u => u.id === userId && ['SUPERADMIN', 'ADMIN'].includes(u.role));
     if (msg.senderId === userId) {
       (msg as any).permanentDeletedBySender = true;
     }
-    if (msg.receiverId === userId) {
+    if (msg.receiverId === userId || (msg.receiverId === 'system' && isUserAdminOrSuper)) {
       (msg as any).permanentDeletedByReceiver = true;
     }
     
     // If deleted permanently by both, or by the only participant concerned, remove it
     const delSender = msg.senderId === userId ? true : (msg as any).permanentDeletedBySender;
-    const delReceiver = msg.receiverId === userId ? true : (msg as any).permanentDeletedByReceiver;
+    const delReceiver = (msg.receiverId === userId || (msg.receiverId === 'system' && isUserAdminOrSuper)) ? true : (msg as any).permanentDeletedByReceiver;
     
     if (delSender && delReceiver) {
       dbState.systemMessages.splice(index, 1);
@@ -946,6 +1329,59 @@ app.post('/api/system-messages/delete-permanent', (req, res) => {
   }
   res.status(404).json({ error: 'Mensaje no encontrado' });
 });
+
+// Helper to find a template (regular or virtual from sharedDocuments)
+function findTemplateById(templateId: string): any {
+  let template = dbState.templates.find(t => t.id === templateId);
+  if (!template && templateId && templateId.startsWith('doc-')) {
+    const docId = templateId.replace('doc-', '');
+    const docObj = dbState.sharedDocuments?.find(d => d.id === docId);
+    if (docObj) {
+      let decodedContent = '';
+      if (docObj.dataUrl) {
+        try {
+          const base64Part = docObj.dataUrl.includes(',') ? docObj.dataUrl.split(',')[1] : docObj.dataUrl;
+          decodedContent = decodeURIComponent(escape(atob(base64Part)));
+        } catch (e) {
+          try {
+            const base64Part = docObj.dataUrl.includes(',') ? docObj.dataUrl.split(',')[1] : docObj.dataUrl;
+            decodedContent = atob(base64Part);
+          } catch (err) {
+            decodedContent = '';
+          }
+        }
+      }
+      return {
+        id: templateId,
+        name: docObj.name,
+        description: `Proceso creado a partir del documento: ${docObj.name}`,
+        industry: (dbState.activeIndustry || 'Inmobiliaria') as any,
+        stages: [
+          {
+            id: `stage-digital-${docId}`,
+            name: 'Revisión y Firma',
+            description: 'Etapa inicial para la edición, revisión y firma del documento digitalizado',
+            requirements: [
+              {
+                id: `req-digital-${docId}`,
+                name: docObj.name,
+                type: 'document',
+                description: `Complete los campos y firme el documento: ${docObj.name}`,
+                isRequired: true,
+                documentSourceType: 'digital_contract',
+                linkedSharedDocumentId: docId
+              }
+            ]
+          }
+        ],
+        originalDocumentContent: decodedContent,
+        showDocumentToAll: true,
+        sharedViewMode: 'both'
+      };
+    }
+  }
+  return template;
+}
 
 // Helper to check template permissions
 function canUserManageTemplates(userId: string): boolean {
@@ -1037,16 +1473,34 @@ app.delete('/api/templates/:id', (req, res) => {
   res.json({ success: true, id });
 });
 
-// 3. Cases (Expedientes)
+// 3. Cases (Legajos)
 app.get('/api/cases', (req, res) => {
   res.json(dbState.cases);
 });
 
 app.post('/api/cases', (req, res) => {
-  const { title, description, templateId, assignedAdvisorId, assignedManagerId, participants, currentUserId } = req.body;
-  const template = dbState.templates.find(t => t.id === templateId);
+  const { title, description, templateId, assignedAdvisorId, assignedManagerId, participants, currentUserId, documentContent } = req.body;
+  let template = findTemplateById(templateId);
   if (!template) {
-    return res.status(404).json({ error: 'Plantilla de proceso no encontrada' });
+    if (!templateId) {
+      template = {
+        id: '',
+        name: 'Sin Plantilla',
+        description: 'Proceso personalizado sin plantilla predefinida',
+        industry: (dbState.activeIndustry || 'Inmobiliaria') as any,
+        stages: [
+          {
+            id: 'stage-default',
+            name: 'Revisión General',
+            description: 'Etapa inicial de carga y validación de documentos',
+            requirements: []
+          }
+        ],
+        originalDocumentContent: ''
+      };
+    } else {
+      return res.status(404).json({ error: 'Plantilla de proceso no encontrada o documento no válido.' });
+    }
   }
 
   const caseId = `case-${Date.now()}`;
@@ -1069,7 +1523,7 @@ app.post('/api/cases', (req, res) => {
     participants: participants || [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    documentContent: template.originalDocumentContent || '',
+    documentContent: documentContent || template.originalDocumentContent || '',
     showDocumentToAll: template.showDocumentToAll !== undefined ? template.showDocumentToAll : true,
     sharedViewMode: template.sharedViewMode || 'both'
   };
@@ -1096,21 +1550,21 @@ app.post('/api/cases', (req, res) => {
 
   const creatorId = currentUserId || assignedAdvisorId || 'usr-system';
   saveDB(dbState);
-  createAudit(creatorId, status === 'pending_assignment' ? 'Solicitud de expediente creada' : 'Expediente creado', 'Case', caseId, title);
+  createAudit(creatorId, status === 'pending_assignment' ? 'Solicitud de legajo creada' : 'Legajo creado', 'Case', caseId, title);
   
   if (assignedAdvisorId) {
-    createNotification(assignedAdvisorId, 'Nuevo Expediente Creado', `Tu expediente ${code}: "${title}" fue registrado.`, 'info', caseId);
+    createNotification(assignedAdvisorId, 'Nuevo Legajo Creado', `Tu legajo ${code}: "${title}" fue registrado.`, 'info', caseId);
   }
 
   // If pending assignment, notify all managers
   if (status === 'pending_assignment') {
     dbState.users.forEach(u => {
       if (u.role === 'MANAGER' || u.role === 'ADMIN' || u.role === 'SUPERADMIN') {
-        createNotification(u.id, 'Nueva Solicitud de Expediente', `El asesor solicita iniciar el expediente ${code}: "${title}". Disponible para asignar.`, 'warning', caseId);
+        createNotification(u.id, 'Nueva Solicitud de Legajo', `El asesor solicita iniciar el legajo ${code}: "${title}". Disponible para asignar.`, 'warning', caseId);
       }
     });
   } else if (finalManagerId) {
-    createNotification(finalManagerId, 'Expediente Asignado', `Se te asignó el expediente ${code}: "${title}".`, 'info', caseId);
+    createNotification(finalManagerId, 'Legajo Asignado', `Se te asignó el legajo ${code}: "${title}".`, 'info', caseId);
   }
 
   res.status(201).json(newCase);
@@ -1141,11 +1595,103 @@ app.post('/api/cases/:id/assign-manager', (req, res) => {
   caseObj.updatedAt = new Date().toISOString();
 
   saveDB(dbState);
-  createAudit(currentUserId, `Asignó manager a expediente`, 'Case', id, caseObj.title);
-  createNotification(caseObj.assignedAdvisorId, 'Manager Asignado', `El manager ${manager.name} ${manager.lastName} ha sido asignado a tu expediente.`, 'success', id);
-  createNotification(managerId, 'Nuevo Expediente Asignado', `Has sido asignado al expediente ${caseObj.code}: "${caseObj.title}".`, 'info', id);
+  createAudit(currentUserId, `Asignó manager a legajo`, 'Case', id, caseObj.title);
+  createNotification(caseObj.assignedAdvisorId, 'Manager Asignado', `El manager ${manager.name} ${manager.lastName} ha sido asignado a tu legajo.`, 'success', id);
+  createNotification(managerId, 'Nuevo Legajo Asignado', `Has sido asignado al legajo ${caseObj.code}: "${caseObj.title}".`, 'info', id);
 
   res.json(caseObj);
+});
+
+// Advisor requests stage review from assigned manager
+app.post('/api/cases/:id/request-review', (req, res) => {
+  const { id } = req.params;
+  const { currentUserId, note } = req.body;
+
+  const caseObj = dbState.cases.find(c => c.id === id);
+  if (!caseObj) {
+    return res.status(404).json({ error: 'Legajo no encontrado.' });
+  }
+
+  const user = dbState.users.find(u => u.id === currentUserId);
+  if (!user) {
+    return res.status(404).json({ error: 'Usuario no encontrado.' });
+  }
+
+  // Set status to pending_review
+  caseObj.status = 'pending_review';
+  caseObj.updatedAt = new Date().toISOString();
+
+  // Find assigned manager and notify them
+  const managerId = caseObj.assignedManagerId;
+  if (managerId) {
+    const template = findTemplateById(caseObj.templateId);
+    const stageName = template?.stages?.[caseObj.currentStageIndex]?.name || 'Etapa actual';
+    createNotification(
+      managerId,
+      '🔍 Revisión de Etapa Solicitada',
+      `El asesor ${user.name} ${user.lastName} ha completado el trabajo de la etapa "${stageName}" en el legajo "${caseObj.title}" y solicita su revisión.${note ? ` Nota del asesor: "${note}"` : ''}`,
+      'info',
+      caseObj.id
+    );
+  }
+
+  createAudit(currentUserId, `Solicitó revisión de la etapa actual al Manager`, 'Case', caseObj.id, caseObj.title);
+  saveDB(dbState);
+
+  res.json({ success: true, case: caseObj });
+});
+
+// Request reassignment of case from manager to system
+app.post('/api/cases/:id/request-reassignment', (req, res) => {
+  const { id } = req.params;
+  const { currentUserId, reason } = req.body;
+
+  const caseObj = dbState.cases.find(c => c.id === id);
+  if (!caseObj) {
+    return res.status(404).json({ error: 'Legajo no encontrado.' });
+  }
+
+  const sender = dbState.users.find(u => u.id === currentUserId);
+  if (!sender) {
+    return res.status(404).json({ error: 'Usuario no encontrado.' });
+  }
+
+  const systemMsg = {
+    id: `msg-${Date.now()}`,
+    senderId: currentUserId,
+    senderName: `${sender.name} ${sender.lastName}`,
+    senderRole: sender.role,
+    receiverId: 'system',
+    receiverName: 'Sistema de Reasignaciones',
+    receiverRole: 'SYSTEM',
+    subject: `⚠️ Solicitud de Reasignación: Legajo "${caseObj.title}"`,
+    content: `El Manager ${sender.name} ${sender.lastName} solicita reasignar o liberar el legajo "${caseObj.title}" (ID: ${caseObj.id}).\n\nMotivo del Manager:\n"${reason}"`,
+    createdAt: new Date().toISOString(),
+    read: false,
+    deletedBySender: false,
+    deletedByReceiver: false,
+    attachments: []
+  };
+
+  if (!dbState.systemMessages) dbState.systemMessages = [];
+  dbState.systemMessages.unshift(systemMsg);
+
+  // Notify Admins and Superadmins
+  const admins = dbState.users.filter(u => ['SUPERADMIN', 'ADMIN'].includes(u.role));
+  admins.forEach(admin => {
+    createNotification(
+      admin.id,
+      '🔄 Solicitud de Reasignación',
+      `El manager ${sender.name} ha solicitado reasignar el legajo "${caseObj.title}".`,
+      'warning',
+      caseObj.id
+    );
+  });
+
+  createAudit(currentUserId, `Solicitó reasignación / liberación del legajo`, 'Case', caseObj.id, caseObj.title);
+  saveDB(dbState);
+
+  res.json({ success: true, message: systemMsg });
 });
 
 // Update case basic details
@@ -1155,7 +1701,7 @@ app.put('/api/cases/:id', (req, res) => {
   
   const caseIdx = dbState.cases.findIndex(c => c.id === id);
   if (caseIdx === -1) {
-    return res.status(404).json({ error: 'Expediente no encontrado' });
+    return res.status(404).json({ error: 'Legajo no encontrado' });
   }
 
   const oldCase = dbState.cases[caseIdx];
@@ -1175,13 +1721,43 @@ app.put('/api/cases/:id', (req, res) => {
   dbState.cases[caseIdx] = updatedCase;
 
   if (assignedAdvisorId && assignedAdvisorId !== oldCase.assignedAdvisorId) {
-    createNotification(assignedAdvisorId, 'Expediente Reasignado', `Se te reasignó el expediente ${oldCase.code}: "${updatedCase.title}"`, 'info', id);
+    createNotification(assignedAdvisorId, 'Legajo Reasignado', `Se te reasignó el legajo ${oldCase.code}: "${updatedCase.title}"`, 'info', id);
   }
 
   saveDB(dbState);
   const updaterId = req.body.currentUserId || 'usr-system';
-  createAudit(updaterId, 'Expediente actualizado', 'Case', id, updatedCase.title);
+  const action = req.body.auditAction || 'Legajo actualizado';
+  createAudit(updaterId, action, 'Case', id, updatedCase.title);
   res.json(updatedCase);
+});
+
+// Delete case (superadmin only)
+app.delete('/api/cases/:id', (req, res) => {
+  const { id } = req.params;
+  const deleterId = (req.query.currentUserId as string) || (req.body.currentUserId as string) || 'usr-system';
+
+  const user = dbState.users.find(u => u.id === deleterId);
+  if (!user || user.role !== 'SUPERADMIN') {
+    return res.status(403).json({ error: 'Solo el Superadmin puede eliminar legajos.' });
+  }
+
+  const caseIdx = dbState.cases.findIndex(c => c.id === id);
+  if (caseIdx === -1) {
+    return res.status(404).json({ error: 'Legajo no encontrado.' });
+  }
+
+  const deletedCase = dbState.cases[caseIdx];
+  dbState.cases.splice(caseIdx, 1);
+
+  // Clean up related objects in the same database state
+  dbState.tasks = (dbState.tasks || []).filter(t => t.caseId !== id);
+  dbState.documents = (dbState.documents || []).filter(d => d.caseId !== id);
+  dbState.observations = (dbState.observations || []).filter(o => o.caseId !== id);
+  dbState.notifications = (dbState.notifications || []).filter(n => n.caseId !== id);
+
+  saveDB(dbState);
+  createAudit(deleterId, 'Legajo eliminado permanentemente', 'Case', id, deletedCase.title);
+  res.json({ success: true, id });
 });
 
 // Add Participant dynamically to case
@@ -1191,14 +1767,14 @@ app.post('/api/cases/:id/participants', (req, res) => {
 
   const caseObj = dbState.cases.find(c => c.id === id);
   if (!caseObj) {
-    return res.status(404).json({ error: 'Expediente no encontrado' });
+    return res.status(404).json({ error: 'Legajo no encontrado' });
   }
 
   if (!caseObj.participants) {
     caseObj.participants = [];
   }
 
-  caseObj.participants.push({
+  const newParticipant = {
     id: participant.id || `prt-${Date.now()}`,
     name: participant.name || '',
     lastName: participant.lastName || '',
@@ -1206,14 +1782,80 @@ app.post('/api/cases/:id/participants', (req, res) => {
     cuitCuil: participant.cuitCuil || '',
     email: participant.email || '',
     phone: participant.phone || '',
-    comments: participant.comments
-  });
+    birthDate: participant.birthDate || undefined,
+    role: participant.role || 'Vendedor',
+    comments: participant.comments || ''
+  };
+
+  caseObj.participants.push(newParticipant);
 
   caseObj.updatedAt = new Date().toISOString();
   saveDB(dbState);
 
   const creatorId = participant.currentUserId || 'usr-system';
-  createAudit(creatorId, 'Participante añadido', 'Case', id, `${participant.name} ${participant.lastName}`);
+  createAudit(creatorId, `Añadió el actor ${newParticipant.name} ${newParticipant.lastName} (Rol: ${newParticipant.role})`, 'Case', id, caseObj.title);
+  res.json(caseObj);
+});
+
+// Update actor dynamically inside case
+app.put('/api/cases/:id/participants/:participantId', (req, res) => {
+  const { id, participantId } = req.params;
+  const participant = req.body;
+  const userId = participant.currentUserId || 'usr-system';
+
+  const caseObj = dbState.cases.find(c => c.id === id);
+  if (!caseObj) {
+    return res.status(404).json({ error: 'Legajo no encontrado' });
+  }
+
+  const partIdx = (caseObj.participants || []).findIndex(p => p.id === participantId);
+  if (partIdx === -1) {
+    return res.status(404).json({ error: 'Actor no encontrado en el legajo' });
+  }
+
+  const oldPart = caseObj.participants[partIdx];
+  caseObj.participants[partIdx] = {
+    ...oldPart,
+    name: participant.name !== undefined ? participant.name : oldPart.name,
+    lastName: participant.lastName !== undefined ? participant.lastName : oldPart.lastName,
+    dni: participant.dni !== undefined ? participant.dni : oldPart.dni,
+    cuitCuil: participant.cuitCuil !== undefined ? participant.cuitCuil : oldPart.cuitCuil,
+    email: participant.email !== undefined ? participant.email : oldPart.email,
+    phone: participant.phone !== undefined ? participant.phone : oldPart.phone,
+    birthDate: participant.birthDate !== undefined ? participant.birthDate : oldPart.birthDate,
+    role: participant.role !== undefined ? participant.role : oldPart.role,
+    comments: participant.comments !== undefined ? participant.comments : oldPart.comments
+  };
+
+  caseObj.updatedAt = new Date().toISOString();
+  saveDB(dbState);
+
+  createAudit(userId, `Modificó/editó datos del actor ${caseObj.participants[partIdx].name} ${caseObj.participants[partIdx].lastName} (Rol: ${caseObj.participants[partIdx].role})`, 'Case', id, caseObj.title);
+  res.json(caseObj);
+});
+
+// Delete actor dynamically from case
+app.delete('/api/cases/:id/participants/:participantId', (req, res) => {
+  const { id, participantId } = req.params;
+  const userId = (req.query.currentUserId as string) || 'usr-system';
+
+  const caseObj = dbState.cases.find(c => c.id === id);
+  if (!caseObj) {
+    return res.status(404).json({ error: 'Legajo no encontrado' });
+  }
+
+  const removedPart = (caseObj.participants || []).find(p => p.id === participantId);
+  caseObj.participants = (caseObj.participants || []).filter(p => p.id !== participantId);
+
+  caseObj.updatedAt = new Date().toISOString();
+  saveDB(dbState);
+
+  if (removedPart) {
+    createAudit(userId, `Eliminó el actor ${removedPart.name} ${removedPart.lastName} (Rol: ${removedPart.role || 'Actor'})`, 'Case', id, caseObj.title);
+  } else {
+    createAudit(userId, `Eliminó un actor del legajo`, 'Case', id, caseObj.title);
+  }
+
   res.json(caseObj);
 });
 
@@ -1276,10 +1918,10 @@ app.post('/api/cases/:id/advance', (req, res) => {
 
   const caseObj = dbState.cases.find(c => c.id === id);
   if (!caseObj) {
-    return res.status(404).json({ error: 'Expediente no encontrado' });
+    return res.status(404).json({ error: 'Legajo no encontrado' });
   }
 
-  const template = dbState.templates.find(t => t.id === caseObj.templateId);
+  const template = findTemplateById(caseObj.templateId);
   if (!template) {
     return res.status(404).json({ error: 'Plantilla de proceso no encontrada' });
   }
@@ -1304,6 +1946,7 @@ app.post('/api/cases/:id/advance', (req, res) => {
 
   caseObj.currentStageIndex = isCompleted ? caseObj.currentStageIndex : nextStageIndex;
   caseObj.status = isCompleted ? 'completed' : 'active';
+  caseObj.isCurrentStageApproved = false; // Reset for next stage
   caseObj.updatedAt = new Date().toISOString();
 
   // If moving to a new stage, initialize tasks for that stage
@@ -1329,7 +1972,7 @@ app.post('/api/cases/:id/advance', (req, res) => {
     createNotification(
       caseObj.assignedAdvisorId,
       'Cambio de Etapa',
-      `El expediente ${caseObj.code} avanzó a la etapa: "${nextStage.name}"`,
+      `El legajo ${caseObj.code} avanzó a la etapa: "${nextStage.name}"`,
       'success',
       id
     );
@@ -1337,15 +1980,53 @@ app.post('/api/cases/:id/advance', (req, res) => {
   } else {
     createNotification(
       caseObj.assignedAdvisorId,
-      'Expediente Finalizado',
-      `Felicidades! El expediente ${caseObj.code} ha sido finalizado exitosamente.`,
+      'Legajo Finalizado',
+      `Felicidades! El legajo ${caseObj.code} ha sido finalizado exitosamente.`,
       'success',
       id
     );
-    createAudit(userId, 'Finalizó expediente', 'Case', id, caseObj.title);
+    createAudit(userId, 'Finalizó legajo', 'Case', id, caseObj.title);
   }
 
   saveDB(dbState);
+  res.json({ success: true, case: caseObj });
+});
+
+// 4.5 Approve Stage Endpoint
+app.post('/api/cases/:id/approve-stage', (req, res) => {
+  const { id } = req.params;
+  const { userId } = req.body;
+
+  const caseObj = dbState.cases.find(c => c.id === id);
+  if (!caseObj) {
+    return res.status(404).json({ error: 'Legajo no encontrado' });
+  }
+
+  const template = findTemplateById(caseObj.templateId);
+  if (!template) {
+    return res.status(404).json({ error: 'Plantilla de proceso no encontrada' });
+  }
+
+  const currentStage = template.stages[caseObj.currentStageIndex];
+  if (!currentStage) {
+    return res.status(400).json({ error: 'Etapa actual no válida' });
+  }
+
+  // Set current stage as approved
+  caseObj.isCurrentStageApproved = true;
+  caseObj.updatedAt = new Date().toISOString();
+
+  createNotification(
+    caseObj.assignedAdvisorId,
+    'Etapa Aprobada',
+    `¡Tu etapa actual "${currentStage.name}" ha sido aprobada por el Manager!`,
+    'success',
+    id
+  );
+
+  createAudit(userId, `Aprobó etapa "${currentStage.name}"`, 'Case', id, caseObj.title);
+  saveDB(dbState);
+
   res.json({ success: true, case: caseObj });
 });
 
@@ -1354,9 +2035,9 @@ app.get('/api/cases/:id/validate', (req, res) => {
   const { id } = req.params;
   const caseObj = dbState.cases.find(c => c.id === id);
   if (!caseObj) {
-    return res.status(404).json({ error: 'Expediente no encontrado' });
+    return res.status(404).json({ error: 'Legajo no encontrado' });
   }
-  const template = dbState.templates.find(t => t.id === caseObj.templateId);
+  const template = findTemplateById(caseObj.templateId);
   if (!template) {
     return res.status(404).json({ error: 'Plantilla de proceso no encontrada' });
   }
@@ -1500,7 +2181,17 @@ app.delete('/api/shared-documents/:id', (req, res) => {
 // 5. Document Management
 app.get('/api/cases/:caseId/documents', (req, res) => {
   const { caseId } = req.params;
-  res.json(dbState.documents.filter(d => d.caseId === caseId));
+  const role = req.query.role as string;
+  let docs = dbState.documents.filter(d => d.caseId === caseId);
+  if (role && role !== 'SUPERADMIN' && role !== 'ADMIN') {
+    docs = docs.filter(d => {
+      if (d.status === 'approved' && d.allowedRoles && d.allowedRoles.length > 0) {
+        return d.allowedRoles.includes(role);
+      }
+      return true;
+    });
+  }
+  res.json(docs);
 });
 
 // Advisor Uploads/Replaces Document
@@ -1510,9 +2201,17 @@ app.post(['/api/documents', '/api/documents/upload'], (req, res) => {
   // Resolve requirement name from template if not provided by frontend
   let resolvedName = name;
   if (!resolvedName && requirementId) {
-    const template = dbState.templates.find(t => t.stages.some(s => s.requirements.some(r => r.id === requirementId)));
-    const reqObj = template?.stages.flatMap(s => s.requirements).find(r => r.id === requirementId);
-    resolvedName = reqObj?.name || fileName || 'Documento';
+    if (requirementId.startsWith('req-digital-')) {
+      const docId = requirementId.replace('req-digital-', '');
+      const docObj = dbState.sharedDocuments?.find(d => d.id === docId);
+      if (docObj) {
+        resolvedName = docObj.name;
+      }
+    } else {
+      const template = dbState.templates.find(t => t.stages.some(s => s.requirements.some(r => r.id === requirementId)));
+      const reqObj = template?.stages.flatMap(s => s.requirements).find(r => r.id === requirementId);
+      resolvedName = reqObj?.name || fileName || 'Documento';
+    }
   } else if (!resolvedName) {
     resolvedName = fileName || 'Documento';
   }
@@ -1568,7 +2267,7 @@ app.post(['/api/documents', '/api/documents/upload'], (req, res) => {
     createNotification(
       caseObj.assignedManagerId,
       'Documento para Revisar',
-      `El asesor cargó "${resolvedName}" en el expediente ${caseObj.code}`,
+      `El asesor cargó "${resolvedName}" en el legajo ${caseObj.code}`,
       'info',
       caseId
     );
@@ -1577,13 +2276,92 @@ app.post(['/api/documents', '/api/documents/upload'], (req, res) => {
   res.status(201).json(doc);
 });
 
+// Create upload authorization request from Advisor
+app.post('/api/upload-requests/create', (req, res) => {
+  const { caseId, stageId, requirementId, requirementName, requestedBy, requestedExtension } = req.body;
+  
+  if (!caseId || !requirementId || !requestedBy) {
+    return res.status(400).json({ error: 'Faltan parámetros obligatorios.' });
+  }
+
+  const newRequest = {
+    id: `uprq-${Date.now()}`,
+    caseId,
+    stageId,
+    requirementId,
+    requirementName: requirementName || 'Documento',
+    requestedBy,
+    requestedAt: new Date().toISOString(),
+    status: 'pending' as const,
+    requestedExtension: requestedExtension || '.pdf'
+  };
+
+  dbState.uploadRequests = dbState.uploadRequests || [];
+  dbState.uploadRequests.push(newRequest);
+
+  const caseObj = dbState.cases.find(c => c.id === caseId);
+  const user = dbState.users.find(u => u.id === requestedBy);
+
+  saveDB(dbState);
+  createAudit(requestedBy, `Solicitó permiso para subir archivo para "${newRequest.requirementName}" (Extensión: ${newRequest.requestedExtension})`, 'Case', caseId, caseObj?.title || 'Legajo');
+
+  // Notify assigned Manager or Admin
+  if (caseObj) {
+    const notifyUserId = caseObj.assignedManagerId || dbState.users.find(u => u.role === 'MANAGER' || u.role === 'ADMIN')?.id || 'usr-super';
+    createNotification(
+      notifyUserId,
+      'Solicitud de Subida de Archivo',
+      `El asesor ${user?.name || ''} solicita subir un archivo ${newRequest.requestedExtension} para "${newRequest.requirementName}" en legajo ${caseObj.code}`,
+      'warning',
+      caseId
+    );
+  }
+
+  res.status(201).json(newRequest);
+});
+
+// Review upload authorization request (approve/reject)
+app.post('/api/upload-requests/review', (req, res) => {
+  const { id, status, allowedExtension, allowedMaxWeight, responseComment, reviewedBy } = req.body;
+
+  dbState.uploadRequests = dbState.uploadRequests || [];
+  const reqObj = dbState.uploadRequests.find(r => r.id === id);
+  if (!reqObj) {
+    return res.status(404).json({ error: 'Solicitud no encontrada.' });
+  }
+
+  reqObj.status = status; // 'approved' | 'rejected'
+  reqObj.allowedExtension = allowedExtension || reqObj.requestedExtension;
+  reqObj.allowedMaxWeight = allowedMaxWeight ? Number(allowedMaxWeight) : 5; // Default 5MB
+  reqObj.responseComment = responseComment || '';
+  reqObj.reviewedBy = reviewedBy;
+  reqObj.reviewedAt = new Date().toISOString();
+
+  const caseObj = dbState.cases.find(c => c.id === reqObj.caseId);
+  const reviewer = dbState.users.find(u => u.id === reviewedBy);
+
+  saveDB(dbState);
+  createAudit(reviewedBy || 'usr-manager1', `${status === 'approved' ? 'Aprobó' : 'Rechazó'} solicitud de subida para "${reqObj.requirementName}"`, 'Case', reqObj.caseId, caseObj?.title || 'Legajo');
+
+  // Notify Advisor
+  createNotification(
+    reqObj.requestedBy,
+    status === 'approved' ? 'Solicitud de Subida Aprobada' : 'Solicitud de Subida Rechazada',
+    `Tu solicitud para subir "${reqObj.requirementName}" fue ${status === 'approved' ? 'APROBADA' : 'RECHAZADA'} por ${reviewer?.name || 'el Manager'}. ${status === 'approved' ? `Peso máx: ${reqObj.allowedMaxWeight}MB, Ext: ${reqObj.allowedExtension}` : `Nota: ${reqObj.responseComment}`}`,
+    status === 'approved' ? 'success' : 'error',
+    reqObj.caseId
+  );
+
+  res.status(200).json(reqObj);
+});
+
 // Manager Approves or Rejects Document
 app.all('/api/documents/:id/review', (req, res) => {
   if (req.method !== 'POST' && req.method !== 'PUT') {
     return res.status(405).json({ error: 'Método no permitido' });
   }
   const { id } = req.params;
-  const { status, observationText, userId, reviewedBy } = req.body; // status: 'approved' | 'rejected'
+  const { status, observationText, userId, reviewedBy, allowedRoles } = req.body; // status: 'approved' | 'rejected'
   const finalUserId = userId || reviewedBy || 'usr-manager1';
 
   const doc = dbState.documents.find(d => d.id === id);
@@ -1594,6 +2372,9 @@ app.all('/api/documents/:id/review', (req, res) => {
   const caseObj = dbState.cases.find(c => c.id === doc.caseId);
 
   doc.status = status;
+  if (status === 'approved') {
+    doc.allowedRoles = allowedRoles || ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR'];
+  }
   saveDB(dbState);
 
   createAudit(finalUserId, `Documento ${status === 'approved' ? 'aprobado' : 'rechazado'}: "${doc.name}"`, 'Document', doc.id, doc.name);
@@ -1715,7 +2496,7 @@ app.post('/api/observations', (req, res) => {
     createNotification(
       caseObj.assignedAdvisorId,
       'Nueva Observación',
-      `Se agregó una observación en el expediente ${caseObj.code}: "${text}"`,
+      `Se agregó una observación en el legajo ${caseObj.code}: "${text}"`,
       'warning',
       caseId
     );
@@ -1854,6 +2635,15 @@ app.get('/api/audit-logs', (req, res) => {
   res.json(dbState.auditLogs);
 });
 
+app.post('/api/audit-logs/log', (req, res) => {
+  const { userId, action, entityType, entityId, entityName } = req.body;
+  if (!userId || !action) {
+    return res.status(400).json({ error: 'userId y action son requeridos.' });
+  }
+  const logObj = createAudit(userId, action, entityType || 'ClientAction', entityId || '', entityName || '');
+  res.json({ success: true, log: logObj });
+});
+
 
 // SECURE AI INTEGRATION ENDPOINTS WITH GEMINI
 
@@ -1883,7 +2673,7 @@ app.post('/api/gemini/analyze-document', async (req, res) => {
           createNotification(
             doc.uploadedBy || 'usr-asesor1',
             'IA Auditoría: Aprobado',
-            `La inteligencia artificial auditó y aprobó con éxito tu documento "${doc.name}" en el expediente ${caseObj.code}.`,
+            `La inteligencia artificial auditó y aprobó con éxito tu documento "${doc.name}" en el legajo ${caseObj.code}.`,
             'success',
             doc.caseId
           );
@@ -1989,7 +2779,7 @@ Retorna UNICAMENTE un objeto JSON estructurado así (sin markdown de código de 
         createNotification(
           doc.uploadedBy || 'usr-asesor1',
           'IA Auditoría: Aprobado',
-          `La IA de Gemini auditó y aprobó con éxito tu documento "${doc.name}" en el expediente ${caseObj.code}.`,
+          `La IA de Gemini auditó y aprobó con éxito tu documento "${doc.name}" en el legajo ${caseObj.code}.`,
           'success',
           doc.caseId
         );
@@ -2216,7 +3006,7 @@ CLAUSULAS PRINCIPALES:
 2. Este documento digitalizado se encuentra listo para completar y ser editado digitalmente de forma íntegra.
 3. Se procederá a realizar las tareas y etapas de verificación correspondientes que se desprenden del proceso.
 
-Leído y firmado de conformidad por los participantes en el expediente.`,
+Leído y firmado de conformidad por los participantes en el legajo.`,
       showDocumentToAll: true,
       stages: shouldGenerateFlow ? [
         {
@@ -2226,7 +3016,7 @@ Leído y firmado de conformidad por los participantes en el expediente.`,
           requirements: [
             { id: `req-ia-1-doc-${Date.now()}`, name: 'Documento Original Digitalizado', type: 'document', description: 'Copia digital que dio origen a este proceso.', isRequired: true },
             { id: `req-ia-1-frm-${Date.now()}`, name: 'Formulario de Datos Extraídos', type: 'form', description: 'Revisión y completitud de datos extraídos por la IA.', isRequired: true, formFields: [
-                { id: 'f-ia-ext-data', label: 'Datos del Cliente o Expediente', type: 'text', required: true }
+                { id: 'f-ia-ext-data', label: 'Datos del Cliente o Legajo', type: 'text', required: true }
               ] 
             }
           ]

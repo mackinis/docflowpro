@@ -143,7 +143,7 @@ export default function App() {
     }
   };
 
-  // Create new Expediente (Case)
+  // Create new Legajo (Case)
   const handleCreateCase = async (caseData: {
     title: string;
     description: string;
@@ -151,11 +151,12 @@ export default function App() {
     assignedAdvisorId: string;
     assignedManagerId: string;
     participants: Participant[];
+    documentContent?: string;
   }) => {
     await syncOperation('/api/cases', {
       method: 'POST',
       body: JSON.stringify(caseData)
-    }, `Expediente "${caseData.title}" creado con éxito.`);
+    }, `Legajo "${caseData.title}" creado con éxito.`);
   };
 
   // Upload/Mock Document
@@ -191,14 +192,15 @@ export default function App() {
   };
 
   // Review Document (Approve / Reject)
-  const handleReviewDoc = async (docId: string, status: 'approved' | 'rejected', observationText?: string) => {
+  const handleReviewDoc = async (docId: string, status: 'approved' | 'rejected', observationText?: string, allowedRoles?: string[]) => {
     if (!currentUser) return;
     await syncOperation(`/api/documents/${docId}/review`, {
       method: 'POST',
       body: JSON.stringify({
         status,
         observationText,
-        reviewedBy: currentUser.id
+        reviewedBy: currentUser.id,
+        allowedRoles
       })
     }, status === 'approved' ? 'Documento aprobado correctamente.' : 'Documento rechazado. Se notificó al asesor.');
   };
@@ -278,8 +280,20 @@ export default function App() {
   const handleAdvanceStage = async () => {
     if (!activeCaseId) return;
     await syncOperation(`/api/cases/${activeCaseId}/advance`, {
-      method: 'POST'
-    }, '¡Etapa avanzada exitosamente! El expediente avanzó de nivel.');
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: currentUser.id })
+    }, '¡Etapa avanzada exitosamente! El legajo avanzó de nivel.');
+  };
+
+  // Approve Stage (Manager only)
+  const handleApproveStage = async () => {
+    if (!activeCaseId) return;
+    await syncOperation(`/api/cases/${activeCaseId}/approve-stage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: currentUser.id })
+    }, '¡Etapa aprobada correctamente!');
   };
 
   // Add Participant dynamically to active case
@@ -287,8 +301,26 @@ export default function App() {
     if (!activeCaseId) return;
     await syncOperation(`/api/cases/${activeCaseId}/participants`, {
       method: 'POST',
-      body: JSON.stringify(participant)
-    }, `Participante ${participant.name} ${participant.lastName} añadido correctamente.`);
+      body: JSON.stringify({ ...participant, currentUserId: currentUser?.id })
+    }, `Actor ${participant.name} ${participant.lastName} añadido correctamente.`);
+  };
+
+  // Update Participant dynamically inside active case
+  const handleUpdateParticipant = async (participant: Participant) => {
+    if (!activeCaseId) return;
+    await syncOperation(`/api/cases/${activeCaseId}/participants/${participant.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ ...participant, currentUserId: currentUser?.id })
+    }, `Actor ${participant.name} ${participant.lastName} actualizado correctamente.`);
+  };
+
+  // Remove Participant dynamically from active case
+  const handleRemoveParticipant = async (participantId: string) => {
+    if (!activeCaseId) return;
+    const currentUserIdQuery = currentUser ? `?currentUserId=${currentUser.id}` : '';
+    await syncOperation(`/api/cases/${activeCaseId}/participants/${participantId}${currentUserIdQuery}`, {
+      method: 'DELETE'
+    }, 'Actor eliminado correctamente del legajo.');
   };
 
   // Add Process template
@@ -434,7 +466,7 @@ export default function App() {
               <span className="hidden sm:inline">Sistema</span>
               <span className="hidden sm:inline">/</span>
               <span className="font-semibold text-slate-600 uppercase font-mono tracking-wider">
-                {activeCaseId ? `Detalle Expediente` : activeTab}
+                {activeCaseId ? `Detalle Legajo` : activeTab}
               </span>
             </div>
           </div>
@@ -462,6 +494,8 @@ export default function App() {
                 tasks={state.tasks}
                 observations={state.observations}
                 formSubmissions={state.formSubmissions}
+                uploadRequests={state.uploadRequests || []}
+                loadState={loadState}
                 onBack={() => setActiveCaseId(null)}
                 onUploadDoc={handleUploadDoc}
                 onReviewDoc={handleReviewDoc}
@@ -470,7 +504,10 @@ export default function App() {
                 onAddObservation={handleAddObservation}
                 onResolveObservation={handleResolveObservation}
                 onAdvanceStage={handleAdvanceStage}
+                onApproveStage={handleApproveStage}
                 onAddParticipant={handleAddParticipant}
+                onRemoveParticipant={handleRemoveParticipant}
+                onUpdateParticipant={handleUpdateParticipant}
                 onUpdateCaseDocument={handleUpdateCaseDocument}
               />
             ) : (
@@ -502,6 +539,9 @@ export default function App() {
                     currentUser={currentUser}
                     onOpenCase={handleOpenCase}
                     onCreateCase={handleCreateCase}
+                    sharedDocuments={state.sharedDocuments || []}
+                    systemSettings={state.systemSettings}
+                    loadState={loadState}
                   />
                 )}
 

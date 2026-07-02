@@ -28,12 +28,19 @@ export default function NotificationsCenter({
   const [loading, setLoading] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [filter, setFilter] = useState<'all' | 'unread' | 'read'>('all');
 
   const notifications = state.notifications || [];
   // Filter for the current user only
   const userNotifications = notifications
     .filter(n => n.userId === currentUser.id)
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  const filteredUserNotifications = userNotifications.filter(n => {
+    if (filter === 'unread') return !n.read;
+    if (filter === 'read') return n.read;
+    return true;
+  });
 
   const handleMarkAsRead = async (id: string) => {
     try {
@@ -158,7 +165,7 @@ export default function NotificationsCenter({
             Notificaciones del Sistema
           </h1>
           <p className="text-sm text-slate-500 mt-1">
-            Historial de alertas automatizadas, auditoría, tareas asignadas y actualizaciones de expedientes.
+            Historial de alertas automatizadas, auditoría, tareas asignadas y actualizaciones de legajos.
           </p>
         </div>
 
@@ -201,20 +208,58 @@ export default function NotificationsCenter({
         </div>
       )}
 
+      {/* Filter tab bar */}
+      <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
+        <button
+          onClick={() => setFilter('all')}
+          className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+            filter === 'all'
+              ? 'bg-indigo-50 text-indigo-700 font-bold border border-indigo-100'
+              : 'text-slate-500 hover:bg-slate-50 border border-transparent'
+          }`}
+        >
+          Todas ({userNotifications.length})
+        </button>
+        <button
+          onClick={() => setFilter('unread')}
+          className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+            filter === 'unread'
+              ? 'bg-indigo-50 text-indigo-700 font-bold border border-indigo-100'
+              : 'text-slate-500 hover:bg-slate-50 border border-transparent'
+          }`}
+        >
+          No leídas ({userNotifications.filter(n => !n.read).length})
+        </button>
+        <button
+          onClick={() => setFilter('read')}
+          className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+            filter === 'read'
+              ? 'bg-indigo-50 text-indigo-700 font-bold border border-indigo-100'
+              : 'text-slate-500 hover:bg-slate-50 border border-transparent'
+          }`}
+        >
+          Leídas ({userNotifications.filter(n => n.read).length})
+        </button>
+      </div>
+
       {/* List content */}
       <div className="max-w-4xl space-y-3.5">
-        {userNotifications.length === 0 ? (
+        {filteredUserNotifications.length === 0 ? (
           <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center text-slate-500 space-y-4" id="empty-notifications">
             <Bell className="w-12 h-12 text-slate-300 mx-auto" />
             <div>
               <h3 className="font-bold text-slate-700 text-base">Sin Novedades</h3>
               <p className="text-sm text-slate-500 mt-1 max-w-sm mx-auto">
-                No tienes notificaciones pendientes de lectura en este momento. Las alertas automáticas aparecerán aquí.
+                {filter === 'unread' 
+                  ? 'No tienes notificaciones pendientes de lectura en este momento.' 
+                  : filter === 'read' 
+                  ? 'No tienes notificaciones marcadas como leídas en este momento.' 
+                  : 'No tienes notificaciones en este momento.'}
               </p>
             </div>
           </div>
         ) : (
-          userNotifications.map((n) => {
+          filteredUserNotifications.map((n) => {
             const bgClass = getBgClass(n.type, n.read);
             
             return (
@@ -231,10 +276,16 @@ export default function NotificationsCenter({
                 {/* Info block */}
                 <div className="flex-1 space-y-1">
                   <div className="flex items-start justify-between gap-4">
-                    <h3 className={`text-sm font-bold ${n.read ? 'text-slate-700' : 'text-slate-900'} flex items-center gap-2`}>
+                    <h3 className={`text-sm font-bold ${n.read ? 'text-slate-600 font-semibold' : 'text-slate-900'} flex items-center gap-2 flex-wrap`}>
                       {n.title}
-                      {!n.read && (
-                        <span className="inline-block w-2 h-2 rounded-full bg-indigo-600 shrink-0 animate-pulse" />
+                      {n.read ? (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-100 text-slate-500 tracking-wider uppercase">
+                          Leído
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-100 text-indigo-700 tracking-wider uppercase animate-pulse">
+                          Nuevo
+                        </span>
                       )}
                     </h3>
                     <span className="text-[10px] text-slate-400 font-mono flex items-center gap-1 shrink-0">
@@ -264,7 +315,7 @@ export default function NotificationsCenter({
                         className="text-[10px] font-extrabold text-slate-600 hover:text-indigo-600 flex items-center gap-1 cursor-pointer"
                       >
                         <FolderSearch className="w-3.5 h-3.5 text-indigo-400" />
-                        Ver Expediente
+                        Ver Legajo
                         <ExternalLink className="w-2.5 h-2.5" />
                       </button>
                     )}

@@ -34,6 +34,7 @@ export default function SystemSettings({
   // Policies state
   const [policies, setPolicies] = useState(() => {
     return state.verificationPolicies || {
+      global: 'email',
       ASESOR: 'email',
       MANAGER: 'email',
       ADMIN: 'email'
@@ -61,7 +62,7 @@ export default function SystemSettings({
   const defaultTabs = [
     { id: 'dashboard', label: 'Tablero Principal' },
     { id: 'audit', label: 'Auditoría' },
-    { id: 'cases', label: 'Expedientes' },
+    { id: 'cases', label: 'Legajos' },
     { id: 'documents', label: 'Documentos' },
     { id: 'messages', label: 'Mensajes' },
     { id: 'notifications', label: 'Notificaciones' },
@@ -145,14 +146,14 @@ export default function SystemSettings({
     }
   };
 
-  const handleUpdatePolicy = async (role: string, value: string) => {
+  const handleUpdateGlobalPolicy = async (value: 'email' | 'sms' | 'both') => {
     setLoading(true);
     setSuccessMsg(null);
     setErrorMsg(null);
     try {
       const updatedPolicies = {
         ...policies,
-        [role]: value
+        global: value
       };
 
       const res = await fetch('/api/verification-policy', {
@@ -169,7 +170,7 @@ export default function SystemSettings({
         throw new Error(errData.error || 'Error al guardar la política de verificación.');
       }
 
-      setPolicies(updatedPolicies);
+      setPolicies(updatedPolicies as any);
       setSuccessMsg('Política de Verificación (MFA) actualizada con éxito.');
       await loadState();
     } catch (err: any) {
@@ -282,14 +283,15 @@ export default function SystemSettings({
   };
 
   const isSuperAdmin = currentUser.role === 'SUPERADMIN';
+  const isAdminOrSuper = isSuperAdmin || currentUser.role === 'ADMIN';
 
-  if (!isSuperAdmin && currentUser.role !== 'ADMIN') {
+  if (!isSuperAdmin && currentUser.role !== 'ADMIN' && currentUser.role !== 'MANAGER') {
     return (
       <div className="bg-red-50 border border-red-200 text-red-800 p-6 rounded-2xl flex items-center gap-4 shadow-sm" id="unauthorized-settings">
         <Lock className="w-8 h-8 text-red-600 shrink-0" />
         <div>
           <h3 className="font-bold text-lg">Acceso Denegado</h3>
-          <p className="text-sm text-red-700/90">Solo los Superadministradores y Administradores tienen acceso a la configuración del sistema.</p>
+          <p className="text-sm text-red-700/90">Solo los Superadministradores, Administradores y Managers tienen acceso a la configuración del sistema.</p>
         </div>
       </div>
     );
@@ -333,53 +335,66 @@ export default function SystemSettings({
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         
         {/* Card 1: Verification Policies (MFA) */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 flex flex-col justify-between">
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 flex flex-col justify-between" id="card-mfa-policies">
           <div>
             <div className="flex items-center gap-2 text-indigo-600 mb-3">
               <ShieldCheck className="w-5 h-5" />
               <h2 className="font-bold text-slate-800 text-base">Políticas de Verificación (MFA)</h2>
             </div>
             <p className="text-xs text-slate-500 leading-relaxed mb-4">
-              Determina cómo deben validar sus cuentas los usuarios según su rol asignado. Puede configurarse por correo, mensaje de texto (SMS) o ambos requisitos combinados.
+              Configura el método de verificación obligatorio para todos los usuarios que se registren en la plataforma. El Superadmin está exento de esta validación.
             </p>
             
             <div className="space-y-4">
-              {['ASESOR', 'MANAGER', 'ADMIN'].map((roleKey) => {
-                const currentPolicy = (policies as any)[roleKey] || 'email';
+              {(() => {
+                const currentPolicy = policies?.global || 'email';
+                const options = [
+                  { value: 'email', label: 'Email', description: 'Verificación exclusiva por correo electrónico' },
+                  { value: 'sms', label: 'SMS', description: 'Verificación exclusiva por mensaje de texto (SMS)' },
+                  { value: 'both', label: 'Ambos Requeridos', description: 'Debe validar tanto su correo electrónico como su celular vía SMS' }
+                ];
+
                 return (
-                  <div key={roleKey} className="space-y-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
-                    <div className="flex justify-between items-center">
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center p-3 rounded-xl bg-indigo-50/50 border border-indigo-100/50">
                       <span className="text-[11px] font-mono font-bold text-slate-700 uppercase tracking-wider">
-                        Rol: {roleKey === 'ADMIN' ? 'ADMIN / SUPERADMIN' : `${roleKey}S`}
+                        Política Activa Global
                       </span>
-                      <span className="text-[9px] font-mono bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full uppercase font-bold border border-indigo-100">
+                      <span className="text-[10px] font-mono bg-indigo-600 text-white px-2.5 py-0.5 rounded-full uppercase font-bold">
                         {currentPolicy === 'both' ? 'Email + SMS' : currentPolicy}
                       </span>
                     </div>
-                    <div className="flex flex-wrap gap-1.5 mt-2">
-                      {[
-                        { value: 'email', label: 'Email' },
-                        { value: 'sms', label: 'SMS' },
-                        { value: 'both', label: 'Ambos' }
-                      ].map((opt) => (
+
+                    <div className="space-y-2">
+                      {options.map((opt) => (
                         <button
                           key={opt.value}
                           type="button"
                           disabled={loading || !isSuperAdmin}
-                          onClick={() => handleUpdatePolicy(roleKey, opt.value)}
-                          className={`px-2.5 py-1 text-[10px] font-bold rounded-full transition-all cursor-pointer border ${
+                          onClick={() => handleUpdateGlobalPolicy(opt.value as any)}
+                          className={`w-full text-left p-3 rounded-xl transition-all border flex flex-col gap-1 cursor-pointer ${
                             currentPolicy === opt.value
-                              ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
-                              : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 disabled:cursor-not-allowed'
+                              ? 'bg-indigo-600 text-white border-indigo-600 shadow-md scale-[1.01]'
+                              : 'bg-slate-50 text-slate-700 border-slate-200/60 hover:bg-slate-100 disabled:cursor-not-allowed'
                           }`}
                         >
-                          {opt.label}
+                          <div className="flex justify-between items-center w-full">
+                            <span className="text-xs font-bold">{opt.label}</span>
+                            {currentPolicy === opt.value && (
+                              <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
+                            )}
+                          </div>
+                          <span className={`text-[10px] leading-relaxed ${
+                            currentPolicy === opt.value ? 'text-indigo-100' : 'text-slate-500'
+                          }`}>
+                            {opt.description}
+                          </span>
                         </button>
                       ))}
                     </div>
                   </div>
                 );
-              })}
+              })()}
             </div>
           </div>
           {!isSuperAdmin && (
@@ -397,7 +412,7 @@ export default function SystemSettings({
               <h2 className="font-bold text-slate-800 text-base">Rubro Activo de la Plataforma</h2>
             </div>
             <p className="text-xs text-slate-500 leading-relaxed mb-4">
-              Establece el rubro industrial rector de la organización. Esto ajusta dinámicamente las sugerencias con Inteligencia Artificial, campos de plantillas y de expedientes.
+              Establece el rubro industrial rector de la organización. Esto ajusta dinámicamente las sugerencias con Inteligencia Artificial, campos de plantillas y de legajos.
             </p>
 
             <div className="flex flex-wrap gap-2">
@@ -614,6 +629,63 @@ export default function SystemSettings({
               * Solo modificable por el Superadmin.
             </div>
           )}
+        </div>
+
+        {/* Card 6: Obligatoriedad de Plantilla de Proceso */}
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center gap-2 text-indigo-600 mb-3">
+              <FolderKanban className="w-5 h-5" />
+              <h2 className="font-bold text-slate-800 text-base">Obligatoriedad de Plantilla de Proceso</h2>
+            </div>
+            <p className="text-xs text-slate-500 leading-relaxed mb-4">
+              Configura si el campo "Plantilla de Proceso" es obligatorio o de carácter opcional al momento de crear nuevos legajos en la plataforma.
+            </p>
+
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/60 space-y-3">
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-bold text-slate-700 uppercase tracking-wider font-mono">
+                  Campo Obligatorio
+                </span>
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={async () => {
+                    setLoading(true);
+                    setSuccessMsg(null);
+                    setErrorMsg(null);
+                    try {
+                      const currentValue = state.systemSettings?.processTemplateRequired !== false;
+                      const res = await fetch('/api/system-settings', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          settings: {
+                            processTemplateRequired: !currentValue
+                          },
+                          currentUserId: currentUser.id
+                        })
+                      });
+                      if (!res.ok) throw new Error('Error al actualizar obligatoriedad.');
+                      setSuccessMsg('Configuración de obligatoriedad de plantilla de proceso actualizada con éxito.');
+                      await loadState();
+                    } catch (err: any) {
+                      setErrorMsg(err.message);
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                  className={`px-3 py-1 text-xs font-extrabold uppercase rounded-full border transition-all cursor-pointer ${
+                    state.systemSettings?.processTemplateRequired !== false
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                      : 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
+                  }`}
+                >
+                  {state.systemSettings?.processTemplateRequired !== false ? 'Obligatorio' : 'Opcional'}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
 
       </div>

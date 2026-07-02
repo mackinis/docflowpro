@@ -20,7 +20,9 @@ import {
   Loader2,
   X,
   FileSpreadsheet,
-  Settings
+  Settings,
+  Pencil,
+  Trash2
 } from 'lucide-react';
 import { 
   Case, 
@@ -31,7 +33,8 @@ import {
   Observation as ObsType, 
   FormField, 
   Participant, 
-  ParticipantType 
+  ParticipantType,
+  UploadRequest
 } from '../types';
 
 interface CaseDetailProps {
@@ -44,15 +47,20 @@ interface CaseDetailProps {
   tasks: TaskType[];
   observations: ObsType[];
   formSubmissions: any[];
+  uploadRequests?: UploadRequest[];
+  loadState?: () => Promise<void>;
   onBack: () => void;
   onUploadDoc: (stageId: string, reqId: string, reqName: string, fileName: string, fileSize: number) => void;
-  onReviewDoc: (docId: string, status: 'approved' | 'rejected', observationText?: string) => void;
+  onReviewDoc: (docId: string, status: 'approved' | 'rejected', observationText?: string, allowedRoles?: string[]) => void;
   onToggleTask: (taskId: string, status: 'pending' | 'completed') => void;
   onSubmitForm: (reqId: string, values: Record<string, string | number | boolean>) => void;
   onAddObservation: (stageId: string, reqId: string | undefined, text: string) => void;
   onResolveObservation: (obsId: string, response: string) => void;
   onAdvanceStage: () => void;
+  onApproveStage: () => void;
   onAddParticipant: (participant: Participant) => void;
+  onRemoveParticipant?: (participantId: string) => void;
+  onUpdateParticipant?: (participant: Participant) => void;
   onUpdateCaseDocument: (caseId: string, content: string, showDocumentToAll?: boolean, sharedViewMode?: 'both' | 'flow' | 'document') => void;
 }
 
@@ -66,6 +74,8 @@ export default function CaseDetail({
   tasks,
   observations,
   formSubmissions,
+  uploadRequests = [],
+  loadState,
   onBack,
   onUploadDoc,
   onReviewDoc,
@@ -74,14 +84,17 @@ export default function CaseDetail({
   onAddObservation,
   onResolveObservation,
   onAdvanceStage,
+  onApproveStage,
   onAddParticipant,
+  onRemoveParticipant,
+  onUpdateParticipant,
   onUpdateCaseDocument
 }: CaseDetailProps) {
   const caseObj = cases.find(c => c.id === caseId);
   if (!caseObj) {
     return (
       <div className="p-8 text-center bg-white rounded-2xl border border-slate-200">
-        <p className="text-slate-600 font-semibold">El expediente no existe o fue eliminado.</p>
+        <p className="text-slate-600 font-semibold">El legajo no existe o fue eliminado.</p>
         <button onClick={onBack} className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg">Volver</button>
       </div>
     );
@@ -95,6 +108,7 @@ export default function CaseDetail({
 
   // Active sub-tab inside current Stage view
   const [activeSubTab, setActiveSubTab] = useState<'docs' | 'forms' | 'tasks'>('docs');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // Form submission temp states
   const [formValues, setFormValues] = useState<Record<string, Record<string, string | number | boolean>>>({});
@@ -105,13 +119,15 @@ export default function CaseDetail({
 
   // Participant adding in detail page
   const [showAddPart, setShowAddPart] = useState(false);
-  const [pType, setPType] = useState<ParticipantType>('Cliente');
+  const [editingParticipantId, setEditingParticipantId] = useState<string | null>(null);
+  const [pType, setPType] = useState<ParticipantType>('Vendedor');
   const [pName, setPName] = useState('');
   const [pLastName, setPLastName] = useState('');
   const [pDni, setPDni] = useState('');
   const [pCuit, setPCuit] = useState('');
   const [pEmail, setPEmail] = useState('');
   const [pPhone, setPPhone] = useState('');
+  const [pBirthDate, setPBirthDate] = useState('');
   const [pComments, setPComments] = useState('');
 
   // AI Auditing loading states
@@ -122,6 +138,10 @@ export default function CaseDetail({
   const [validation, setValidation] = useState<{ isValid: boolean; missing: string[] }>({ isValid: true, missing: [] });
   const [isAdvancing, setIsAdvancing] = useState(false);
 
+  // Visibility role for approved documents
+  const [approvingDoc, setApprovingDoc] = useState<{ id: string; name: string } | null>(null);
+  const [selectedAllowedRole, setSelectedAllowedRole] = useState<string>('Todos');
+
   // View mode switcher: 'flow' (checklist stages) or 'document' (100% digitalized word document)
   const [caseViewMode, setCaseViewMode] = useState<'flow' | 'document'>('flow');
   const [editableDocText, setEditableDocText] = useState('');
@@ -129,6 +149,18 @@ export default function CaseDetail({
   const [isSavingDoc, setIsSavingDoc] = useState(false);
   const [showDocumentToAllLocal, setShowDocumentToAllLocal] = useState(true);
   const [sharedViewModeLocal, setSharedViewModeLocal] = useState<'both' | 'flow' | 'document'>('both');
+
+  // Advisor upload requests state
+  const [requestingForReqId, setRequestingForReqId] = useState<string | null>(null);
+  const [requestedExt, setRequestedExt] = useState('.pdf');
+
+  // Manager upload request review state
+  const [reviewingRequest, setReviewingRequest] = useState<UploadRequest | null>(null);
+  const [allowedExt, setAllowedExt] = useState('.pdf');
+  const [allowedMaxWeight, setAllowedMaxWeight] = useState<number>(5);
+  const [responseComment, setResponseComment] = useState('');
+  const [isRejecting, setIsRejecting] = useState(false);
+  const [submittingReview, setSubmittingReview] = useState(false);
   const [sharedDocs, setSharedDocs] = useState<any[]>([]);
 
   useEffect(() => {
@@ -235,27 +267,205 @@ export default function CaseDetail({
     alert('Formulario guardado con éxito.');
   };
 
-  // Upload file simulation
+  // Upload file simulation with approved request verification
   const handleMockFileUpload = (reqId: string, reqName: string) => {
-    const defaultFileNames: Record<string, string> = {
-      'Reserva Firmada': 'Reserva_Firma_Firmado.pdf',
-      'Escritura de Propiedad Antecedente': 'Escritura_Matriz_Certificada.pdf',
-      'Plano de Mensura Aprobado': 'Plano_Catastral_Mensurado.pdf',
-      'Boleto Compraventa Firmado': 'Boleto_Firmas_Certificadas.pdf',
-      'Código de Oferta de Transferencia (COTI)': 'AFIP_COTI_Certificado.pdf',
-      'Estado de Deuda de Impuestos': 'Libre_Deuda_Provincial.pdf',
-      'Escritura Matriz Definitiva': 'Escritura_Traslativa_Dominio.pdf',
-      'DNI de Locatario y Garante': 'DNI_Frente_Reverso_Locatario.pdf',
-      'Demostración de Ingresos': 'Recibos_Sueldo_Ultimos3.pdf',
-      'Título de Propiedad en Garantía': 'Escritura_Garantia_Inmueble.pdf',
-      'Contrato de Locación Firmado': 'Contrato_Locacion_Firmado_Colegio.pdf',
-      'Formulario de Solicitud de Préstamo': 'Solicitud_Mutuo_Hipotecario.pdf'
-    };
+    if (currentUser.role === 'ASESOR') {
+      const approvedReq = uploadRequests?.find(
+        r => r.caseId === caseId && r.requirementId === reqId && r.status === 'approved'
+      );
+      if (!approvedReq) {
+        alert('No tienes autorización aprobada para subir este documento.');
+        return;
+      }
+      
+      const ext = approvedReq.allowedExtension || '.pdf';
+      const maxWeightMb = approvedReq.allowedMaxWeight || 5;
 
-    const fileName = defaultFileNames[reqName] || `${reqName.replace(/\s+/g, '_')}_Copia.pdf`;
-    const fileSize = Math.floor(500 * 1024 + Math.random() * 3 * 1024 * 1024); // 500KB to 3.5MB
+      const baseName = reqName.replace(/\s+/g, '_');
+      const fileName = `${baseName}${ext}`;
+      
+      const allowedSizeBytes = maxWeightMb * 1024 * 1024;
+      const fileSize = Math.floor(Math.min(2 * 1024 * 1024, allowedSizeBytes - 100 * 1024)); // Under limit, max 2MB
 
-    onUploadDoc(currentStage!.id, reqId, reqName, fileName, fileSize);
+      onUploadDoc(currentStage!.id, reqId, reqName, fileName, fileSize);
+      alert(`Documento "${fileName}" subido con éxito bajo la autorización del Manager (Límite: ${maxWeightMb}MB, Ext: ${ext})`);
+    } else {
+      const defaultFileNames: Record<string, string> = {
+        'Reserva Firmada': 'Reserva_Firma_Firmado.pdf',
+        'Escritura de Propiedad Antecedente': 'Escritura_Matriz_Certificada.pdf',
+        'Plano de Mensura Aprobado': 'Plano_Catastral_Mensurado.pdf',
+        'Boleto Compraventa Firmado': 'Boleto_Firmas_Certificadas.pdf',
+        'Código de Oferta de Transferencia (COTI)': 'AFIP_COTI_Certificado.pdf',
+        'Estado de Deuda de Impuestos': 'Libre_Deuda_Provincial.pdf',
+        'Escritura Matriz Definitiva': 'Escritura_Traslativa_Dominio.pdf',
+        'DNI de Locatario y Garante': 'DNI_Frente_Reverso_Locatario.pdf',
+        'Demostración de Ingresos': 'Recibos_Sueldo_Ultimos3.pdf',
+        'Título de Propiedad en Garantía': 'Escritura_Garantia_Inmueble.pdf',
+        'Contrato de Locación Firmado': 'Contrato_Locacion_Firmado_Colegio.pdf',
+        'Formulario de Solicitud de Préstamo': 'Solicitud_Mutuo_Hipotecario.pdf'
+      };
+
+      const fileName = defaultFileNames[reqName] || `${reqName.replace(/\s+/g, '_')}_Copia.pdf`;
+      const fileSize = Math.floor(500 * 1024 + Math.random() * 3 * 1024 * 1024); // 500KB to 3.5MB
+
+      onUploadDoc(currentStage!.id, reqId, reqName, fileName, fileSize);
+    }
+  };
+
+  const handleCreateUploadRequestSubmit = async (stageId: string, reqId: string, reqName: string, requestedExtension: string) => {
+    try {
+      const response = await fetch('/api/upload-requests/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          caseId,
+          stageId,
+          requirementId: reqId,
+          requirementName: reqName,
+          requestedBy: currentUser.id,
+          requestedExtension
+        })
+      });
+      if (!response.ok) {
+        throw new Error('Error al enviar la solicitud.');
+      }
+      alert('Solicitud de autorización enviada con éxito al Manager.');
+      setRequestingForReqId(null);
+      if (loadState) {
+        await loadState();
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error al procesar la solicitud.');
+    }
+  };
+
+  const handleReviewUploadRequestSubmit = async (reqObjId: string, status: 'approved' | 'rejected') => {
+    setSubmittingReview(true);
+    try {
+      const response = await fetch('/api/upload-requests/review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: reqObjId,
+          status,
+          allowedExtension: allowedExt,
+          allowedMaxWeight: Number(allowedMaxWeight),
+          responseComment,
+          reviewedBy: currentUser.id
+        })
+      });
+      if (!response.ok) {
+        throw new Error('Error al revisar la solicitud.');
+      }
+      alert(`Solicitud ${status === 'approved' ? 'aprobada' : 'rechazada'} con éxito.`);
+      setReviewingRequest(null);
+      setResponseComment('');
+      if (loadState) {
+        await loadState();
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error al procesar.');
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
+
+  // Self-assign manager to case
+  const [submittingAssignment, setSubmittingAssignment] = useState(false);
+  const handleAcceptAssignment = async () => {
+    setSubmittingAssignment(true);
+    try {
+      const response = await fetch(`/api/cases/${caseObj.id}/assign-manager`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          managerId: currentUser.id,
+          currentUserId: currentUser.id
+        })
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Error al aceptar la asignación del legajo.');
+      }
+      alert('¡Has aceptado la asignación! Ahora eres el Manager asignado a este legajo.');
+      if (loadState) {
+        await loadState();
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error al procesar la asignación.');
+    } finally {
+      setSubmittingAssignment(false);
+    }
+  };
+
+  // Request review from assigned manager
+  const [isRequestingReview, setIsRequestingReview] = useState(false);
+  const [advisorReviewNote, setAdvisorReviewNote] = useState('');
+  const [showReviewRequestModal, setShowReviewRequestModal] = useState(false);
+
+  // Request reassignment from manager to system
+  const [showReassignModal, setShowReassignModal] = useState(false);
+  const [reassignReason, setReassignReason] = useState('');
+  const [isRequestingReassign, setIsRequestingReassign] = useState(false);
+
+  const handleRequestReassign = async () => {
+    if (!reassignReason.trim()) {
+      alert('Por favor ingrese un motivo para solicitar la reasignación.');
+      return;
+    }
+    setIsRequestingReassign(true);
+    try {
+      const response = await fetch(`/api/cases/${caseObj.id}/request-reassignment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          currentUserId: currentUser.id,
+          reason: reassignReason
+        })
+      });
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || 'Error al solicitar la reasignación.');
+      }
+      alert('¡Solicitud de reasignación enviada al sistema con éxito! Un administrador o superadmin la revisará en el apartado de Mensajes de Sistema.');
+      setShowReassignModal(false);
+      setReassignReason('');
+      if (loadState) {
+        await loadState();
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error al enviar la solicitud.');
+    } finally {
+      setIsRequestingReassign(false);
+    }
+  };
+
+  const handleRequestReview = async () => {
+    setIsRequestingReview(true);
+    try {
+      const response = await fetch(`/api/cases/${caseObj.id}/request-review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          currentUserId: currentUser.id,
+          note: advisorReviewNote
+        })
+      });
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || 'Error al solicitar la revisión.');
+      }
+      alert('¡Solicitud de revisión enviada al Manager con éxito!');
+      setShowReviewRequestModal(false);
+      setAdvisorReviewNote('');
+      if (loadState) {
+        await loadState();
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error al solicitar la revisión.');
+    } finally {
+      setIsRequestingReview(false);
+    }
   };
 
   // AI Compliance Audit Trigger
@@ -303,26 +513,66 @@ export default function CaseDetail({
     setAssociatedReqId(undefined);
   };
 
-  // Submit participant additions in details page
+  const handleStartEditParticipant = (p: Participant) => {
+    setEditingParticipantId(p.id);
+    setPName(p.name);
+    setPLastName(p.lastName);
+    setPDni(p.dni || '');
+    setPCuit(p.cuitCuil || '');
+    setPEmail(p.email || '');
+    setPPhone(p.phone || '');
+    setPBirthDate(p.birthDate || '');
+    setPType(p.role || 'Vendedor');
+    
+    // Extract comments without role prefix
+    const rolePrefix = `${p.role || p.comments?.split(':')[0]}:`;
+    if (p.comments && p.comments.startsWith(rolePrefix)) {
+      setPComments(p.comments.substring(rolePrefix.length).trim());
+    } else {
+      setPComments(p.comments || '');
+    }
+    setShowAddPart(true); // Open the actor creation/edit panel
+  };
+
+  // Submit participant additions/edits in details page
   const handleAddParticipantSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!pName || !pLastName || !pDni || !pCuit || !pEmail) {
-      alert('Por favor complete los campos obligatorios del participante.');
+    if (!pName || !pLastName || !pDni || !pCuit || !pBirthDate || !pEmail || !pPhone) {
+      alert('Favor de completar todos los campos obligatorios del actor (Nombre, Apellido, Fecha de Nacimiento, DNI, CUIT/CUIL, Email, Teléfono/Celular).');
       return;
     }
 
-    const newPart: Participant = {
-      id: `part-${Date.now()}`,
-      name: pName,
-      lastName: pLastName,
-      dni: pDni,
-      cuitCuil: pCuit,
-      email: pEmail,
-      phone: pPhone,
-      comments: `${pType}: ${pComments}`.trim()
-    };
-
-    onAddParticipant(newPart);
+    if (editingParticipantId) {
+      if (onUpdateParticipant) {
+        onUpdateParticipant({
+          id: editingParticipantId,
+          name: pName,
+          lastName: pLastName,
+          dni: pDni,
+          cuitCuil: pCuit,
+          email: pEmail,
+          phone: pPhone,
+          birthDate: pBirthDate,
+          role: pType,
+          comments: `${pType}: ${pComments}`.trim()
+        });
+      }
+      setEditingParticipantId(null);
+    } else {
+      const newPart: Participant = {
+        id: `part-${Date.now()}`,
+        name: pName,
+        lastName: pLastName,
+        dni: pDni,
+        cuitCuil: pCuit,
+        email: pEmail,
+        phone: pPhone,
+        birthDate: pBirthDate,
+        role: pType,
+        comments: `${pType}: ${pComments}`.trim()
+      };
+      onAddParticipant(newPart);
+    }
 
     // clear fields
     setPName('');
@@ -331,6 +581,7 @@ export default function CaseDetail({
     setPCuit('');
     setPEmail('');
     setPPhone('');
+    setPBirthDate('');
     setPComments('');
     setShowAddPart(false);
   };
@@ -349,7 +600,7 @@ export default function CaseDetail({
     text = text.replace(/\[Mes\]/gi, monthNames[new Date().getMonth()]);
     text = text.replace(/\[Año\]/gi, new Date().getFullYear().toString());
     text = text.replace(/\[Título del Caso\]/gi, caseObj.title);
-    text = text.replace(/\[Código del Expediente\]/gi, caseObj.code);
+    text = text.replace(/\[Código del Legajo\]/gi, caseObj.code);
     text = text.replace(/\[Código\]/gi, caseObj.code);
     text = text.replace(/\[Descripción\]/gi, caseObj.description);
     text = text.replace(/\[Asesor\]/gi, advisor ? `${advisor.name} ${advisor.lastName}` : '');
@@ -395,7 +646,7 @@ export default function CaseDetail({
     });
 
     setEditableDocText(text);
-    alert('¡Sincronización exitosa! Los datos del expediente se han volcado en los campos del documento.');
+    alert('¡Sincronización exitosa! Los datos del legajo se han volcado en los campos del documento.');
   };
 
   // Save the edited document content back to the server
@@ -538,6 +789,16 @@ export default function CaseDetail({
              caseObj.status === 'pending_review' ? 'En Revisión' :
              'Activo'}
           </span>
+
+          {isSuperAdmin && (
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-lg transition-colors shadow-xs cursor-pointer animate-pulse"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Eliminar Legajo</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -719,74 +980,121 @@ export default function CaseDetail({
         </div>
       </div>
 
-      {/* CORE DETAILS ROW (PARTICIPANTS & STAGE REQUIREMENTS) */}
+      {/* CORE DETAILS ROW (ACTORES & STAGE REQUIREMENTS) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left Side: Participants directory - 4 cols */}
+        {/* Left Side: Actors directory - 4 cols */}
         <div className="lg:col-span-4 space-y-6">
           <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Users className="w-5 h-5 text-indigo-600" />
-                <h3 className="text-sm font-bold text-slate-800">Participantes del Caso</h3>
+                <h3 className="text-sm font-bold text-slate-800">Actores del Caso</h3>
               </div>
               <button 
                 onClick={() => setShowAddPart(!showAddPart)}
                 className="p-1 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded transition-colors"
-                title="Añadir Participante"
+                title="Añadir Actor"
               >
                 <Plus className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Quick adding participant form inside detail panel */}
+            {/* Quick adding/editing actor form inside detail panel */}
             {showAddPart && (
               <form onSubmit={handleAddParticipantSubmit} className="p-3 bg-slate-50 rounded-xl border border-slate-150 space-y-2.5 text-xs">
-                <p className="font-bold text-slate-700">Agregar Participante</p>
+                <p className="font-bold text-slate-700">{editingParticipantId ? 'Editar Actor' : 'Agregar Actor'}</p>
                 <div className="space-y-1">
-                  <label className="text-[9px] text-slate-500 font-semibold uppercase">Rol</label>
+                  <label className="text-[9px] text-slate-500 font-semibold uppercase">Rol del Actor</label>
                   <select value={pType} onChange={(e) => setPType(e.target.value as ParticipantType)} className="w-full text-xs p-1.5 bg-white border border-slate-200 rounded">
-                    <option value="Cliente">Cliente</option>
-                    <option value="Comprador">Comprador</option>
                     <option value="Vendedor">Vendedor</option>
-                    <option value="Titular">Titular</option>
+                    <option value="Comprador">Comprador</option>
                     <option value="Garante">Garante</option>
+                    <option value="Escribano">Escribano</option>
+                    <option value="Cliente">Cliente</option>
+                    <option value="Titular">Titular</option>
                     <option value="Apoderado">Apoderado</option>
                   </select>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  <input required type="text" placeholder="Nombre" value={pName} onChange={(e) => setPName(e.target.value)} className="p-1.5 border border-slate-200 rounded text-xs" />
-                  <input required type="text" placeholder="Apellido" value={pLastName} onChange={(e) => setPLastName(e.target.value)} className="p-1.5 border border-slate-200 rounded text-xs" />
+                  <input required type="text" placeholder="Nombre *" value={pName} onChange={(e) => setPName(e.target.value)} className="p-1.5 border border-slate-200 rounded text-xs" />
+                  <input required type="text" placeholder="Apellido *" value={pLastName} onChange={(e) => setPLastName(e.target.value)} className="p-1.5 border border-slate-200 rounded text-xs" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[9px] text-slate-500 font-semibold uppercase">Fecha de Nacimiento *</label>
+                  <input required type="date" value={pBirthDate} onChange={(e) => setPBirthDate(e.target.value)} className="w-full p-1.5 border border-slate-200 rounded text-xs" />
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  <input required type="text" placeholder="DNI" value={pDni} onChange={(e) => setPDni(e.target.value)} className="p-1.5 border border-slate-200 rounded text-xs" />
-                  <input required type="text" placeholder="CUIT/CUIL" value={pCuit} onChange={(e) => setPCuit(e.target.value)} className="p-1.5 border border-slate-200 rounded text-xs" />
+                  <input required type="text" placeholder="DNI *" value={pDni} onChange={(e) => setPDni(e.target.value)} className="p-1.5 border border-slate-200 rounded text-xs" />
+                  <input required type="text" placeholder="CUIT/CUIL *" value={pCuit} onChange={(e) => setPCuit(e.target.value)} className="p-1.5 border border-slate-200 rounded text-xs" />
                 </div>
-                <input required type="email" placeholder="Email" value={pEmail} onChange={(e) => setPEmail(e.target.value)} className="w-full p-1.5 border border-slate-200 rounded text-xs" />
-                <input type="text" placeholder="Teléfono" value={pPhone} onChange={(e) => setPPhone(e.target.value)} className="w-full p-1.5 border border-slate-200 rounded text-xs" />
-                <input type="text" placeholder="Comentarios" value={pComments} onChange={(e) => setPComments(e.target.value)} className="w-full p-1.5 border border-slate-200 rounded text-xs" />
+                <input required type="email" placeholder="Email *" value={pEmail} onChange={(e) => setPEmail(e.target.value)} className="w-full p-1.5 border border-slate-200 rounded text-xs" />
+                <input required type="text" placeholder="Teléfono/Celular *" value={pPhone} onChange={(e) => setPPhone(e.target.value)} className="w-full p-1.5 border border-slate-200 rounded text-xs" />
+                <input type="text" placeholder="Observaciones" value={pComments} onChange={(e) => setPComments(e.target.value)} className="w-full p-1.5 border border-slate-200 rounded text-xs" />
                 <div className="flex justify-end gap-1.5 pt-1">
-                  <button type="button" onClick={() => setShowAddPart(false)} className="px-2 py-1 bg-slate-200 hover:bg-slate-300 rounded text-[10px]">Cancelar</button>
-                  <button type="submit" className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded text-[10px]">Añadir</button>
+                  <button 
+                    type="button" 
+                    onClick={() => {
+                      setEditingParticipantId(null);
+                      setPName('');
+                      setPLastName('');
+                      setPDni('');
+                      setPCuit('');
+                      setPEmail('');
+                      setPPhone('');
+                      setPBirthDate('');
+                      setPComments('');
+                      setShowAddPart(false);
+                    }} 
+                    className="px-2 py-1 bg-slate-200 hover:bg-slate-300 rounded text-[10px]"
+                  >
+                    Cancelar
+                  </button>
+                  <button type="submit" className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded text-[10px]">
+                    {editingParticipantId ? 'Guardar Cambios' : 'Añadir'}
+                  </button>
                 </div>
               </form>
             )}
 
             <div className="space-y-3.5 divide-y divide-slate-100 max-h-[350px] overflow-y-auto pr-1">
               {caseObj.participants.length === 0 ? (
-                <p className="text-xs text-slate-400 italic py-4">No se han registrado participantes aún.</p>
+                <p className="text-xs text-slate-400 italic py-4">No se han registrado actores aún.</p>
               ) : (
                 caseObj.participants.map((p, idx) => (
                   <div key={p.id || idx} className={`pt-3 ${idx === 0 ? 'pt-0' : ''}`}>
                     <div className="flex items-center justify-between text-xs font-semibold mb-1">
                       <span className="text-slate-800">{p.name} {p.lastName}</span>
-                      <span className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded text-[9px] font-mono tracking-wider uppercase">
-                        {p.comments?.split(':')[0] || 'Miembro'}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="bg-indigo-50 text-indigo-700 border border-indigo-100 px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase">
+                          {p.role || p.comments?.split(':')[0] || 'Actor'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleStartEditParticipant(p)}
+                          className="text-slate-400 hover:text-indigo-600 p-0.5 rounded transition-colors cursor-pointer"
+                          title="Editar Actor"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm(`¿Está seguro de eliminar al actor "${p.name} {p.lastName}"?`)) {
+                              if (onRemoveParticipant) onRemoveParticipant(p.id);
+                            }
+                          }}
+                          className="text-slate-400 hover:text-red-600 p-0.5 rounded transition-colors cursor-pointer"
+                          title="Eliminar Actor"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                     <div className="space-y-0.5 text-[10px] text-slate-500 font-mono">
-                      <p>DNI: {p.dni}</p>
-                      <p>CUIT: {p.cuitCuil}</p>
-                      <p className="truncate">Email: {p.email}</p>
+                      <p>DNI: {p.dni || 'N/A'}</p>
+                      <p>CUIT: {p.cuitCuil || 'N/A'}</p>
+                      <p>F. Nac: {p.birthDate || 'N/A'}</p>
+                      <p className="truncate">Email: {p.email || 'N/A'}</p>
                       <p>Tel: {p.phone || 'N/A'}</p>
                     </div>
                     {p.comments && p.comments.includes(':') && (
@@ -822,6 +1130,80 @@ export default function CaseDetail({
                   <p className="font-bold text-slate-700">{manager ? `${manager.name} ${manager.lastName}` : 'Sin asignar'}</p>
                 </div>
               </div>
+              {currentUser.role === 'SUPERADMIN' ? (
+                <div className="pt-2.5 border-t border-slate-100 space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Reasignar Responsable (Superadmin)</label>
+                  <select
+                    disabled={submittingAssignment}
+                    value={caseObj.assignedManagerId || ''}
+                    onChange={async (e) => {
+                      const selectedId = e.target.value;
+                      if (!selectedId) return;
+                      setSubmittingAssignment(true);
+                      try {
+                        const response = await fetch(`/api/cases/${caseObj.id}/assign-manager`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ managerId: selectedId, currentUserId: currentUser.id })
+                        });
+                        if (!response.ok) {
+                          const err = await response.json();
+                          throw new Error(err.error);
+                        }
+                        alert('Legajo reasignado exitosamente por Superadmin.');
+                        if (loadState) {
+                          await loadState();
+                        }
+                      } catch (err: any) {
+                        alert(`Error al reasignar: ${err.message}`);
+                      } finally {
+                        setSubmittingAssignment(false);
+                      }
+                    }}
+                    className="w-full text-xs bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  >
+                    <option value="" disabled>Seleccionar Responsable...</option>
+                    {users.filter(u => ['SUPERADMIN', 'ADMIN', 'MANAGER'].includes(u.role)).map(u => (
+                      <option key={u.id} value={u.id}>{u.name} {u.lastName} ({u.role})</option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <>
+                  {isManagerOrAdmin && caseObj.assignedManagerId !== currentUser.id && (
+                    <div className="pt-2 border-t border-slate-100 space-y-1.5">
+                      <button
+                        onClick={handleAcceptAssignment}
+                        disabled={!!caseObj.assignedManagerId || submittingAssignment}
+                        className={`w-full flex items-center justify-center gap-1.5 px-3 py-2 text-white font-bold text-xs rounded-xl shadow-xs transition-all ${
+                          caseObj.assignedManagerId 
+                            ? 'bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300' 
+                            : 'bg-emerald-600 hover:bg-emerald-700 cursor-pointer active:scale-98'
+                        }`}
+                      >
+                        {submittingAssignment ? 'Asignando...' : caseObj.assignedManagerId ? '🔒 Asignación Cerrada' : '✍️ Aceptar Asignación'}
+                      </button>
+                      {caseObj.assignedManagerId && (
+                        <p className="text-[10px] text-slate-400 italic text-center leading-normal">
+                          Este legajo ya tiene un Manager asignado. Solo el Superadmin puede modificar la asignación directa.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {currentUser.role === 'MANAGER' && caseObj.assignedManagerId === currentUser.id && (
+                    <div className="pt-2 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={() => setShowReassignModal(true)}
+                        className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-bold text-xs rounded-xl transition-all cursor-pointer"
+                      >
+                        🔄 Solicitar Reasignación
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -834,7 +1216,14 @@ export default function CaseDetail({
             <div className="p-5 bg-slate-50/50 border-b border-slate-100">
               <div className="flex items-center justify-between gap-4">
                 <div>
-                  <span className="text-[10px] text-indigo-600 uppercase font-mono font-bold tracking-wider">Etapa en Curso</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-indigo-600 uppercase font-mono font-bold tracking-wider">Etapa en Curso</span>
+                    {caseObj.isCurrentStageApproved && (
+                      <span className="text-[9px] bg-emerald-500 text-white font-bold px-2 py-0.5 rounded-lg flex items-center gap-1 uppercase tracking-wider animate-pulse">
+                        <Check className="w-3 h-3" /> Aprobada
+                      </span>
+                    )}
+                  </div>
                   <h3 className="text-base font-bold text-slate-800 mt-0.5">{currentStage?.name}</h3>
                   <p className="text-xs text-slate-500">{currentStage?.description}</p>
                 </div>
@@ -879,7 +1268,9 @@ export default function CaseDetail({
                     currentStage?.requirements
                       .filter(r => r.type === 'document')
                       .map((req) => {
-                        const doc = documents.find(d => d.caseId === caseObj.id && d.requirementId === req.id);
+                        const originalDoc = documents.find(d => d.caseId === caseObj.id && d.requirementId === req.id);
+                        const isDocVisible = !originalDoc || originalDoc.status !== 'approved' || !originalDoc.allowedRoles || originalDoc.allowedRoles.includes(currentUser.role) || currentUser.role === 'SUPERADMIN' || currentUser.role === 'ADMIN';
+                        const doc = isDocVisible ? originalDoc : undefined;
                         const isDigitalContract = req.documentSourceType === 'digital_contract';
                         const isDownloadAsset = req.documentSourceType === 'download_asset';
                         const linkedSharedDoc = isDownloadAsset ? sharedDocs.find(d => d.id === req.linkedSharedDocumentId) : null;
@@ -910,6 +1301,19 @@ export default function CaseDetail({
                                     type="button"
                                     onClick={() => {
                                       if (linkedSharedDoc.dataUrl) {
+                                        // Log client-side action in backend
+                                        fetch('/api/audit-logs/log', {
+                                          method: 'POST',
+                                          headers: { 'Content-Type': 'application/json' },
+                                          body: JSON.stringify({
+                                            userId: currentUser.id,
+                                            action: `Visualizó / descargó documento "${linkedSharedDoc.fileName}"`,
+                                            entityType: 'Document',
+                                            entityId: linkedSharedDoc.id,
+                                            entityName: linkedSharedDoc.fileName
+                                          })
+                                        }).catch(err => console.error('Failed to log audit:', err));
+
                                         const link = document.createElement('a');
                                         link.href = linkedSharedDoc.dataUrl;
                                         link.download = linkedSharedDoc.fileName;
@@ -926,6 +1330,112 @@ export default function CaseDetail({
                                   </button>
                                 </div>
                               )}
+
+                              {isManagerOrAdmin && (() => {
+                                const pendingReqForManager = uploadRequests?.find(
+                                  r => r.caseId === caseId && r.requirementId === req.id && r.status === 'pending'
+                                );
+                                if (!pendingReqForManager) return null;
+                                return (
+                                  <div className="mt-2.5 p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-2 max-w-md">
+                                    <div className="flex items-center gap-1.5 text-amber-800 text-[11px] font-bold">
+                                      <Clock className="w-4 h-4 text-amber-500 shrink-0" />
+                                      <span>Solicitud de Autorización de Subida de Archivo</span>
+                                    </div>
+                                    <p className="text-[10px] text-amber-700">
+                                      El asesor solicitó autorización para subir un archivo con extensión <strong>{pendingReqForManager.requestedExtension}</strong> para este requerimiento.
+                                    </p>
+                                    
+                                    {reviewingRequest?.id === pendingReqForManager.id ? (
+                                      <div className="space-y-3 pt-2 border-t border-amber-200/50">
+                                        <div className="grid grid-cols-2 gap-2">
+                                          <div>
+                                            <label className="block text-[9px] font-bold text-slate-500 uppercase">Extensión Permitida</label>
+                                            <select
+                                              value={allowedExt}
+                                              onChange={(e) => setAllowedExt(e.target.value)}
+                                              className="mt-1 w-full text-[10px] p-1.5 bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-amber-500"
+                                            >
+                                              <option value=".pdf">.pdf (Recomendado)</option>
+                                              <option value=".docx">.docx</option>
+                                              <option value=".doc">.doc</option>
+                                              <option value=".xlsx">.xlsx</option>
+                                              <option value=".xls">.xls</option>
+                                              <option value=".png">.png</option>
+                                              <option value=".jpg">.jpg</option>
+                                            </select>
+                                          </div>
+                                          <div>
+                                            <label className="block text-[9px] font-bold text-slate-500 uppercase">Peso Máximo ({allowedMaxWeight}MB)</label>
+                                            <select
+                                              value={allowedMaxWeight}
+                                              onChange={(e) => setAllowedMaxWeight(Number(e.target.value))}
+                                              className="mt-1 w-full text-[10px] p-1.5 bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-amber-500"
+                                            >
+                                              {Array.from({ length: 25 }, (_, i) => i + 1).map(num => (
+                                                <option key={num} value={num}>{num} MB</option>
+                                              ))}
+                                            </select>
+                                          </div>
+                                        </div>
+                                        <div>
+                                          <label className="block text-[9px] font-bold text-slate-500 uppercase">Comentario / Nota (Opcional)</label>
+                                          <input
+                                            type="text"
+                                            value={responseComment}
+                                            onChange={(e) => setResponseComment(e.target.value)}
+                                            placeholder="Ej: Solo PDF firmado o motivo del rechazo..."
+                                            className="mt-1 w-full text-[10px] p-1.5 bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-amber-500"
+                                          />
+                                        </div>
+                                        <div className="flex items-center justify-end gap-2 pt-1">
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setReviewingRequest(null);
+                                              setResponseComment('');
+                                            }}
+                                            className="px-2 py-1 text-[10px] font-semibold text-slate-500 hover:text-slate-700 cursor-pointer"
+                                          >
+                                            Cancelar
+                                          </button>
+                                          <button
+                                            type="button"
+                                            disabled={submittingReview}
+                                            onClick={() => handleReviewUploadRequestSubmit(pendingReqForManager.id, 'rejected')}
+                                            className="px-2.5 py-1 text-[10px] font-bold bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100 rounded-md transition-all cursor-pointer"
+                                          >
+                                            Rechazar
+                                          </button>
+                                          <button
+                                            type="button"
+                                            disabled={submittingReview}
+                                            onClick={() => handleReviewUploadRequestSubmit(pendingReqForManager.id, 'approved')}
+                                            className="px-3 py-1 text-[10px] font-bold bg-amber-600 hover:bg-amber-700 text-white rounded-md shadow-xs transition-all cursor-pointer"
+                                          >
+                                            {submittingReview ? 'Procesando...' : 'Aprobar Solicitud'}
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className="flex items-center gap-2 pt-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setReviewingRequest(pendingReqForManager);
+                                            setAllowedExt(pendingReqForManager.requestedExtension || '.pdf');
+                                            setAllowedMaxWeight(5);
+                                            setResponseComment('');
+                                          }}
+                                          className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-[10px] shadow-xs cursor-pointer transition-colors"
+                                        >
+                                          Evaluar Solicitud
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })()}
 
                               {/* Loaded file link */}
                               {doc && doc.fileName && (
@@ -958,24 +1468,108 @@ export default function CaseDetail({
 
                               {/* Operations for advisors */}
                               {isAsesor && (
-                                <div className="flex items-center gap-1.5">
+                                <div className="flex flex-col items-end gap-1.5">
                                   {isDigitalContract && (
                                     <button
                                       type="button"
                                       onClick={() => setCaseViewMode('document')}
-                                      className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-bold rounded-lg shadow-xs flex items-center gap-1 transition-all cursor-pointer"
+                                      className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-bold rounded-lg shadow-xs flex items-center gap-1 transition-all cursor-pointer mb-1"
                                     >
                                       <FileText className="w-3.5 h-3.5 text-indigo-500" />
                                       <span>Completar Contrato</span>
                                     </button>
                                   )}
-                                  <button
-                                    onClick={() => handleMockFileUpload(req.id, req.name)}
-                                    className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-[10px] font-bold rounded-lg shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
-                                  >
-                                    <Upload className="w-3.5 h-3.5 text-slate-400" />
-                                    <span>{doc ? 'Reemplazar' : 'Subir Documento'}</span>
-                                  </button>
+                                  
+                                  {(() => {
+                                    const approvedReq = uploadRequests?.find(
+                                      r => r.caseId === caseId && r.requirementId === req.id && r.status === 'approved'
+                                    );
+                                    const pendingReq = uploadRequests?.find(
+                                      r => r.caseId === caseId && r.requirementId === req.id && r.status === 'pending'
+                                    );
+                                    const rejectedReq = uploadRequests?.find(
+                                      r => r.caseId === caseId && r.requirementId === req.id && r.status === 'rejected'
+                                    );
+
+                                    if (approvedReq) {
+                                      return (
+                                        <div className="flex flex-col items-end gap-1">
+                                          <div className="flex items-center gap-1.5">
+                                            <span className="text-[10px] text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full font-semibold">
+                                              Autorizado (Máx: {approvedReq.allowedMaxWeight}MB, Ext: {approvedReq.allowedExtension})
+                                            </span>
+                                            <button
+                                              onClick={() => handleMockFileUpload(req.id, req.name)}
+                                              className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-[10px] font-bold rounded-lg shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                                            >
+                                              <Upload className="w-3.5 h-3.5 text-slate-400" />
+                                              <span>{doc ? 'Reemplazar' : 'Subir Documento'}</span>
+                                            </button>
+                                          </div>
+                                        </div>
+                                      );
+                                    }
+
+                                    if (pendingReq) {
+                                      return (
+                                        <div className="flex items-center gap-2 text-amber-600 bg-amber-50/60 border border-amber-200/50 px-2.5 py-1.5 rounded-lg text-[10px]">
+                                          <Clock className="w-3.5 h-3.5 text-amber-500 animate-spin shrink-0" />
+                                          <span>Permiso solicitado ({pendingReq.requestedExtension}) [Pendiente]</span>
+                                        </div>
+                                      );
+                                    }
+
+                                    return (
+                                      <div className="flex flex-col items-end gap-1">
+                                        {rejectedReq && (
+                                          <div className="text-red-600 bg-red-50 border border-red-100 px-2.5 py-1.5 rounded-lg text-[10px] max-w-xs text-right mb-1">
+                                            <p className="font-semibold">Rechazado ({rejectedReq.requestedExtension})</p>
+                                            {rejectedReq.responseComment && <p className="text-[9px] text-slate-500 italic">Motivo: "{rejectedReq.responseComment}"</p>}
+                                          </div>
+                                        )}
+                                        {requestingForReqId === req.id ? (
+                                          <div className="flex items-center gap-1 bg-slate-100 p-1.5 rounded-lg border border-slate-200">
+                                            <select
+                                              value={requestedExt}
+                                              onChange={(e) => setRequestedExt(e.target.value)}
+                                              className="text-[10px] font-mono border-0 bg-transparent py-0.5 px-1 focus:ring-0 focus:outline-none"
+                                            >
+                                              <option value=".pdf">.pdf</option>
+                                              <option value=".docx">.docx</option>
+                                              <option value=".doc">.doc</option>
+                                              <option value=".xlsx">.xlsx</option>
+                                              <option value=".xls">.xls</option>
+                                              <option value=".png">.png</option>
+                                              <option value=".jpg">.jpg</option>
+                                            </select>
+                                            <button
+                                              onClick={() => handleCreateUploadRequestSubmit(currentStage!.id, req.id, req.name, requestedExt)}
+                                              className="px-2 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold rounded cursor-pointer"
+                                            >
+                                              Solicitar
+                                            </button>
+                                            <button
+                                              onClick={() => setRequestingForReqId(null)}
+                                              className="px-1.5 py-1 text-slate-400 hover:text-slate-600 text-[10px] font-bold"
+                                            >
+                                              <X className="w-3.5 h-3.5" />
+                                            </button>
+                                          </div>
+                                        ) : (
+                                          <button
+                                            onClick={() => {
+                                              setRequestingForReqId(req.id);
+                                              setRequestedExt('.pdf');
+                                            }}
+                                            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold rounded-lg shadow-sm flex items-center gap-1 transition-all cursor-pointer"
+                                          >
+                                            <Settings className="w-3.5 h-3.5 text-indigo-200" />
+                                            <span>{rejectedReq ? 'Volver a Solicitar' : 'Solicitar Permiso de Subida'}</span>
+                                          </button>
+                                        )}
+                                      </div>
+                                    );
+                                  })()}
                                 </div>
                               )}
 
@@ -984,21 +1578,27 @@ export default function CaseDetail({
                                 <div className="flex items-center gap-1.5">
                                   {doc.status !== 'approved' && (
                                     <button
-                                      onClick={() => onReviewDoc(doc.id, 'approved')}
-                                      className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-[10px] font-bold rounded-lg transition-colors"
+                                      disabled={caseObj.isCurrentStageApproved}
+                                      onClick={() => {
+                                        setApprovingDoc({ id: doc.id, name: req.name });
+                                        setSelectedAllowedRole('Todos');
+                                      }}
+                                      className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-[10px] font-bold rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                       Aprobar
                                     </button>
                                   )}
                                   {doc.status !== 'rejected' && (
                                     <button
+                                      disabled={caseObj.isCurrentStageApproved}
                                       onClick={() => {
                                         const obs = prompt('Escribe una observación para notificar el rechazo:');
                                         if (obs !== null && obs.trim() !== '') {
                                           onReviewDoc(doc.id, 'rejected', obs);
                                         }
                                       }}
-                                      className="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-[10px] font-bold rounded-lg transition-colors"
+                                      className="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-[10px] font-bold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                      title={caseObj.isCurrentStageApproved ? "La etapa ya está aprobada" : undefined}
                                     >
                                       Rechazar
                                     </button>
@@ -1007,8 +1607,8 @@ export default function CaseDetail({
                                   {/* AI COMPLIANCE AUDIT CO-PILOT */}
                                   <button
                                     onClick={() => handleAICorrespondenceAudit(doc.id, doc.fileName || '', req.name, req.description, doc.fileName || '')}
-                                    disabled={auditingDocId !== null}
-                                    className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-bold rounded-lg flex items-center gap-1 transition-all disabled:opacity-50 shrink-0"
+                                    disabled={auditingDocId !== null || caseObj.isCurrentStageApproved}
+                                    className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-bold rounded-lg flex items-center gap-1 transition-all disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
                                     title="Ejecutar análisis de cumplimiento automático mediante Inteligencia Artificial"
                                   >
                                     {auditingDocId === doc.id ? (
@@ -1191,7 +1791,7 @@ export default function CaseDetail({
             {/* Observation list */}
             <div className="space-y-4 max-h-64 overflow-y-auto pr-1">
               {observations.filter(o => o.caseId === caseObj.id && o.stageId === currentStage?.id).length === 0 ? (
-                <p className="text-xs text-slate-400 italic py-4">No hay observaciones vigentes para esta etapa del expediente.</p>
+                <p className="text-xs text-slate-400 italic py-4">No hay observaciones vigentes para esta etapa del legajo.</p>
               ) : (
                 observations
                   .filter(o => o.caseId === caseObj.id && o.stageId === currentStage?.id)
@@ -1288,7 +1888,7 @@ export default function CaseDetail({
           <div className="bg-slate-900 text-slate-100 p-5 rounded-2xl border border-slate-800 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-5">
             <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <FileCheck2 className={`w-5 h-5 ${validation.isValid ? 'text-emerald-400' : 'text-amber-400'}`} />
+                <FileCheck2 className={`w-5 h-5 ${validation.isValid ? 'text-emerald-400' : 'text-red-400'}`} />
                 <h3 className="text-sm font-bold">Control de Avance Automatizado</h3>
               </div>
               <p className="text-xs text-slate-400">
@@ -1297,56 +1897,141 @@ export default function CaseDetail({
 
               {/* Blocker feedback checklist */}
               {!validation.isValid && (
-                <div className="bg-amber-500/10 border border-amber-500/20 p-3 rounded-lg text-[11px] text-amber-300 space-y-1.5 mt-2 max-w-lg">
-                  <p className="font-bold flex items-center gap-1.5">
-                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                <div className="bg-red-500/10 border border-red-500/20 p-3 rounded-lg text-[11px] text-red-400 space-y-1.5 mt-2 max-w-lg">
+                  <p className="font-bold flex items-center gap-1.5 text-red-300">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-red-400" />
                     Requisitos pendientes para poder avanzar:
                   </p>
-                  <ul className="list-disc list-inside space-y-0.5">
+                  <ul className="list-disc list-inside space-y-0.5 text-red-300">
                     {validation.missing.map((m, idx) => (
                       <li key={idx} className="truncate">{m}</li>
                     ))}
                   </ul>
                 </div>
               )}
+
+              {caseObj.status === 'pending_review' && ['SUPERADMIN', 'ADMIN', 'MANAGER'].includes(currentUser.role) && (
+                <div className="bg-amber-500/15 border border-amber-500/30 p-3 rounded-lg text-[11px] text-amber-300 font-medium max-w-lg mt-2">
+                  🔔 El Asesor ha completado el trabajo de esta etapa y solicita su revisión y aprobación.
+                </div>
+              )}
             </div>
 
-            <div className="shrink-0 flex flex-col items-center gap-1.5">
-              <button
-                onClick={() => {
-                  setIsAdvancing(true);
-                  setTimeout(() => {
-                    onAdvanceStage();
-                    setIsAdvancing(false);
-                  }, 800);
-                }}
-                disabled={!validation.isValid || isAdvancing}
-                className={`w-full md:w-auto px-5 py-3 rounded-xl font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2 ${
-                  validation.isValid && !isAdvancing
-                    ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/10 hover:scale-102 cursor-pointer active:scale-98'
-                    : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700/60'
-                }`}
-              >
-                {isAdvancing ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin text-white" />
-                    <span>Guardando...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Avanzar de Etapa</span>
-                    <ChevronRight className="w-4 h-4" />
-                  </>
-                )}
-              </button>
-              {validation.isValid ? (
-                <span className="text-[10px] text-emerald-400 font-bold tracking-wider uppercase flex items-center gap-1">
-                  <Check className="w-3.5 h-3.5" /> Todo validado
-                </span>
+            <div className="shrink-0 flex flex-col items-center gap-1.5 w-full md:w-auto">
+              {currentUser.role === 'ASESOR' ? (
+                <>
+                  {caseObj.isCurrentStageApproved ? (
+                    <div className="text-center space-y-1">
+                      <div className="w-full md:w-auto px-5 py-3 rounded-xl font-bold text-sm bg-emerald-950/40 text-emerald-400 border border-emerald-500/30 flex items-center justify-center gap-2">
+                        <Check className="w-4 h-4" />
+                        <span>Etapa Aprobada</span>
+                      </div>
+                      <span className="text-[9px] text-emerald-400 font-medium block">
+                        El Manager ha aprobado esta etapa.
+                      </span>
+                    </div>
+                  ) : !caseObj.assignedManagerId ? (
+                    <div className="text-center space-y-1">
+                      <button
+                        disabled={true}
+                        className="w-full md:w-auto px-5 py-3 rounded-xl font-bold text-sm bg-slate-800 text-slate-500 border border-slate-700/60 cursor-not-allowed flex items-center justify-center gap-2"
+                      >
+                        <span>Pedir Revisión de Etapa</span>
+                      </button>
+                      <span className="text-[9px] text-amber-400 block max-w-[200px] leading-tight">
+                        ⚠️ No hay un Manager asignado para este legajo.
+                      </span>
+                    </div>
+                  ) : caseObj.status === 'pending_review' ? (
+                    <div className="text-center space-y-1">
+                      <div className="w-full md:w-auto px-5 py-3 rounded-xl font-bold text-sm bg-emerald-950/40 text-emerald-400 border border-emerald-500/30 flex items-center justify-center gap-2">
+                        <Clock className="w-4 h-4 animate-pulse" />
+                        <span>Revisión Solicitada</span>
+                      </div>
+                      <span className="text-[9px] text-emerald-400 font-medium block">
+                        Esperando que el Manager apruebe la etapa
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="text-center space-y-1">
+                      <button
+                        onClick={() => setShowReviewRequestModal(true)}
+                        className="w-full md:w-auto px-5 py-3 bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-500/10 hover:scale-102 active:scale-98 cursor-pointer rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2"
+                      >
+                        <span>Pedir Revisión al Manager</span>
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                      <span className="text-[9px] text-slate-400 block">
+                        Notificará a tu Manager asignado
+                      </span>
+                    </div>
+                  )}
+                </>
               ) : (
-                <span className="text-[10px] text-red-400 font-mono tracking-wider uppercase">
-                  Acceso Restringido
-                </span>
+                <>
+                  {!caseObj.isCurrentStageApproved ? (
+                    <button
+                      onClick={() => {
+                        setIsAdvancing(true);
+                        setTimeout(() => {
+                          onApproveStage();
+                          setIsAdvancing(false);
+                        }, 800);
+                      }}
+                      disabled={!validation.isValid || isAdvancing}
+                      className={`w-full md:w-auto px-5 py-3 rounded-xl font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2 ${
+                        validation.isValid && !isAdvancing
+                          ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-500/10 hover:scale-102 cursor-pointer active:scale-98'
+                          : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700/60'
+                      }`}
+                    >
+                      {isAdvancing ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin text-white" />
+                          <span>Guardando...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>Aprobar Etapa</span>
+                          <CheckCircle className="w-4 h-4 text-emerald-200" />
+                        </>
+                      )}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        setIsAdvancing(true);
+                        setTimeout(() => {
+                          onAdvanceStage();
+                          setIsAdvancing(false);
+                        }, 800);
+                      }}
+                      disabled={isAdvancing}
+                      className="w-full md:w-auto px-5 py-3 bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-500/10 hover:scale-102 cursor-pointer active:scale-98 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2"
+                    >
+                      {isAdvancing ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin text-white" />
+                          <span>Guardando...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>{caseObj.currentStageIndex + 1 >= (template?.stages.length || 0) ? 'Finalizar Legajo' : 'Avanzar de Etapa'}</span>
+                          <ChevronRight className="w-4 h-4" />
+                        </>
+                      )}
+                    </button>
+                  )}
+                  {validation.isValid ? (
+                    <span className="text-[10px] text-emerald-400 font-bold tracking-wider uppercase flex items-center gap-1">
+                      <Check className="w-3.5 h-3.5" /> Todo validado
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-red-400 font-mono tracking-wider uppercase">
+                      Acceso Restringido
+                    </span>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -1431,7 +2116,7 @@ export default function CaseDetail({
               <p className="font-bold mb-0.5">¿Cómo completar el documento digital?</p>
               <p className="opacity-90">
                 Los textos resaltados en naranja/amarillo como <code className="bg-amber-100 px-1 rounded text-amber-800 font-mono text-[11px]">[Nombre]</code> representan variables pendientes. 
-                Completa los <strong>Formularios de la etapa</strong> o agrega <strong>Participantes</strong> del expediente, y luego haz clic en <strong>"Autocompletar Datos"</strong> para volcar la información de manera inmediata sobre el documento tal como se lee en el Word.
+                Completa los <strong>Formularios de la etapa</strong> o agrega <strong>Actores</strong> del legajo, y luego haz clic en <strong>"Autocompletar Datos"</strong> para volcar la información de manera inmediata sobre el documento tal como se lee en el Word.
               </p>
             </div>
           </div>
@@ -1460,7 +2145,7 @@ export default function CaseDetail({
                 
                 {/* Footer of the sheet */}
                 <div className="mt-16 pt-6 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between text-[11px] text-slate-400 font-mono">
-                  <span>EXPEDIENTE: {caseObj.code}</span>
+                  <span>LEGAJO: {caseObj.code}</span>
                   <span>GENERADO POR DOCFLOW PRO</span>
                 </div>
               </div>
@@ -1519,6 +2204,247 @@ export default function CaseDetail({
                 className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl"
               >
                 Entendido
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DEFINE VISIBILITY ROLE FOR APPROVED DOCUMENT MODAL */}
+      {approvingDoc && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden border border-slate-150 text-left">
+            <div className="p-4 border-b border-slate-100 bg-indigo-50 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-indigo-900">
+                <FileCheck2 className="w-5 h-5 text-indigo-600" />
+                <h4 className="text-sm font-bold">Definir Rol de Visibilidad</h4>
+              </div>
+              <button onClick={() => setApprovingDoc(null)} className="p-1 text-indigo-700 hover:text-indigo-950 rounded">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <p className="text-xs text-slate-500 leading-normal">
+                Al aprobar el documento <strong>"{approvingDoc.name}"</strong>, debes indicar qué roles de la plataforma tendrán autorización para visualizarlo en el listado de documentos aprobados del legajo.
+              </p>
+              
+              <div className="space-y-1 text-xs">
+                <label className="font-semibold text-slate-700 block">
+                  Rol Autorizado para Visualizar *
+                </label>
+                <select
+                  value={selectedAllowedRole}
+                  onChange={(e) => setSelectedAllowedRole(e.target.value)}
+                  className="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                >
+                  <option value="Todos">Todos (Público para todos los roles)</option>
+                  <option value="Asesor">Asesor (Asesores, Managers, Admins y Superadmins)</option>
+                  <option value="Manager">Manager (Managers, Admins y Superadmins)</option>
+                  <option value="Admin">Admin (Admins y Superadmins)</option>
+                  <option value="Superadmin">Superadmin (Solo Superadmins)</option>
+                </select>
+              </div>
+
+              <div className="bg-slate-50 p-3 rounded-lg border border-slate-200/50 text-[11px] text-slate-600 space-y-1">
+                <p className="font-bold text-slate-700">Resumen de Permisos:</p>
+                <p className="leading-normal">
+                  {selectedAllowedRole === 'Todos' && '✓ Todos los usuarios que participen o tengan acceso al legajo podrán visualizar este documento.'}
+                  {selectedAllowedRole === 'Asesor' && '✓ Permitido para roles: ASESOR, MANAGER, ADMIN, SUPERADMIN.'}
+                  {selectedAllowedRole === 'Manager' && '✓ Permitido para roles: MANAGER, ADMIN, SUPERADMIN (Oculto para Asesores).'}
+                  {selectedAllowedRole === 'Admin' && '✓ Permitido para roles: ADMIN, SUPERADMIN (Oculto para Asesores y Managers).'}
+                  {selectedAllowedRole === 'Superadmin' && '✓ Permitido únicamente para el SUPERADMIN.'}
+                </p>
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-end gap-2">
+              <button 
+                onClick={() => setApprovingDoc(null)}
+                className="px-4 py-2 text-slate-500 hover:text-slate-800 text-xs font-semibold rounded-xl"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={() => {
+                  let roles: string[] = ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR'];
+                  if (selectedAllowedRole === 'Asesor') {
+                    roles = ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR'];
+                  } else if (selectedAllowedRole === 'Manager') {
+                    roles = ['SUPERADMIN', 'ADMIN', 'MANAGER'];
+                  } else if (selectedAllowedRole === 'Admin') {
+                    roles = ['SUPERADMIN', 'ADMIN'];
+                  } else if (selectedAllowedRole === 'Superadmin') {
+                    roles = ['SUPERADMIN'];
+                  } else {
+                    roles = ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR'];
+                  }
+                  
+                  onReviewDoc(approvingDoc.id, 'approved', undefined, roles);
+                  setApprovingDoc(null);
+                }}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl"
+              >
+                Aprobar y Guardar Permiso
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Solicitud de Revisión de Etapa */}
+      {showReviewRequestModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full border border-slate-100 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-600">
+                <FileCheck2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-800">Pedir Revisión al Manager</h3>
+                <p className="text-xs text-slate-400">Solicita al manager asignado que revise la etapa actual.</p>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-600">Mensaje o Comentario (Opcional)</label>
+              <textarea
+                value={advisorReviewNote}
+                onChange={(e) => setAdvisorReviewNote(e.target.value)}
+                placeholder="Escribe un mensaje para el manager sobre el trabajo realizado en esta etapa..."
+                rows={3}
+                className="w-full text-xs p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowReviewRequestModal(false);
+                  setAdvisorReviewNote('');
+                }}
+                className="px-4 py-2 text-xs font-semibold text-slate-500 hover:text-slate-700 bg-slate-50 hover:bg-slate-100 rounded-xl transition-all cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleRequestReview}
+                disabled={isRequestingReview}
+                className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-300 rounded-xl shadow-md transition-all cursor-pointer"
+              >
+                {isRequestingReview ? 'Enviando...' : '🚀 Enviar Solicitud'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Solicitud de Reasignación / Liberación de Legajo */}
+      {showReassignModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full border border-slate-100 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-red-50 flex items-center justify-center text-red-600">
+                <History className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-800">Solicitar Reasignación</h3>
+                <p className="text-xs text-slate-400">Envía un pedido formal al sistema para reasignar este legajo.</p>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-600">Motivo / Justificación *</label>
+              <textarea
+                value={reassignReason}
+                onChange={(e) => setReassignReason(e.target.value)}
+                placeholder="Explica los motivos por los cuales solicitas liberar o reasignar este legajo (por ejemplo: sobrecarga de tareas, viaje, etc.)..."
+                rows={4}
+                className="w-full text-xs p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                required
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowReassignModal(false);
+                  setReassignReason('');
+                }}
+                className="px-4 py-2 text-xs font-semibold text-slate-500 hover:text-slate-700 bg-slate-50 hover:bg-slate-100 rounded-xl transition-all cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleRequestReassign}
+                disabled={isRequestingReassign}
+                className="px-4 py-2 text-xs font-bold text-white bg-red-600 hover:bg-red-500 disabled:bg-slate-300 rounded-xl shadow-md transition-all cursor-pointer"
+              >
+                {isRequestingReassign ? 'Enviando...' : '🔄 Enviar Solicitud'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-xl overflow-hidden border border-slate-100 animate-in fade-in duration-200">
+            <div className="p-6 space-y-4">
+              <div className="flex items-center gap-3 text-rose-600">
+                <div className="p-2 bg-rose-50 rounded-xl">
+                  <AlertTriangle className="w-6 h-6" />
+                </div>
+                <h3 className="text-lg font-bold text-slate-800">¿Eliminar Legajo Permanentemente?</h3>
+              </div>
+              
+              <div className="space-y-2 text-xs text-slate-600 leading-relaxed">
+                <p>
+                  Está a punto de eliminar permanentemente el legajo <strong className="text-slate-800 font-bold">"{caseObj.title}" ({caseObj.code})</strong>.
+                </p>
+                <p className="bg-rose-50 text-rose-800 p-3 rounded-lg border border-rose-100 font-medium">
+                  Atención: Esta acción eliminará el legajo y todos sus datos relacionados (tareas, documentos, observaciones, etc.) de forma irreversible.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(false)}
+                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold rounded-xl transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const response = await fetch(`/api/cases/${caseObj.id}?currentUserId=${currentUser.id}`, {
+                      method: 'DELETE'
+                    });
+                    if (!response.ok) {
+                      const err = await response.json();
+                      throw new Error(err.error || 'No se pudo eliminar el legajo');
+                    }
+                    alert('Legajo eliminado exitosamente.');
+                    setShowDeleteConfirm(false);
+                    onBack();
+                    if (loadState) {
+                      await loadState();
+                    }
+                  } catch (err: any) {
+                    alert(`Error al eliminar: ${err.message}`);
+                  }
+                }}
+                className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-xl shadow-xs transition-colors cursor-pointer animate-pulse"
+              >
+                Eliminar Permanentemente
               </button>
             </div>
           </div>

@@ -67,7 +67,7 @@ export default function DashboardAdvisor({
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-display font-bold text-slate-800 tracking-tight">Mi Panel de Asesor</h2>
-          <p className="text-sm text-slate-500">Gestión ágil de expedientes, checklists y observaciones del equipo.</p>
+          <p className="text-sm text-slate-500">Gestión ágil de legajos, checklists y observaciones del equipo.</p>
         </div>
         <div className="flex items-center gap-2 px-3.5 py-1.5 bg-blue-50 border border-blue-100 rounded-lg text-xs font-semibold text-blue-700">
           <UserCheck className="w-4 h-4" />
@@ -79,7 +79,7 @@ export default function DashboardAdvisor({
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between group hover:border-slate-300 transition-all">
           <div className="space-y-1">
-            <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Mis Expedientes</span>
+            <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Mis Legajos</span>
             <p className="text-3xl font-bold text-slate-800">{myCases.length}</p>
           </div>
           <div className="p-3 bg-blue-50 text-blue-600 rounded-xl group-hover:scale-110 transition-transform">
@@ -155,7 +155,7 @@ export default function DashboardAdvisor({
                         onClick={() => onOpenCase(obs.caseId)}
                         className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-0.5"
                       >
-                        Ver expediente <ArrowRight className="w-3 h-3" />
+                        Ver legajo <ArrowRight className="w-3 h-3" />
                       </button>
                     </div>
 
@@ -239,7 +239,7 @@ export default function DashboardAdvisor({
               <div className="h-64 flex flex-col items-center justify-center text-center p-8 text-slate-400 space-y-1">
                 <CheckCircle className="w-10 h-10 text-emerald-500/85" />
                 <p className="text-xs font-semibold text-slate-600">¡Checklist al 100%!</p>
-                <p className="text-[11px] text-slate-400">No posees tareas pendientes en tus expedientes.</p>
+                <p className="text-[11px] text-slate-400">No posees tareas pendientes en tus legajos.</p>
               </div>
             ) : (
               myTasks.map((task) => {
@@ -266,7 +266,7 @@ export default function DashboardAdvisor({
                     <button 
                       onClick={() => onOpenCase(task.caseId)}
                       className="p-1 text-slate-400 hover:text-indigo-600 rounded hover:bg-indigo-50 transition-colors shrink-0"
-                      title="Ver Expediente"
+                      title="Ver Legajo"
                     >
                       <ArrowRight className="w-4 h-4" />
                     </button>
@@ -280,7 +280,7 @@ export default function DashboardAdvisor({
 
       {/* Advisor Cases List Overview */}
       <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
-        <h3 className="text-sm font-bold text-slate-800 mb-4">Mis Expedientes Asignados</h3>
+        <h3 className="text-sm font-bold text-slate-800 mb-4">Mis Legajos Asignados</h3>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs divide-y divide-slate-100">
             <thead>

@@ -340,6 +340,20 @@ export default function SharedDocumentsManager({ currentUser, users, onAddAudit 
       setError('Este documento no posee contenido descargable.');
       return;
     }
+
+    // Log client-side download action
+    fetch('/api/audit-logs/log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: currentUser.id,
+        action: `Visualizó / descargó documento compartido "${doc.name}"`,
+        entityType: 'SharedDocument',
+        entityId: doc.id,
+        entityName: doc.name
+      })
+    }).catch(err => console.error('Failed to log audit:', err));
+
     const link = document.createElement('a');
     link.href = doc.dataUrl;
     link.download = doc.fileName;

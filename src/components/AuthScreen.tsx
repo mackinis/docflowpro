@@ -42,12 +42,11 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // Verification code field
+  // Verification code fields
   const [verifyEmail, setVerifyEmail] = useState('');
   const [token, setToken] = useState('');
+  const [smsToken, setSmsToken] = useState('');
 
-  // Development helpers for simulator mode
-  const [debugToken, setDebugToken] = useState<string | null>(null);
   const [appliedPolicy, setAppliedPolicy] = useState<'email' | 'sms' | 'both' | null>(null);
 
   // Statuses
@@ -74,9 +73,6 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
         if (data.requiresVerification) {
           setVerifyEmail(data.email);
           setMode('verify');
-          if (data.verificationToken) {
-            setDebugToken(data.verificationToken);
-          }
           if (data.verificationPolicy) {
             setAppliedPolicy(data.verificationPolicy);
           }
@@ -134,9 +130,6 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
 
       setVerifyEmail(data.email);
       setMode('verify');
-      if (data.verificationToken) {
-        setDebugToken(data.verificationToken);
-      }
       if (data.verificationPolicy) {
         setAppliedPolicy(data.verificationPolicy);
       }
@@ -145,10 +138,10 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
       if (data.verificationPolicy === 'sms') {
         methodMsg = 'su teléfono celular vía SMS';
       } else if (data.verificationPolicy === 'both') {
-        methodMsg = 'su correo electrónico y celular vía SMS';
+        methodMsg = 'su correo electrónico y teléfono celular vía SMS (se requieren dos códigos distintos)';
       }
 
-      setSuccessMsg(`¡Registro exitoso! Se ha enviado un token de verificación de 6 dígitos a ${methodMsg}.`);
+      setSuccessMsg(`¡Registro exitoso! Se han enviado los tokens de verificación correspondientes a ${methodMsg}.`);
     } catch (err: any) {
       setErrorMsg(err.message);
     } finally {
@@ -164,10 +157,16 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
     setSuccessMsg(null);
 
     try {
+      const payload = {
+        email: verifyEmail,
+        token: token,
+        smsToken: appliedPolicy === 'both' || appliedPolicy === 'sms' ? smsToken : undefined
+      };
+
       const response = await fetch('/api/auth/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: verifyEmail, token })
+        body: JSON.stringify(payload)
       });
 
       const data = await response.json();
@@ -207,9 +206,6 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
       }
 
       setSuccessMsg(data.message || 'Código de verificación reenviado.');
-      if (data.verificationToken) {
-        setDebugToken(data.verificationToken);
-      }
       if (data.verificationPolicy) {
         setAppliedPolicy(data.verificationPolicy);
       }
@@ -514,7 +510,7 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
 
           {mode === 'verify' && (
             <form onSubmit={handleVerify} className="space-y-4" id="form-verify">
-              <div className="text-center space-y-1.5 pb-2">
+               <div className="text-center space-y-1.5 pb-2">
                 <div className="p-3 bg-amber-50 text-amber-600 rounded-full inline-block mx-auto border border-amber-200">
                   <KeyRound className="w-6 h-6" />
                 </div>
@@ -527,39 +523,74 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
                   {appliedPolicy === 'sms' ? (
                     <>Hemos enviado un código SMS de verificación a su teléfono registrado. Completa el código para activar tu acceso.</>
                   ) : appliedPolicy === 'both' ? (
-                    <>Hemos enviado un código de verificación a su correo electrónico y por SMS a su teléfono. Completa el código para activar tu acceso.</>
+                    <>Hemos enviado códigos de verificación a su correo electrónico y por SMS a su teléfono. Completa con ambos códigos para activar tu acceso.</>
                   ) : (
                     <>Hemos enviado un código alfanumérico a <strong>{verifyEmail}</strong>. Completa el código para activar tu acceso.</>
                   )}
                 </p>
               </div>
 
-              {/* Dev Simulator Token Banner */}
-              {debugToken && (
-                <div className="bg-indigo-50 border border-indigo-100 p-3.5 rounded-2xl text-center space-y-1" id="dev-sim-banner">
-                  <span className="text-[10px] font-mono font-bold text-indigo-500 uppercase tracking-widest block">Simulador de Entorno</span>
-                  <p className="text-xs text-indigo-900 leading-normal">
-                    Código de verificación en base de datos: <span className="font-mono font-bold text-sm bg-indigo-150 px-2 py-0.5 rounded text-indigo-700 select-all">{debugToken}</span>
-                  </p>
-                  <p className="text-[9px] text-indigo-400">
-                    Método requerido por política Superadmin: <strong className="uppercase">{appliedPolicy || 'email'}</strong>
-                  </p>
+              {appliedPolicy === 'both' ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-600 block">Código Email</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ej: AB12CD"
+                      value={token}
+                      onChange={(e) => setToken(e.target.value)}
+                      className="w-full px-4 py-2.5 text-center font-mono font-bold text-lg tracking-widest border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 uppercase"
+                      maxLength={10}
+                      id="verify-token-email"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-600 block">Código SMS</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ej: WX78YZ"
+                      value={smsToken}
+                      onChange={(e) => setSmsToken(e.target.value)}
+                      className="w-full px-4 py-2.5 text-center font-mono font-bold text-lg tracking-widest border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 uppercase"
+                      maxLength={10}
+                      id="verify-token-sms"
+                    />
+                  </div>
+                </div>
+              ) : appliedPolicy === 'sms' ? (
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-600 block">Código de Verificación SMS</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ej: AB12CD"
+                    value={smsToken || token}
+                    onChange={(e) => {
+                      setSmsToken(e.target.value);
+                      setToken(e.target.value);
+                    }}
+                    className="w-full px-4 py-2.5 text-center font-mono font-bold text-lg tracking-widest border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 uppercase"
+                    maxLength={10}
+                    id="verify-token-sms-single"
+                  />
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-600 block">Código de Verificación Email</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ej: AB12CD"
+                    value={token}
+                    onChange={(e) => setToken(e.target.value)}
+                    className="w-full px-4 py-2.5 text-center font-mono font-bold text-lg tracking-widest border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 uppercase"
+                    maxLength={10}
+                    id="verify-token-email-single"
+                  />
                 </div>
               )}
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-600">Código de Verificación</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ej: AB12CD"
-                  value={token}
-                  onChange={(e) => setToken(e.target.value)}
-                  className="w-full px-4 py-2.5 text-center font-mono font-bold text-lg tracking-widest border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 uppercase"
-                  maxLength={10}
-                  id="verify-token"
-                />
-              </div>
 
               <button
                 type="submit"

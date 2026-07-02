@@ -50,6 +50,10 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
   const [isDigitizing, setIsDigitizing] = useState(false);
   const [dragActive, setDragActive] = useState(false);
 
+  // States for Approving and Publishing with Role selection
+  const [approvingTemplate, setApprovingTemplate] = useState<ProcessTemplate | null>(null);
+  const [approveRoles, setApproveRoles] = useState<string[]>(['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR']);
+
   // States for manual creation
   const [manualName, setManualName] = useState('');
   const [manualDescription, setManualDescription] = useState('');
@@ -328,7 +332,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
   const handleDeleteTemplate = (templateId: string, templateName: string) => {
     requestConfirmation(
       'Eliminar Plantilla',
-      `¿Está seguro de que desea eliminar la plantilla "${templateName}"? Esta acción no se puede deshacer y afectará la creación de futuros expedientes.`,
+      `¿Está seguro de que desea eliminar la plantilla "${templateName}"? Esta acción no se puede deshacer y afectará la creación de futuros legajos.`,
       async () => {
         try {
           const response = await fetch(`/api/templates/${templateId}?currentUserId=${currentUser.id}`, {
@@ -486,18 +490,24 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
     }
   };
 
-  const handleApproveAndPublishToDocuments = async (tpl: ProcessTemplate) => {
+  const handleStartApprove = (tpl: ProcessTemplate) => {
+    if (!tpl.originalDocumentContent) {
+      alert('Este proceso no tiene un documento original digitalizado.');
+      return;
+    }
+    setApprovingTemplate(tpl);
+    setApproveRoles(['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR']);
+  };
+
+  const executeApproveAndPublish = async () => {
+    if (!approvingTemplate) return;
     try {
-      if (!tpl.originalDocumentContent) {
-        alert('Este proceso no tiene un documento original digitalizado.');
-        return;
-      }
-      
+      const tpl = approvingTemplate;
       const unicodeToBase64 = (str: string) => {
         return btoa(unescape(encodeURIComponent(str)));
       };
       
-      const fileBase64 = `data:text/plain;base64,${unicodeToBase64(tpl.originalDocumentContent)}`;
+      const fileBase64 = `data:text/plain;base64,${unicodeToBase64(tpl.originalDocumentContent || '')}`;
       const fileName = `${tpl.name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}_digitalizado.txt`;
 
       const response = await fetch('/api/shared-documents', {
@@ -506,9 +516,9 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
         body: JSON.stringify({
           name: `${tpl.name} (Digitalizado)`,
           fileName,
-          fileSize: tpl.originalDocumentContent.length,
+          fileSize: (tpl.originalDocumentContent || '').length,
           fileBase64,
-          allowedRoles: ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR'],
+          allowedRoles: approveRoles,
           allowedUserIds: [],
           currentUserId: currentUser.id
         })
@@ -516,7 +526,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
 
       const data = await response.json();
       if (response.ok && data.id) {
-        alert(`¡Documento "${tpl.name} (Digitalizado)" aprobado y guardado en la sección DOCUMENTOS exitosamente! Además, se eliminó de Plantillas y Procesos.`);
+        alert(`¡Documento "${tpl.name} (Digitalizado)" aprobado y guardado en la sección DOCUMENTOS exitosamente con los permisos seleccionados! Además, se eliminó de Plantillas de Procesos.`);
         
         try {
           await fetch(`/api/templates/${tpl.id}?currentUserId=${currentUser.id}`, {
@@ -526,6 +536,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
           console.error('Error al eliminar plantilla después de ser aprobada:', delErr);
         }
 
+        setApprovingTemplate(null);
         if (loadState) {
           await loadState();
         }
@@ -590,7 +601,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
 
       {/* Grid of Templates */}
       <div className="grid grid-cols-1 gap-4">
-        {templates.map((tpl) => {
+        {templates.filter(t => !t.id.startsWith('doc-')).map((tpl) => {
           const isExpanded = expandedTemplateId === tpl.id;
           const isDigitalDoc = !!tpl.originalDocumentContent && tpl.originalDocumentContent.trim() !== '';
           const activeTab = tpl.stages.length === 0 ? 'document' : (templateSubTab[tpl.id] || 'flow');
@@ -699,7 +710,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                               </div>
                               <button
                                 type="button"
-                                onClick={() => handleApproveAndPublishToDocuments(tpl)}
+                                onClick={() => handleStartApprove(tpl)}
                                 className="shrink-0 flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-xs transition-all cursor-pointer"
                               >
                                 <CheckCircle className="w-4 h-4" />
@@ -911,7 +922,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                         Documento Original Digitalizado (Completo)
                       </h5>
                       <p className="text-[10px] text-amber-800/80">
-                        Este texto sirve de base para el documento digitalizado en cada expediente.
+                        Este texto sirve de base para el documento digitalizado en cada legajo.
                       </p>
                     </div>
                     <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-amber-900 select-none">
@@ -1118,11 +1129,11 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                                             className="text-[10px] p-1.5 border border-indigo-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 w-full font-semibold text-indigo-800"
                                           >
                                             <option value="">-- Seleccionar Plantilla Digitalizada --</option>
-                                            {templates.map(t => (
+                                            {templates.filter(t => !t.id.startsWith('doc-')).map(t => (
                                               <option key={t.id} value={t.id}>{t.name}</option>
                                             ))}
                                           </select>
-                                          <p className="text-[8px] text-slate-400 leading-none">Cuando el expediente avance a esta etapa, se generará y completará este contrato digital editable.</p>
+                                          <p className="text-[8px] text-slate-400 leading-none">Cuando el legajo avance a esta etapa, se generará y completará este contrato digital editable.</p>
                                         </div>
                                       )}
 
@@ -1637,6 +1648,87 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                 className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-xl shadow-xs transition-colors cursor-pointer"
               >
                 Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Approving Template Role Selection Modal */}
+      {approvingTemplate && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-[9999]">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-md w-full overflow-hidden p-6 space-y-4 text-left">
+            <div className="flex items-center gap-3 text-emerald-600">
+              <span className="p-2 bg-emerald-50 rounded-full">
+                <CheckCircle className="w-6 h-6" />
+              </span>
+              <div>
+                <h3 className="text-sm font-bold text-slate-800">Aprobar y publicar documento</h3>
+                <p className="text-[11px] text-slate-400 font-mono mt-0.5">{approvingTemplate.name}</p>
+              </div>
+            </div>
+            
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Define los roles autorizados para ver y descargar este documento digitalizado en la sección de <strong>DOCUMENTOS</strong>.
+            </p>
+
+            <div className="space-y-2.5 p-3.5 bg-slate-50 border border-slate-100 rounded-xl">
+              <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                Roles Permitidos:
+              </span>
+              
+              <label className="flex items-center gap-2.5 text-xs font-semibold text-slate-700 cursor-not-allowed opacity-75">
+                <input
+                  type="checkbox"
+                  checked={true}
+                  disabled={true}
+                  className="rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4"
+                />
+                <span>Superadministrador (SUPERADMIN) <span className="text-[10px] font-normal text-slate-400 font-mono">(Obligatorio)</span></span>
+              </label>
+
+              {(['ADMIN', 'MANAGER', 'ASESOR'] as const).map(role => {
+                const labelMap = {
+                  ADMIN: 'Administrador (ADMIN)',
+                  MANAGER: 'Gerente (MANAGER)',
+                  ASESOR: 'Asesor (ASESOR)'
+                };
+                const isChecked = approveRoles.includes(role);
+                return (
+                  <label key={role} className="flex items-center gap-2.5 text-xs font-semibold text-slate-700 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => {
+                        if (isChecked) {
+                          setApproveRoles(approveRoles.filter(r => r !== role));
+                        } else {
+                          setApproveRoles([...approveRoles, role]);
+                        }
+                      }}
+                      className="rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4"
+                    />
+                    <span>{labelMap[role]}</span>
+                  </label>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setApprovingTemplate(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={executeApproveAndPublish}
+                disabled={approveRoles.length === 0}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-semibold rounded-xl shadow-xs transition-colors cursor-pointer"
+              >
+                Aprobar y publicar
               </button>
             </div>
           </div>

@@ -1,5 +1,50 @@
 import { AppDataState, ProcessTemplate, User, Case } from './types';
 
+const encodeBase64 = (str: string) => {
+  if (typeof Buffer !== 'undefined') {
+    return Buffer.from(str).toString('base64');
+  }
+  if (typeof btoa === 'function') {
+    return btoa(unescape(encodeURIComponent(str)));
+  }
+  return '';
+};
+
+export const PRESET_AVATARS = [
+  {
+    name: 'Fantasmita',
+    url: 'data:image/svg+xml;base64,' + encodeBase64('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#6366f1" rx="50"/><path d="M30,70 C30,40 35,30 50,30 C65,30 70,40 70,70 C70,72 65,75 60,70 C55,65 50,75 45,70 C40,65 35,75 30,70 Z" fill="#ffffff" /><circle cx="43" cy="48" r="4" fill="#1e1b4b" /><circle cx="57" cy="48" r="4" fill="#1e1b4b" /><circle cx="39" cy="53" r="2" fill="#f43f5e" opacity="0.6" /><circle cx="61" cy="53" r="2" fill="#f43f5e" opacity="0.6" /></svg>')
+  },
+  {
+    name: 'Cactus',
+    url: 'data:image/svg+xml;base64,' + encodeBase64('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#10b981" rx="50"/><path d="M35,75 L65,75 L60,85 L40,85 Z" fill="#f97316" /><rect x="32" y="70" width="36" height="6" rx="2" fill="#ea580c" /><rect x="44" y="30" width="12" height="42" rx="6" fill="#047857" /><path d="M44,45 L36,45 C34,45 34,55 36,55 L44,55" fill="none" stroke="#047857" stroke-width="8" stroke-linecap="round" /><path d="M56,38 L64,38 C66,38 66,48 64,48 L56,48" fill="none" stroke="#047857" stroke-width="8" stroke-linecap="round" /><circle cx="47" cy="42" r="2" fill="#ffffff" /><circle cx="53" cy="42" r="2" fill="#ffffff" /><path d="M48,46 Q50,48 52,46" stroke="#ffffff" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>')
+  },
+  {
+    name: 'Pinguinito',
+    url: 'data:image/svg+xml;base64,' + encodeBase64('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#3b82f6" rx="50"/><ellipse cx="50" cy="55" rx="22" ry="25" fill="#1e293b" /><ellipse cx="50" cy="58" rx="15" ry="18" fill="#ffffff" /><ellipse cx="26" cy="55" rx="5" ry="12" fill="#1e293b" transform="rotate(-15 26 55)" /><ellipse cx="74" cy="55" rx="5" ry="12" fill="#1e293b" transform="rotate(15 74 55)" /><circle cx="44" cy="44" r="2.5" fill="#1e293b" /><circle cx="56" cy="44" r="2.5" fill="#1e293b" /><polygon points="46,47 54,47 50,53" fill="#f59e0b" /><ellipse cx="42" cy="80" rx="6" ry="3" fill="#f59e0b" /><ellipse cx="58" cy="80" rx="6" ry="3" fill="#f59e0b" /></svg>')
+  },
+  {
+    name: 'Osito',
+    url: 'data:image/svg+xml;base64,' + encodeBase64('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#f59e0b" rx="50"/><circle cx="32" cy="32" r="10" fill="#78350f" /><circle cx="32" cy="32" r="5" fill="#f43f5e" opacity="0.5" /><circle cx="68" cy="32" r="10" fill="#78350f" /><circle cx="68" cy="32" r="5" fill="#f43f5e" opacity="0.5" /><circle cx="50" cy="55" r="25" fill="#78350f" /><ellipse cx="50" cy="62" rx="10" ry="8" fill="#fef3c7" /><polygon points="47,58 53,58 50,62" fill="#1e293b" /><circle cx="42" cy="50" r="3" fill="#ffffff" /><circle cx="58" cy="50" r="3" fill="#ffffff" /></svg>')
+  },
+  {
+    name: 'Gatito',
+    url: 'data:image/svg+xml;base64,' + encodeBase64('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#ec4899" rx="50"/><polygon points="25,25 45,45 25,50" fill="#f1f5f9" /><polygon points="75,25 55,45 75,50" fill="#f1f5f9" /><polygon points="28,29 40,41 28,45" fill="#fda4af" /><polygon points="72,29 60,41 72,45" fill="#fda4af" /><ellipse cx="50" cy="55" rx="26" ry="22" fill="#f1f5f9" /><circle cx="40" cy="52" r="3" fill="#0f172a" /><circle cx="60" cy="52" r="3" fill="#0f172a" /><polygon points="48,58 53,58 50,60" fill="#fda4af" /><path d="M47,62 Q50,64 50,62 Q50,64 53,62" stroke="#0f172a" stroke-width="1.5" fill="none" /><line x1="20" y1="54" x2="30" y2="56" stroke="#cbd5e1" stroke-width="2" /><line x1="20" y1="60" x2="29" y2="60" stroke="#cbd5e1" stroke-width="2" /><line x1="80" y1="54" x2="70" y2="56" stroke="#cbd5e1" stroke-width="2" /><line x1="80" y1="60" x2="71" y2="60" stroke="#cbd5e1" stroke-width="2" /></svg>')
+  },
+  {
+    name: 'Robot',
+    url: 'data:image/svg+xml;base64,' + encodeBase64('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#06b6d4" rx="50"/><line x1="50" y1="30" x2="50" y2="18" stroke="#f1f5f9" stroke-width="4" /><circle cx="50" cy="16" r="5" fill="#f43f5e" /><rect x="28" y="28" width="44" height="38" rx="8" fill="#cbd5e1" /><rect x="34" y="34" width="32" height="20" rx="4" fill="#1e293b" /><circle cx="44" cy="44" r="3" fill="#22c55e" /><circle cx="56" cy="44" r="3" fill="#22c55e" /><rect x="42" y="60" width="16" height="2" rx="1" fill="#475569" /><rect x="24" y="40" width="4" height="14" rx="2" fill="#475569" /><rect x="72" y="40" width="4" height="14" rx="2" fill="#475569" /></svg>')
+  },
+  {
+    name: 'Zorrito',
+    url: 'data:image/svg+xml;base64,' + encodeBase64('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#f97316" rx="50"/><polygon points="20,25 42,42 18,50" fill="#ea580c" /><polygon points="80,25 58,42 82,50" fill="#ea580c" /><polygon points="23,28 36,39 22,44" fill="#1e293b" /><polygon points="77,28 64,39 78,44" fill="#1e293b" /><ellipse cx="36" cy="60" rx="16" ry="12" fill="#ffffff" /><ellipse cx="64" cy="60" rx="16" ry="12" fill="#ffffff" /><path d="M50,34 L28,52 C32,68 68,68 72,52 Z" fill="#ea580c" /><circle cx="38" cy="50" r="3" fill="#1e293b" /><circle cx="62" cy="50" r="3" fill="#1e293b" /><ellipse cx="50" cy="64" rx="5" ry="3.5" fill="#1e293b" /></svg>')
+  },
+  {
+    name: 'Estrellita',
+    url: 'data:image/svg+xml;base64,' + encodeBase64('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#8b5cf6" rx="50"/><path d="M50,18 L59,38 L81,41 L65,56 L69,78 L50,67 L31,78 L35,56 L19,41 L41,38 Z" fill="#fbbf24" /><circle cx="44" cy="48" r="2" fill="#1e293b" /><circle cx="56" cy="48" r="2" fill="#1e293b" /><path d="M47,53 Q50,56 53,53" stroke="#1e293b" stroke-width="1.5" fill="none" stroke-linecap="round" /><circle cx="41" cy="51" r="2" fill="#f43f5e" opacity="0.6" /><circle cx="59" cy="51" r="2" fill="#f43f5e" opacity="0.6" /></svg>')
+  }
+];
+
 export const INITIAL_USERS: User[] = [
   {
     id: 'usr-super',
@@ -7,7 +52,7 @@ export const INITIAL_USERS: User[] = [
     lastName: 'Gómez',
     email: 'super@gestion.com',
     role: 'SUPERADMIN',
-    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces',
+    avatar: PRESET_AVATARS[0].url,
     phone: '+54 11 5555-0101',
     active: true
   },
@@ -17,7 +62,7 @@ export const INITIAL_USERS: User[] = [
     lastName: 'Rodriguez',
     email: 'admin@gestion.com',
     role: 'ADMIN',
-    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop&crop=faces',
+    avatar: PRESET_AVATARS[1].url,
     phone: '+54 11 5555-0102',
     active: true
   },
@@ -27,7 +72,7 @@ export const INITIAL_USERS: User[] = [
     lastName: 'Pérez',
     email: 'esteban@gestion.com',
     role: 'MANAGER',
-    avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop&crop=faces',
+    avatar: PRESET_AVATARS[2].url,
     phone: '+54 11 5555-0201',
     active: true
   },
@@ -37,7 +82,7 @@ export const INITIAL_USERS: User[] = [
     lastName: 'Fernández',
     email: 'lucia@gestion.com',
     role: 'ASESOR',
-    avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=100&h=100&fit=crop&crop=faces',
+    avatar: PRESET_AVATARS[3].url,
     phone: '+54 11 5555-0301',
     active: true
   },
@@ -47,250 +92,13 @@ export const INITIAL_USERS: User[] = [
     lastName: 'Sanz',
     email: 'marcos@gestion.com',
     role: 'ASESOR',
-    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop&crop=faces',
+    avatar: PRESET_AVATARS[4].url,
     phone: '+54 11 5555-0302',
     active: true
   }
 ];
 
-export const INITIAL_TEMPLATES: ProcessTemplate[] = [
-  {
-    id: 'tmpl-venta',
-    name: 'Venta Inmobiliaria Estándar',
-    description: 'Proceso completo para la compraventa de propiedades inmuebles residenciales o comerciales.',
-    industry: 'Inmobiliaria',
-    originalDocumentContent: `CONTRATO DE RESERVA DE COMPRAVENTA INMOBILIARIA
-
-En la Ciudad Autónoma de Buenos Aires, a los [Fecha] días del mes de [Mes] del año 2026, entre el Sr./Sra. [Nombre Completo Vendedor], DNI N° [DNI Vendedor], en adelante "EL VENDEDOR", y el Sr./Sra. [Nombre Completo Comprador], DNI N° [DNI Comprador], en adelante "EL COMPRADOR", se conviene celebrar el presente boleto de reserva ad-referendum de las siguientes cláusulas:
-
-PRIMERA: EL COMPRADOR entrega en este acto la suma de [Monto de Reserva (USD)] Dólares Estadounidenses (USD) en concepto de RESERVA DE COMPRA para la adquisición de la propiedad inmueble sita en la calle Av. Las Heras 2300, 4° Piso, Recoleta.
-
-SEGUNDA: La presente operación queda condicionada a la conformidad de EL VENDEDOR dentro del plazo de diez días hábiles, y a la aprobación del correspondiente Estudio de Títulos a cargo del Escribano Designado [Escribano Designado].
-
-TERCERA: En caso de no aceptarse la reserva por parte de EL VENDEDOR, se restituirá la suma entregada de forma inmediata sin penalidad alguna para las partes. En caso de aceptación, las partes se obligan a la firma del boleto de compraventa definitivo dentro de los 30 días posteriores.
-
-En prueba de conformidad, se firman dos ejemplares del mismo tenor y a un solo efecto.`,
-    stages: [
-      {
-        id: 'stg-v1',
-        name: 'Datos Iniciales y Reserva',
-        description: 'Carga de datos básicos de las partes implicadas y firma de la reserva ad-referendum.',
-        requirements: [
-          {
-            id: 'req-v1-doc1',
-            name: 'Reserva Firmada',
-            type: 'document',
-            description: 'Documento de reserva firmado digital o físicamente por el comprador.',
-            isRequired: true
-          },
-          {
-            id: 'req-v1-form1',
-            name: 'Formulario de Datos de Partes',
-            type: 'form',
-            description: 'Datos completos del comprador, vendedor y escribanía elegida.',
-            isRequired: true,
-            formFields: [
-              { id: 'f-comp-nombre', label: 'Nombre Completo Comprador', type: 'text', required: true },
-              { id: 'f-comp-dni', label: 'DNI Comprador', type: 'text', required: true },
-              { id: 'f-vend-nombre', label: 'Nombre Completo Vendedor', type: 'text', required: true },
-              { id: 'f-prop-valor', label: 'Monto de Reserva (USD)', type: 'number', required: true },
-              { id: 'f-escribano', label: 'Escribano Designado', type: 'text', required: false }
-            ]
-          },
-          {
-            id: 'req-v1-tsk1',
-            name: 'Verificación de Estado Crediticio',
-            type: 'task',
-            description: 'Verificar en bases comerciales que el comprador no posea inhibiciones.',
-            isRequired: true
-          }
-        ]
-      },
-      {
-        id: 'stg-v2',
-        name: 'Estudio de Títulos',
-        description: 'Revisión técnica de la escritura matriz por parte del escribano y manager.',
-        requirements: [
-          {
-            id: 'req-v2-doc1',
-            name: 'Escritura de Propiedad Antecedente',
-            type: 'document',
-            description: 'Copia certificada de la escritura de adquisición del actual vendedor.',
-            isRequired: true
-          },
-          {
-            id: 'req-v2-doc2',
-            name: 'Plano de Mensura Aprobado',
-            type: 'document',
-            description: 'Plano catastral vigente del inmueble.',
-            isRequired: true
-          },
-          {
-            id: 'req-v2-tsk1',
-            name: 'Solicitud de Certificado Catastral',
-            type: 'task',
-            description: 'Generar la solicitud web ante la dirección provincial de catastro.',
-            isRequired: true
-          }
-        ]
-      },
-      {
-        id: 'stg-v3',
-        name: 'Boleto de Compraventa',
-        description: 'Firma del boleto intermedio con entrega de posesión parcial u oferta formal.',
-        requirements: [
-          {
-            id: 'req-v3-doc1',
-            name: 'Boleto Compraventa Firmado',
-            type: 'document',
-            description: 'Copia escaneada del boleto firmado por ambas partes.',
-            isRequired: true
-          },
-          {
-            id: 'req-v3-form1',
-            name: 'Detalle de Cuotas y Financiación',
-            type: 'form',
-            description: 'Fijar plazos de pago intermedios si existieran.',
-            isRequired: false,
-            formFields: [
-              { id: 'f-bol-anticipo', label: 'Monto Anticipo (USD)', type: 'number', required: true },
-              { id: 'f-bol-cuotas', label: 'Cantidad de Cuotas', type: 'number', required: true },
-              { id: 'f-bol-fecha-pago', label: 'Fecha de Próximo Pago', type: 'date', required: true }
-            ]
-          }
-        ]
-      },
-      {
-        id: 'stg-v4',
-        name: 'Preparación de Escritura',
-        description: 'Liberación de deudas de servicios públicos e inscripción final del COTI.',
-        requirements: [
-          {
-            id: 'req-v4-doc1',
-            name: 'Código de Oferta de Transferencia (COTI)',
-            type: 'document',
-            description: 'Certificado oficial emitido ante AFIP por la venta mayor a montos mínimos.',
-            isRequired: true
-          },
-          {
-            id: 'req-v4-doc2',
-            name: 'Estado de Deuda de Impuestos',
-            type: 'document',
-            description: 'Libre deuda de rentas provinciales y tasas municipales.',
-            isRequired: true
-          }
-        ]
-      },
-      {
-        id: 'stg-v5',
-        name: 'Firma y Cierre',
-        description: 'Firma de escritura traslativa de dominio y entrega de llaves.',
-        requirements: [
-          {
-            id: 'req-v5-doc1',
-            name: 'Escritura Matriz Definitiva',
-            type: 'document',
-            description: 'Escaneo del testimonio firmado y sellado por el Colegio de Escribanos.',
-            isRequired: true
-          },
-          {
-            id: 'req-v5-tsk1',
-            name: 'Acta de Entrega de Llaves',
-            type: 'task',
-            description: 'Hacer firmar el conforme de entrega física del inmueble.',
-            isRequired: true
-          }
-        ]
-      }
-    ]
-  },
-  {
-    id: 'tmpl-alquiler',
-    name: 'Alquiler Habitacional y Comercial',
-    description: 'Gestión de contratos de locación con garantías propietarias, seguros de caución y deudas de ingreso.',
-    industry: 'Inmobiliaria',
-    stages: [
-      {
-        id: 'stg-a1',
-        name: 'Requisitos de Admisión',
-        description: 'Comprobación de ingresos y garantías provistas por el locatario.',
-        requirements: [
-          {
-            id: 'req-a1-doc1',
-            name: 'DNI de Locatario y Garante',
-            type: 'document',
-            description: 'Frente y dorso de los documentos de identidad legibles.',
-            isRequired: true
-          },
-          {
-            id: 'req-a1-doc2',
-            name: 'Demostración de Ingresos',
-            type: 'document',
-            description: 'Últimos 3 recibos de sueldo o constancia de inscripción de monotributo.',
-            isRequired: true
-          },
-          {
-            id: 'req-a1-doc3',
-            name: 'Título de Propiedad en Garantía',
-            type: 'document',
-            description: 'Escritura del inmueble ofrecido en garantía con certificado de dominio vigente.',
-            isRequired: false
-          }
-        ]
-      },
-      {
-        id: 'stg-a2',
-        name: 'Firma del Contrato',
-        description: 'Generación del contrato definitivo y firmas con certificación de firmas.',
-        requirements: [
-          {
-            id: 'req-a2-doc1',
-            name: 'Contrato de Locación Firmado',
-            type: 'document',
-            description: 'Documento completo firmado por Locatario, Locador y Fiadores.',
-            isRequired: true
-          },
-          {
-            id: 'req-a2-tsk1',
-            name: 'Cobro de Depósito e Ingreso',
-            type: 'task',
-            description: 'Confirmar recepción del mes de adelanto, depósito en garantía y honorarios.',
-            isRequired: true
-          }
-        ]
-      }
-    ]
-  },
-  {
-    id: 'tmpl-credito',
-    name: 'Crédito Hipotecario / Financiero',
-    description: 'Aprobación de carpeta de préstamos bajo estándares de scoring crediticio bancario.',
-    industry: 'Financiera',
-    stages: [
-      {
-        id: 'stg-c1',
-        name: 'Pre-Aprobación',
-        description: 'Solicitud de crédito e historial de deudas.',
-        requirements: [
-          {
-            id: 'req-c1-doc1',
-            name: 'Formulario de Solicitud de Préstamo',
-            type: 'document',
-            description: 'Ficha de datos de solicitud de préstamo firmada.',
-            isRequired: true
-          },
-          {
-            id: 'req-c1-tsk1',
-            name: 'Score Crediticio Central',
-            type: 'task',
-            description: 'Verificar perfil del cliente en BCRA y scoring financiero interno.',
-            isRequired: true
-          }
-        ]
-      }
-    ]
-  }
-];
+export const INITIAL_TEMPLATES: ProcessTemplate[] = [];
 
 export const INITIAL_STATE: AppDataState = {
   users: INITIAL_USERS,
@@ -300,7 +108,7 @@ export const INITIAL_STATE: AppDataState = {
       id: 'case-recoleta',
       code: 'EXP-2026-RECO',
       title: 'Compraventa - Depto Recoleta 3 Ambientes',
-      description: 'Expediente para la venta del departamento ubicado en Av. Las Heras 2300, 4° Piso. Operación financiada.',
+      description: 'Legajo para la venta del departamento ubicado en Av. Las Heras 2300, 4° Piso. Operación financiada.',
       status: 'observed',
       templateId: 'tmpl-venta',
       currentStageIndex: 1, // 'Estudio de Títulos'
@@ -462,7 +270,7 @@ export const INITIAL_STATE: AppDataState = {
       id: 'not-reco-obs',
       userId: 'usr-asesor1',
       title: 'Documento Rechazado',
-      message: 'Tu documento "Escritura de Propiedad Antecedente" del expediente EXP-2026-RECO fue rechazado. Revisa las observaciones.',
+      message: 'Tu documento "Escritura de Propiedad Antecedente" del legajo EXP-2026-RECO fue rechazado. Revisa las observaciones.',
       type: 'error',
       read: false,
       createdAt: '2026-06-22T10:01:00Z',
@@ -471,8 +279,8 @@ export const INITIAL_STATE: AppDataState = {
     {
       id: 'not-pale-new',
       userId: 'usr-asesor2',
-      title: 'Nuevo Expediente Asignado',
-      message: 'Se te ha asignado el expediente EXP-2026-PALE "Alquiler Comercial - Local Palermo Soho".',
+      title: 'Nuevo Legajo Asignado',
+      message: 'Se te ha asignado el legajo EXP-2026-PALE "Alquiler Comercial - Local Palermo Soho".',
       type: 'info',
       read: false,
       createdAt: '2026-06-26T14:31:00Z',
@@ -485,7 +293,7 @@ export const INITIAL_STATE: AppDataState = {
       userId: 'usr-manager1',
       userName: 'Esteban Pérez',
       userRole: 'MANAGER',
-      action: 'Expediente creado',
+      action: 'Legajo creado',
       entityType: 'Case',
       entityId: 'case-recoleta',
       entityName: 'Compraventa - Depto Recoleta 3 Ambientes',
@@ -562,6 +370,7 @@ export const INITIAL_STATE: AppDataState = {
     }
   ],
   verificationPolicies: {
+    global: 'email',
     ASESOR: 'email',
     MANAGER: 'email',
     ADMIN: 'email'
@@ -584,7 +393,7 @@ export const INITIAL_STATE: AppDataState = {
       receiverName: 'Lucía Fernández',
       receiverRole: 'ASESOR',
       subject: 'Bienvenida a DocFlow Pro',
-      content: 'Hola Lucía, te doy la bienvenida al sistema de Gestión Documental. Por favor, revisa tus expedientes asignados y no dudes en escribirme si tienes alguna consulta sobre los checklists.',
+      content: 'Hola Lucía, te doy la bienvenida al sistema de Gestión Documental. Por favor, revisa tus legajos asignados y no dudes en escribirme si tienes alguna consulta sobre los checklists.',
       createdAt: new Date(Date.now() - 3600000 * 24).toISOString(), // 1 day ago
       read: false
     }
@@ -600,6 +409,7 @@ export const INITIAL_STATE: AppDataState = {
       allowedRoles: ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR'],
       allowedUserIds: []
     }
-  ]
+  ],
+  uploadRequests: []
 };
 

@@ -163,7 +163,7 @@ export default function DashboardManager({ state, onOpenCase, onQuickReviewDoc }
         <div className="lg:col-span-7 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
           <div>
             <h3 className="text-sm font-semibold text-slate-700 mb-1">Carga de Trabajo por Asesor</h3>
-            <p className="text-xs text-slate-500 mb-5">Cantidad de expedientes activos y observados asignados a cada asesor.</p>
+            <p className="text-xs text-slate-500 mb-5">Cantidad de legajos activos y observados asignados a cada asesor.</p>
           </div>
 
           <div className="space-y-4">
@@ -174,7 +174,7 @@ export default function DashboardManager({ state, onOpenCase, onQuickReviewDoc }
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-semibold text-slate-700">{adv.name}</span>
                     <span className="font-mono bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-bold">
-                      {adv.count} {adv.count === 1 ? 'Expediente' : 'Expedientes'}
+                      {adv.count} {adv.count === 1 ? 'Legajo' : 'Legajos'}
                     </span>
                   </div>
                   <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden">
@@ -253,7 +253,7 @@ export default function DashboardManager({ state, onOpenCase, onQuickReviewDoc }
                       <button 
                         onClick={() => onOpenCase(doc.caseId)}
                         className="p-1 text-slate-400 hover:text-slate-600 rounded"
-                        title="Ver Expediente"
+                        title="Ver Legajo"
                       >
                         <ArrowRight className="w-3.5 h-3.5" />
                       </button>
@@ -281,7 +281,7 @@ export default function DashboardManager({ state, onOpenCase, onQuickReviewDoc }
             {openObservations.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-center p-8 text-slate-400 space-y-1">
                 <CheckCircle className="w-10 h-10 text-emerald-500/85" />
-                <p className="text-xs font-semibold text-slate-600">¡Ningún expediente observado!</p>
+                <p className="text-xs font-semibold text-slate-600">¡Ningún legajo observado!</p>
               </div>
             ) : (
               openObservations.map((obs) => {

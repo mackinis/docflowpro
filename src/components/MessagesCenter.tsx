@@ -32,7 +32,7 @@ export default function MessagesCenter({
   state,
   loadState
 }: MessagesCenterProps) {
-  const [activeSubTab, setActiveSubTab] = useState<'recibidos' | 'enviados' | 'papelera'>('recibidos');
+  const [activeSubTab, setActiveSubTab] = useState<'recibidos' | 'enviados' | 'papelera' | 'sistema'>('recibidos');
   const [selectedMessage, setSelectedMessage] = useState<SystemMessage | null>(null);
   
   // Compose message states
@@ -56,6 +56,7 @@ export default function MessagesCenter({
   // Filter messages based on active sub-tab and current user
   const inboxMessages = messages.filter(m => m.receiverId === currentUser.id && !m.deletedByReceiver && !(m as any).permanentDeletedByReceiver);
   const sentMessages = messages.filter(m => m.senderId === currentUser.id && !m.deletedBySender && !(m as any).permanentDeletedBySender);
+  const systemMessagesList = ['SUPERADMIN', 'ADMIN'].includes(currentUser.role) ? messages.filter(m => m.receiverId === 'system') : [];
   const trashMessages = messages.filter(m => 
     (m.receiverId === currentUser.id && m.deletedByReceiver && !(m as any).permanentDeletedByReceiver) ||
     (m.senderId === currentUser.id && m.deletedBySender && !(m as any).permanentDeletedBySender)
@@ -69,6 +70,8 @@ export default function MessagesCenter({
       list = sentMessages;
     } else if (activeSubTab === 'papelera') {
       list = trashMessages;
+    } else if (activeSubTab === 'sistema') {
+      list = systemMessagesList;
     }
 
     if (searchQuery.trim() !== '') {
@@ -96,7 +99,7 @@ export default function MessagesCenter({
   // Mark message as read
   const handleReadMessage = async (msg: SystemMessage) => {
     setSelectedMessage(msg);
-    if (msg.receiverId === currentUser.id && !msg.read) {
+    if ((msg.receiverId === currentUser.id || (msg.receiverId === 'system' && ['SUPERADMIN', 'ADMIN'].includes(currentUser.role))) && !msg.read) {
       try {
         const res = await fetch('/api/system-messages/read', {
           method: 'POST',
@@ -407,7 +410,7 @@ export default function MessagesCenter({
         <div className="w-full md:w-[360px] border-r border-slate-200 flex flex-col shrink-0 bg-slate-50/50">
           
           {/* Sub-navigation tabs */}
-          <div className="p-3 border-b border-slate-200 bg-white grid grid-cols-3 gap-1 shrink-0">
+          <div className={`p-3 border-b border-slate-200 bg-white grid ${['SUPERADMIN', 'ADMIN'].includes(currentUser.role) ? 'grid-cols-4' : 'grid-cols-3'} gap-1 shrink-0`}>
             <button
               onClick={() => { setActiveSubTab('recibidos'); setSearchQuery(''); }}
               className={`py-2 px-1 rounded-lg text-xs font-bold transition-all flex flex-col items-center gap-1 cursor-pointer ${
@@ -451,6 +454,26 @@ export default function MessagesCenter({
               <Trash2 className="w-4 h-4" />
               <span>Papelera</span>
             </button>
+
+            {['SUPERADMIN', 'ADMIN'].includes(currentUser.role) && (
+              <button
+                onClick={() => { setActiveSubTab('sistema'); setSearchQuery(''); }}
+                className={`py-2 px-1 rounded-lg text-xs font-bold transition-all flex flex-col items-center gap-1 cursor-pointer ${
+                  activeSubTab === 'sistema'
+                    ? 'bg-red-50 text-red-700 font-semibold border border-red-100/50'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+                id="subtab-sistema"
+              >
+                <AlertTriangle className="w-4 h-4 text-red-500" />
+                <span>Sistema</span>
+                {systemMessagesList.filter(m => !m.read).length > 0 && (
+                  <span className="bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.2 rounded-full mt-0.5 animate-pulse">
+                    {systemMessagesList.filter(m => !m.read).length}
+                  </span>
+                )}
+              </button>
+            )}
           </div>
 
           {/* Search bar */}

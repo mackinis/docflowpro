@@ -98,13 +98,13 @@ export default function Sidebar({
   const menuItems = [
     { id: 'dashboard', label: 'Tablero Principal', icon: LayoutDashboard, roles: ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR'] },
     { id: 'audit', label: 'Auditoría', icon: ShieldAlert, roles: ['SUPERADMIN', 'ADMIN'] },
-    { id: 'cases', label: 'Expedientes', icon: FileText, roles: ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR'] },
+    { id: 'cases', label: 'Legajos', icon: FileText, roles: ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR'] },
     { id: 'documents', label: 'Documentos', icon: FolderDown, roles: ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR'] },
     { id: 'messages', label: 'Mensajes', icon: Mail, roles: ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR'] },
     { id: 'notifications', label: 'Notificaciones', icon: Bell, roles: ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR'] },
     { id: 'templates', label: 'Plantillas y Procesos', icon: FolderKanban, roles: ['SUPERADMIN', 'ADMIN', 'MANAGER'] },
     { id: 'profile', label: 'Perfiles de Usuarios', icon: UserIcon, roles: ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR'] },
-    { id: 'settings', label: 'Configuración', icon: SettingsIcon, roles: ['SUPERADMIN', 'ADMIN'] },
+    { id: 'settings', label: 'Configuración', icon: SettingsIcon, roles: ['SUPERADMIN', 'ADMIN', 'MANAGER'] },
   ];
 
   const sortedMenuItems = [...menuItems];

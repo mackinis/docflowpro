@@ -16,11 +16,12 @@ export interface User {
   passwordHash?: string;
   isVerified?: boolean;
   verificationToken?: string;
+  verificationTokenSms?: string;
   tokenCreatedAt?: string;
   hasSensitiveEditPermissionOverride?: boolean; // Superadmin manual toggle
 }
 
-export type ParticipantType = 'Cliente' | 'Comprador' | 'Vendedor' | 'Titular' | 'Garante' | 'Apoderado';
+export type ParticipantType = 'Cliente' | 'Comprador' | 'Vendedor' | 'Titular' | 'Garante' | 'Apoderado' | 'Escribano';
 
 export interface Participant {
   id: string;
@@ -30,6 +31,8 @@ export interface Participant {
   cuitCuil: string;
   email: string;
   phone: string;
+  birthDate?: string;
+  role?: ParticipantType;
   comments?: string;
 }
 
@@ -91,6 +94,7 @@ export interface Case {
   documentContent?: string; // Case-specific digital document for completing
   showDocumentToAll?: boolean; // Copied from template, customizable per case
   sharedViewMode?: 'both' | 'flow' | 'document'; // Custom shared view mode configured per case
+  isCurrentStageApproved?: boolean; // Track if the current stage has been approved by the manager
 }
 
 export type DocStatus = 'pending' | 'uploaded' | 'in_review' | 'approved' | 'rejected' | 'expired';
@@ -114,6 +118,7 @@ export interface Document {
   uploadedBy?: string;
   uploadedAt?: string;
   versions: DocumentVersion[];
+  allowedRoles?: string[];
 }
 
 export type TaskStatus = 'pending' | 'in_progress' | 'completed';
@@ -188,13 +193,32 @@ export interface AppDataState {
   formSubmissions: FormDataValue[];
   activeIndustry?: string;
   verificationPolicies?: {
-    ASESOR: 'email' | 'sms' | 'both';
-    MANAGER: 'email' | 'sms' | 'both';
-    ADMIN: 'email' | 'sms' | 'both';
+    global?: 'email' | 'sms' | 'both';
+    ASESOR?: 'email' | 'sms' | 'both';
+    MANAGER?: 'email' | 'sms' | 'both';
+    ADMIN?: 'email' | 'sms' | 'both';
   };
   systemMessages?: SystemMessage[];
   systemSettings?: SystemSettings;
   sharedDocuments?: SharedDocument[];
+  uploadRequests?: UploadRequest[];
+}
+
+export interface UploadRequest {
+  id: string;
+  caseId: string;
+  stageId: string;
+  requirementId: string;
+  requirementName: string;
+  requestedBy: string;
+  requestedAt: string;
+  status: 'pending' | 'approved' | 'rejected';
+  requestedExtension: string;
+  allowedExtension?: string;
+  allowedMaxWeight?: number; // in MB (1 to 25)
+  responseComment?: string;
+  reviewedBy?: string;
+  reviewedAt?: string;
 }
 
 export interface SharedDocument {
@@ -244,5 +268,6 @@ export interface SystemSettings {
   };
   tabOrder?: string[];
   allowAdminManagerTemplates?: boolean;
+  processTemplateRequired?: boolean;
 }
 
