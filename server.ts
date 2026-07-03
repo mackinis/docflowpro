@@ -546,6 +546,35 @@ activeRefreshPromise = (async () => {
   }
 })();
 
+// Background cleanup function for unverified accounts older than 60 minutes
+function runAutomaticCleanup() {
+  try {
+    if (!isHydratedFromCloud) return;
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const toDelete = dbState.users.filter(u => {
+      if (u.isVerified) return false;
+      // Keep the default superadmin or main users safe
+      if (u.email.toLowerCase() === 'soloxelinstagram@gmail.com') return false;
+      if (u.role === 'SUPERADMIN') return false;
+      const createdAt = u.tokenCreatedAt ? new Date(u.tokenCreatedAt) : null;
+      if (!createdAt) return false;
+      return createdAt < oneHourAgo;
+    });
+
+    if (toDelete.length > 0) {
+      const toDeleteIds = toDelete.map(u => u.id);
+      dbState.users = dbState.users.filter(u => !toDeleteIds.includes(u.id));
+      saveDB(dbState);
+      console.log(`[AUTOLIMPIEZA AUTOMÁTICA] Se eliminaron ${toDelete.length} cuentas no verificadas obsoletas (más de 60 minutos de antigüedad).`);
+    }
+  } catch (err) {
+    console.error('[AUTOLIMPIEZA] Error en la ejecución automática de fondo:', err);
+  }
+}
+
+// Run automatic cleanup every 15 minutes to keep Firestore pristine
+setInterval(runAutomaticCleanup, 15 * 60 * 1000);
+
 // Helper to guarantee fresh data on API requests by always fetching synchronously from Firestore
 async function ensureFreshDbState() {
   if (activeRefreshPromise) {
@@ -767,7 +796,78 @@ app.post('/api/auth/register', async (req, res) => {
 
   const existing = dbState.users.find(u => u.email.toLowerCase() === email.toLowerCase());
   if (existing) {
-    return res.status(400).json({ error: 'El correo electrónico ya está registrado.' });
+    if (existing.isVerified) {
+      return res.status(400).json({ error: 'El correo electrónico ya está registrado.' });
+    } else {
+      console.log(`[AUTH-OVERWRITE] User found with email ${email} but NOT verified. Overwriting in-place as requested.`);
+      existing.name = name;
+      existing.lastName = lastName;
+      existing.role = role.toUpperCase() as any;
+      existing.phone = phone || '';
+      existing.address = address || '';
+      existing.city = city || '';
+      existing.province = province || '';
+      existing.country = country || '';
+      existing.passwordHash = hashPassword(password);
+      
+      const verificationPolicy = dbState.verificationPolicies?.global || 'email';
+      const token = (verificationPolicy === 'email' || verificationPolicy === 'both') ? generateVerificationToken(6) : undefined;
+      let tokenSms: string | undefined = undefined;
+      if (verificationPolicy === 'sms' || verificationPolicy === 'both') {
+        tokenSms = generateVerificationToken(6);
+        while (tokenSms === token) {
+          tokenSms = generateVerificationToken(6);
+        }
+      }
+      
+      existing.verificationToken = token;
+      existing.verificationTokenSms = tokenSms;
+      existing.tokenCreatedAt = new Date().toISOString();
+      
+      saveDB(dbState);
+      
+      let emailFailed = false;
+      let emailErrorMsg = '';
+      let smsFailed = false;
+      let smsErrorMsg = '';
+      
+      if (token) {
+        try {
+          await sendVerificationEmail(existing.email, `${name} ${lastName}`, token);
+        } catch (err: any) {
+          console.warn('No se pudo enviar el correo de verificación vía Resend:', err.message || err);
+          emailFailed = true;
+          emailErrorMsg = err.message || 'Error desconocido';
+        }
+      }
+      
+      if (tokenSms && existing.phone) {
+        try {
+          await sendVerificationSms(existing.phone, tokenSms);
+        } catch (err: any) {
+          console.warn('No se pudo enviar el SMS de verificación vía Twilio:', err.message || err);
+          smsFailed = true;
+          smsErrorMsg = err.message || 'Error de envío de SMS';
+        }
+      }
+      
+      console.log(`[VERIFICACIÓN OVERWRITE] Nuevo código generado para ${existing.email}: Email=${token || 'N/A'}, SMS=${tokenSms || 'N/A'}`);
+      
+      createAudit(existing.id, 'Actualización de registro pendiente (Sobrescritura)', 'User', existing.id, `${name} ${lastName}`);
+      
+      const { passwordHash, verificationToken, verificationTokenSms, ...safeUser } = existing as any;
+      return res.status(200).json({
+        ...safeUser,
+        verificationPolicy,
+        emailFailed,
+        emailErrorMsg,
+        smsFailed,
+        smsErrorMsg,
+        devEmailToken: token,
+        devSmsToken: tokenSms,
+        message: 'Registro pendiente actualizado. Se enviaron nuevos códigos.'
+      });
+    }
   }
 
   const verificationPolicy = dbState.verificationPolicies?.global || 'email';
@@ -1241,6 +1341,46 @@ app.post('/api/verification-policy', (req, res) => {
   saveDB(dbState);
   createAudit(currentUser.id, `Actualizó políticas de verificación de registro (MFA)`, 'Config', 'verificationPolicies', 'MFA config updated');
   res.json({ success: true, policies: dbState.verificationPolicies });
+});
+
+app.post('/api/admin/backup', (req, res) => {
+  const { currentUserId } = req.body;
+  const currentUser = dbState.users.find(u => u.id === currentUserId);
+  if (!currentUser || !['SUPERADMIN', 'ADMIN'].includes(currentUser.role)) {
+    return res.status(403).json({ error: 'Solo el Superadmin o Admin pueden exportar copias de seguridad.' });
+  }
+
+  createAudit(currentUser.id, `Exportó copia de seguridad completa del sistema`, 'Config', 'backup', 'Backup downloaded');
+  res.json({ success: true, backup: dbState });
+});
+
+app.post('/api/admin/cleanup-unverified', (req, res) => {
+  const { currentUserId } = req.body;
+  const currentUser = dbState.users.find(u => u.id === currentUserId);
+  if (!currentUser || !['SUPERADMIN', 'ADMIN'].includes(currentUser.role)) {
+    return res.status(403).json({ error: 'Solo el Superadmin o Admin pueden ejecutar la autolimpieza.' });
+  }
+
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+  const toDelete = dbState.users.filter(u => {
+    if (u.isVerified) return false;
+    if (u.email.toLowerCase() === 'soloxelinstagram@gmail.com') return false;
+    if (u.role === 'SUPERADMIN') return false;
+    const createdAt = u.tokenCreatedAt ? new Date(u.tokenCreatedAt) : null;
+    if (!createdAt) return false;
+    return createdAt < oneHourAgo;
+  });
+
+  const toDeleteIds = toDelete.map(u => u.id);
+  dbState.users = dbState.users.filter(u => !toDeleteIds.includes(u.id));
+  const deletedCount = toDelete.length;
+  
+  if (deletedCount > 0) {
+    saveDB(dbState);
+    createAudit(currentUser.id, `Ejecutó autolimpieza manual: Eliminó ${deletedCount} cuentas no verificadas de más de 60 minutos`, 'Config', 'cleanup', `${deletedCount} users removed`);
+  }
+
+  res.json({ success: true, deletedCount, deletedEmails: toDelete.map(u => u.email) });
 });
 
 app.post('/api/system-settings', (req, res) => {

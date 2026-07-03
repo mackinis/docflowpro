@@ -688,6 +688,129 @@ export default function SystemSettings({
           </div>
         </div>
 
+        {/* Card 7: Herramientas de Mantenimiento (Backup y Autolimpieza) */}
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 flex flex-col justify-between col-span-1 xl:col-span-2" id="card-admin-tools">
+          <div>
+            <div className="flex items-center gap-2 text-indigo-600 mb-3">
+              <ShieldCheck className="w-5 h-5" />
+              <h2 className="font-bold text-slate-800 text-base">Herramientas de Mantenimiento y Seguridad</h2>
+            </div>
+            <p className="text-xs text-slate-500 leading-relaxed mb-4">
+              Funciones críticas exclusivas para Administradores y Superadministradores para el resguardo de la información y la optimización de los registros en Firestore.
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+              {/* Backup Block */}
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/60 space-y-3 flex flex-col justify-between">
+                <div>
+                  <h3 className="text-xs font-bold text-slate-700 flex items-center gap-1.5 uppercase font-mono tracking-wider">
+                    Copia de Seguridad Completa
+                  </h3>
+                  <p className="text-[11px] text-slate-500 leading-relaxed mt-1">
+                    Exporta y descarga un archivo en formato JSON con la base de datos completa de DocFlow Pro (usuarios, plantillas, legajos, documentos, registros de auditoría y mensajería).
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={loading || !isAdminOrSuper}
+                  onClick={async () => {
+                    setLoading(true);
+                    setSuccessMsg(null);
+                    setErrorMsg(null);
+                    try {
+                      const res = await fetch('/api/admin/backup', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ currentUserId: currentUser.id })
+                      });
+                      if (!res.ok) {
+                        const err = await res.json();
+                        throw new Error(err.error || 'No se pudo generar la copia de seguridad.');
+                      }
+                      const data = await res.json();
+                      
+                      // Trigger client-side file download of the backup object
+                      const blob = new Blob([JSON.stringify(data.backup, null, 2)], { type: 'application/json' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `docflowpro-backup-${new Date().toISOString().split('T')[0]}.json`;
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      URL.revokeObjectURL(url);
+
+                      setSuccessMsg('Copia de seguridad completa descargada con éxito.');
+                    } catch (err: any) {
+                      setErrorMsg(err.message);
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                  className="w-full mt-2 py-2 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  Descargar Respaldo JSON
+                </button>
+              </div>
+
+              {/* Autolimpieza Block */}
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/60 space-y-3 flex flex-col justify-between">
+                <div>
+                  <h3 className="text-xs font-bold text-slate-700 flex items-center gap-1.5 uppercase font-mono tracking-wider">
+                    Autolimpieza de Cuentas Inactivas
+                  </h3>
+                  <p className="text-[11px] text-slate-500 leading-relaxed mt-1">
+                    Elimina manualmente cuentas creadas hace más de una hora que aún no hayan completado su proceso de verificación de correo o SMS, liberando espacio basura en Firestore.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={loading || !isAdminOrSuper}
+                  onClick={async () => {
+                    if (!window.confirm('¿Está seguro de que desea barrer la base de datos de cuentas no verificadas con más de 60 minutos de antigüedad? Esta acción no se puede deshacer.')) {
+                      return;
+                    }
+                    setLoading(true);
+                    setSuccessMsg(null);
+                    setErrorMsg(null);
+                    try {
+                      const res = await fetch('/api/admin/cleanup-unverified', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ currentUserId: currentUser.id })
+                      });
+                      if (!res.ok) {
+                        const err = await res.json();
+                        throw new Error(err.error || 'No se pudo ejecutar la autolimpieza.');
+                      }
+                      const data = await res.json();
+                      
+                      if (data.deletedCount > 0) {
+                        setSuccessMsg(`Autolimpieza ejecutada correctamente. Se barrieron y eliminaron ${data.deletedCount} cuentas inactivas obsoletas.`);
+                      } else {
+                        setSuccessMsg('La autolimpieza finalizó correctamente. No se encontraron cuentas inactivas obsoletas para eliminar en este momento.');
+                      }
+                      await loadState();
+                    } catch (err: any) {
+                      setErrorMsg(err.message);
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                  className="w-full mt-2 py-2 px-4 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  Ejecutar Autolimpieza Manual
+                </button>
+              </div>
+            </div>
+          </div>
+          {!isAdminOrSuper && (
+            <div className="text-[10px] text-amber-600 bg-amber-50 p-2 rounded-lg border border-amber-100 mt-2">
+              * Estas herramientas solo están habilitadas para perfiles de Administrador y Superadministrador.
+            </div>
+          )}
+        </div>
+
       </div>
     </div>
   );
