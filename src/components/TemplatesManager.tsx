@@ -1436,21 +1436,23 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                 </div>
 
                 {/* Industry/Rubro Selector */}
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-semibold text-slate-600 uppercase">Rubro Comercial / Industria *</label>
-                  <select
-                    value={digitizeIndustry}
-                    onChange={(e) => setDigitizeIndustry(e.target.value as any)}
-                    className="w-full text-xs p-2.5 border border-slate-200 bg-white rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                  >
-                    <option value="Inmobiliaria">Inmobiliaria</option>
-                    <option value="Jurídico">Jurídico</option>
-                    <option value="Seguros">Seguros</option>
-                    <option value="Financiera">Financiera</option>
-                    <option value="Recursos Humanos">Recursos Humanos</option>
-                    <option value="Administrativo">Administrativo</option>
-                  </select>
-                </div>
+                {currentUser.role !== 'MANAGER' && (
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-semibold text-slate-600 uppercase">Rubro Comercial / Industria *</label>
+                    <select
+                      value={digitizeIndustry}
+                      onChange={(e) => setDigitizeIndustry(e.target.value as any)}
+                      className="w-full text-xs p-2.5 border border-slate-200 bg-white rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    >
+                      <option value="Inmobiliaria">Inmobiliaria</option>
+                      <option value="Jurídico">Jurídico</option>
+                      <option value="Seguros">Seguros</option>
+                      <option value="Financiera">Financiera</option>
+                      <option value="Recursos Humanos">Recursos Humanos</option>
+                      <option value="Administrativo">Administrativo</option>
+                    </select>
+                  </div>
+                )}
 
                 {/* Checkbox "Generar Flujo por Etapas" */}
                 <div className="p-3.5 rounded-xl border border-slate-200/80 bg-slate-50/50 flex items-start gap-3">
@@ -1515,21 +1517,23 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                   />
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-semibold text-slate-600 uppercase">Rubro Comercial / Industria *</label>
-                  <select
-                    value={manualIndustry}
-                    onChange={(e) => setManualIndustry(e.target.value as any)}
-                    className="w-full text-xs p-2.5 border border-slate-200 bg-white rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                  >
-                    <option value="Inmobiliaria">Inmobiliaria</option>
-                    <option value="Jurídico">Jurídico</option>
-                    <option value="Seguros">Seguros</option>
-                    <option value="Financiera">Financiera</option>
-                    <option value="Recursos Humanos">Recursos Humanos</option>
-                    <option value="Administrativo">Administrativo</option>
-                  </select>
-                </div>
+                {currentUser.role !== 'MANAGER' && (
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-semibold text-slate-600 uppercase">Rubro Comercial / Industria *</label>
+                    <select
+                      value={manualIndustry}
+                      onChange={(e) => setManualIndustry(e.target.value as any)}
+                      className="w-full text-xs p-2.5 border border-slate-200 bg-white rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    >
+                      <option value="Inmobiliaria">Inmobiliaria</option>
+                      <option value="Jurídico">Jurídico</option>
+                      <option value="Seguros">Seguros</option>
+                      <option value="Financiera">Financiera</option>
+                      <option value="Recursos Humanos">Recursos Humanos</option>
+                      <option value="Administrativo">Administrativo</option>
+                    </select>
+                  </div>
+                )}
               </form>
             )}
 
@@ -1677,15 +1681,17 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                 Roles Permitidos:
               </span>
               
-              <label className="flex items-center gap-2.5 text-xs font-semibold text-slate-700 cursor-not-allowed opacity-75">
-                <input
-                  type="checkbox"
-                  checked={true}
-                  disabled={true}
-                  className="rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4"
-                />
-                <span>Superadministrador (SUPERADMIN) <span className="text-[10px] font-normal text-slate-400 font-mono">(Obligatorio)</span></span>
-              </label>
+              {currentUser.role !== 'MANAGER' && (
+                <label className="flex items-center gap-2.5 text-xs font-semibold text-slate-700 cursor-not-allowed opacity-75">
+                  <input
+                    type="checkbox"
+                    checked={true}
+                    disabled={true}
+                    className="rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4"
+                  />
+                  <span>Superadministrador (SUPERADMIN) <span className="text-[10px] font-normal text-slate-400 font-mono">(Obligatorio)</span></span>
+                </label>
+              )}
 
               {(['ADMIN', 'MANAGER', 'ASESOR'] as const).map(role => {
                 const labelMap = {
@@ -1693,6 +1699,9 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                   MANAGER: 'Gerente (MANAGER)',
                   ASESOR: 'Asesor (ASESOR)'
                 };
+                if (currentUser.role === 'MANAGER' && role === 'ADMIN') {
+                  return null;
+                }
                 const isChecked = approveRoles.includes(role);
                 return (
                   <label key={role} className="flex items-center gap-2.5 text-xs font-semibold text-slate-700 cursor-pointer select-none">
