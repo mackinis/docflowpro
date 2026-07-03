@@ -775,6 +775,11 @@ app.get('/api/state', (req, res) => {
     };
   });
 
+  // Precompute superadmin user IDs for constant-time lookup
+  const superadminIds = new Set(
+    dbState.users.filter(u => u.role === 'SUPERADMIN').map(u => u.id)
+  );
+
   // Filter users to keep SUPERADMIN invisible if not logged in as SUPERADMIN
   const filteredUsers = isSuper
     ? dbState.users
@@ -784,8 +789,7 @@ app.get('/api/state', (req, res) => {
   const filteredAuditLogs = isSuper
     ? (dbState.auditLogs || [])
     : (dbState.auditLogs || []).filter(log => {
-        const logUser = dbState.users.find(u => u.id === log.userId);
-        if (logUser && logUser.role === 'SUPERADMIN') return false;
+        if (superadminIds.has(log.userId)) return false;
         if (log.userRole === 'SUPERADMIN') return false;
         if (log.action && (log.action.includes('SUPERADMIN') || log.action.includes('Superadmin'))) return false;
         if (log.entityName && (log.entityName.includes('SUPERADMIN') || log.entityName.includes('Superadmin'))) return false;
@@ -796,10 +800,8 @@ app.get('/api/state', (req, res) => {
   const filteredMessages = isSuper
     ? (dbState.systemMessages || [])
     : (dbState.systemMessages || []).filter(msg => {
-        const sender = dbState.users.find(u => u.id === msg.senderId);
-        const receiver = dbState.users.find(u => u.id === msg.receiverId);
-        if (sender && sender.role === 'SUPERADMIN') return false;
-        if (receiver && receiver.role === 'SUPERADMIN') return false;
+        if (superadminIds.has(msg.senderId)) return false;
+        if (superadminIds.has(msg.receiverId)) return false;
         return true;
       });
 

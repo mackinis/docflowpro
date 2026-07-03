@@ -3,8 +3,6 @@ import {
   Loader2, 
   Sparkles, 
   Layers, 
-  HelpCircle,
-  FileCheck2,
   AlertCircle,
   Menu
 } from 'lucide-react';
@@ -42,19 +40,16 @@ export default function App() {
   const [activeCaseId, setActiveCaseId] = useState<string | null>(null);
 
   // Load backend state on initialization
-  const loadState = async () => {
+  const loadState = async (userIdOverride?: string) => {
     try {
       const savedUserStr = sessionStorage.getItem('docflow_user');
       const savedRealUserStr = sessionStorage.getItem('docflow_real_user');
       let url = '/api/state';
       const params: string[] = [];
-      if (savedUserStr) {
-        try {
-          const parsed = JSON.parse(savedUserStr);
-          if (parsed && parsed.id) {
-            params.push(`userId=${parsed.id}`);
-          }
-        } catch (e) {}
+      const targetUserId = userIdOverride || (savedUserStr ? JSON.parse(savedUserStr).id : undefined);
+      
+      if (targetUserId) {
+        params.push(`userId=${targetUserId}`);
       }
       if (savedRealUserStr) {
         try {
@@ -74,10 +69,11 @@ export default function App() {
       const data: AppDataState = await response.json();
       setState(data);
 
-      // Restore user from sessionStorage if exists
-      if (savedUserStr) {
+      // Restore user from sessionStorage or override if exists
+      const effectiveUserStr = userIdOverride ? JSON.stringify({ id: userIdOverride }) : savedUserStr;
+      if (effectiveUserStr) {
         try {
-          const savedUser = JSON.parse(savedUserStr);
+          const savedUser = JSON.parse(effectiveUserStr);
           const matchedUser = data.users.find(u => u.id === savedUser.id);
           if (matchedUser && matchedUser.active !== false) {
             setCurrentUser(matchedUser);
@@ -154,23 +150,8 @@ export default function App() {
     setActiveTab('dashboard');
     setActiveCaseId(null);
 
-    // Fetch state with new simulated user filtering
-    try {
-      const realUserStr = sessionStorage.getItem('docflow_real_user');
-      let realUserId = '';
-      if (realUserStr) {
-        try {
-          realUserId = JSON.parse(realUserStr).id;
-        } catch (e) {}
-      }
-      const response = await fetch(`/api/state?userId=${user.id}&realUserId=${realUserId}`);
-      if (response.ok) {
-        const data: AppDataState = await response.json();
-        setState(data);
-      }
-    } catch (e) {
-      console.error(e);
-    }
+    // Fetch state with new simulated user filtering consolidated
+    await loadState(user.id);
   };
 
   // Handle current user updating (from UserProfile settings)

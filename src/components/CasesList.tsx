@@ -13,7 +13,6 @@ import {
   Users,
   ChevronRight,
   X,
-  Upload,
   Pencil
 } from 'lucide-react';
 import { Case, ProcessTemplate, User as UserType, Participant, ParticipantType } from '../types';
