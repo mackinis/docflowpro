@@ -724,6 +724,12 @@ function createNotification(userId: string, title: string, message: string, type
 // REST API Routes
 
 app.get('/api/state', (req, res) => {
+  const requestingUserId = req.query.userId || req.headers['x-user-id'];
+  const realUserId = req.query.realUserId;
+  const requestingUser = dbState.users.find(u => u.id === requestingUserId);
+  const realUser = dbState.users.find(u => u.id === realUserId);
+  const isSuper = (requestingUser && requestingUser.role === 'SUPERADMIN') || (realUser && realUser.role === 'SUPERADMIN');
+
   const virtualTemplates = (dbState.sharedDocuments || []).map(doc => {
     let decodedContent = '';
     if (doc.dataUrl) {
@@ -769,8 +775,39 @@ app.get('/api/state', (req, res) => {
     };
   });
 
+  // Filter users to keep SUPERADMIN invisible if not logged in as SUPERADMIN
+  const filteredUsers = isSuper
+    ? dbState.users
+    : dbState.users.filter(u => u.role !== 'SUPERADMIN');
+
+  // Filter audit logs to hide superadmin activities
+  const filteredAuditLogs = isSuper
+    ? (dbState.auditLogs || [])
+    : (dbState.auditLogs || []).filter(log => {
+        const logUser = dbState.users.find(u => u.id === log.userId);
+        if (logUser && logUser.role === 'SUPERADMIN') return false;
+        if (log.userRole === 'SUPERADMIN') return false;
+        if (log.action && (log.action.includes('SUPERADMIN') || log.action.includes('Superadmin'))) return false;
+        if (log.entityName && (log.entityName.includes('SUPERADMIN') || log.entityName.includes('Superadmin'))) return false;
+        return true;
+      });
+
+  // Filter system messages to hide conversations with superadmin
+  const filteredMessages = isSuper
+    ? (dbState.systemMessages || [])
+    : (dbState.systemMessages || []).filter(msg => {
+        const sender = dbState.users.find(u => u.id === msg.senderId);
+        const receiver = dbState.users.find(u => u.id === msg.receiverId);
+        if (sender && sender.role === 'SUPERADMIN') return false;
+        if (receiver && receiver.role === 'SUPERADMIN') return false;
+        return true;
+      });
+
   const stateWithVirtualTemplates = {
     ...dbState,
+    users: filteredUsers,
+    auditLogs: filteredAuditLogs,
+    systemMessages: filteredMessages,
     templates: [...(dbState.templates || []), ...virtualTemplates]
   };
 
@@ -779,8 +816,18 @@ app.get('/api/state', (req, res) => {
 
 // 1. Auth & Users
 app.get('/api/users', (req, res) => {
+  const currentUserId = req.query.currentUserId || req.query.userId || req.headers['x-user-id'];
+  const realUserId = req.query.realUserId;
+  const currentUser = dbState.users.find(u => u.id === currentUserId);
+  const realUser = dbState.users.find(u => u.id === realUserId);
+  const isSuper = (currentUser && currentUser.role === 'SUPERADMIN') || (realUser && realUser.role === 'SUPERADMIN');
+
+  const filteredUsers = isSuper
+    ? dbState.users
+    : dbState.users.filter(u => u.role !== 'SUPERADMIN');
+
   // Return users without sensitive password hashes or verification tokens
-  const safeUsers = dbState.users.map(u => {
+  const safeUsers = filteredUsers.map(u => {
     const { passwordHash, verificationToken, tokenCreatedAt, ...safeUser } = u as any;
     return safeUser;
   });
@@ -1256,6 +1303,11 @@ app.put('/api/users/:id', (req, res) => {
     return res.status(401).json({ error: 'No autorizado. Se requiere usuario actual.' });
   }
 
+  // Nobody (including Admins) can touch or see anything regarding a SUPERADMIN
+  if (targetUser.role === 'SUPERADMIN' && currentUser.role !== 'SUPERADMIN') {
+    return res.status(403).json({ error: 'Acceso denegado. El Superadmin es invisible e intocable.' });
+  }
+
   // Permission Hierarchy Verification
   const { hasSensitiveEditPermissionOverride } = req.body;
   const isEditingSensitive = email !== undefined || password !== undefined || role !== undefined || active !== undefined || hasSensitiveEditPermissionOverride !== undefined;
@@ -1280,9 +1332,8 @@ app.put('/api/users/:id', (req, res) => {
           allowed = true;
         }
       } else if (actorRole === 'MANAGER') {
-        if (targetRole === 'ASESOR') {
-          allowed = true;
-        }
+        // Por defecto, los managers ya no pueden editar datos sensibles de nadie (incluyendo Asesores)
+        allowed = false;
       }
     }
 
@@ -1315,6 +1366,34 @@ app.put('/api/users/:id', (req, res) => {
 
   const { passwordHash, verificationToken, ...safeUser } = targetUser as any;
   res.json(safeUser);
+});
+
+// Endpoint para eliminar un usuario de forma definitiva (Solo Superadmin)
+app.delete('/api/users/:id', (req, res) => {
+  const { id } = req.params;
+  const currentUserId = req.body.currentUserId || req.query.currentUserId;
+
+  const currentUser = dbState.users.find(u => u.id === currentUserId);
+  if (!currentUser || currentUser.role !== 'SUPERADMIN') {
+    return res.status(403).json({ error: 'Solo el Superadmin puede eliminar usuarios de la base de datos de forma definitiva.' });
+  }
+
+  const targetUser = dbState.users.find(u => u.id === id);
+  if (!targetUser) {
+    return res.status(404).json({ error: 'Usuario destino no encontrado.' });
+  }
+
+  if (targetUser.id === currentUser.id) {
+    return res.status(400).json({ error: 'No puedes eliminar tu propia cuenta de Superadmin.' });
+  }
+
+  // Eliminar usuario
+  dbState.users = dbState.users.filter(u => u.id !== id);
+  saveDB(dbState);
+
+  createAudit(currentUser.id, `Eliminó de forma permanente e irrecuperable al usuario ${targetUser.name} ${targetUser.lastName} (${targetUser.role})`, 'User', id, `${targetUser.name} ${targetUser.lastName}`);
+
+  res.json({ success: true, message: `Usuario ${targetUser.name} ${targetUser.lastName} eliminado definitivamente.` });
 });
 
 app.post('/api/industry', (req, res) => {
@@ -1386,8 +1465,21 @@ app.post('/api/admin/cleanup-unverified', (req, res) => {
 app.post('/api/system-settings', (req, res) => {
   const { settings, currentUserId } = req.body;
   const currentUser = dbState.users.find(u => u.id === currentUserId);
-  if (!currentUser || !['SUPERADMIN', 'ADMIN', 'MANAGER'].includes(currentUser.role)) {
-    return res.status(403).json({ error: 'Solo el Superadmin, Admin o Manager pueden decidir las configuraciones de la plataforma.' });
+  if (!currentUser || !['SUPERADMIN', 'ADMIN'].includes(currentUser.role)) {
+    return res.status(403).json({ error: 'Solo el Superadmin o Admin pueden configurar la plataforma.' });
+  }
+
+  // Si no es Superadmin, no puede cambiar políticas de mensajería interna, orden de solapas ni permisos de plantillas
+  if (currentUser.role !== 'SUPERADMIN') {
+    if (settings && settings.roleMessagingConfigs !== undefined) {
+      return res.status(403).json({ error: 'Solo el Superadmin puede modificar las políticas de mensajería interna.' });
+    }
+    if (settings && settings.tabOrder !== undefined) {
+      return res.status(403).json({ error: 'Solo el Superadmin puede modificar el orden de las solapas de navegación.' });
+    }
+    if (settings && settings.allowAdminManagerTemplates !== undefined) {
+      return res.status(403).json({ error: 'Solo el Superadmin puede modificar los permisos globales de plantillas.' });
+    }
   }
 
   dbState.systemSettings = {

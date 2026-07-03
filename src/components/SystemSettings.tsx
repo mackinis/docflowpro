@@ -285,13 +285,13 @@ export default function SystemSettings({
   const isSuperAdmin = currentUser.role === 'SUPERADMIN';
   const isAdminOrSuper = isSuperAdmin || currentUser.role === 'ADMIN';
 
-  if (!isSuperAdmin && currentUser.role !== 'ADMIN' && currentUser.role !== 'MANAGER') {
+  if (!isSuperAdmin && currentUser.role !== 'ADMIN') {
     return (
       <div className="bg-red-50 border border-red-200 text-red-800 p-6 rounded-2xl flex items-center gap-4 shadow-sm" id="unauthorized-settings">
         <Lock className="w-8 h-8 text-red-600 shrink-0" />
         <div>
           <h3 className="font-bold text-lg">Acceso Denegado</h3>
-          <p className="text-sm text-red-700/90">Solo los Superadministradores, Administradores y Managers tienen acceso a la configuración del sistema.</p>
+          <p className="text-sm text-red-700/90">Solo los Superadministradores y Administradores tienen acceso a la configuración del sistema.</p>
         </div>
       </div>
     );

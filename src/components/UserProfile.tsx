@@ -18,7 +18,10 @@ import {
   Upload,
   History,
   Download,
-  Clock
+  Clock,
+  UserX,
+  Trash2,
+  ShieldAlert
 } from 'lucide-react';
 import { User, AppDataState } from '../types';
 import { PRESET_AVATARS } from '../data';
@@ -110,8 +113,8 @@ export default function UserProfile({
       return ['MANAGER', 'ASESOR'].includes(targetRole);
     }
     if (currentUser.role === 'MANAGER') {
-      // Managers can only edit ASESOR
-      return targetRole === 'ASESOR';
+      // Por defecto, los managers no pueden editar datos sensibles de nadie.
+      return false;
     }
     return false;
   };
@@ -258,6 +261,77 @@ export default function UserProfile({
       
       // Update our selected user instance
       setSelectedUser(data);
+    } catch (err: any) {
+      setErrorMsg(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Toggles active state (Suspended / Active) for a user
+  const handleToggleSuspension = async () => {
+    if (!selectedUser) return;
+    const newActiveState = !mgmtActive;
+    const confirmMsg = newActiveState 
+      ? `¿Está seguro de que desea reactivar la cuenta de ${selectedUser.name} ${selectedUser.lastName}?`
+      : `¿Está seguro de que desea suspender la cuenta de ${selectedUser.name} ${selectedUser.lastName}? El usuario no podrá iniciar sesión en la plataforma.`;
+    
+    if (!window.confirm(confirmMsg)) return;
+
+    setLoading(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    try {
+      const response = await fetch(`/api/users/${selectedUser.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          currentUserId: currentUser.id,
+          active: newActiveState
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'No se pudo cambiar el estado de suspensión.');
+      }
+
+      setMgmtActive(newActiveState);
+      setSuccessMsg(`Cuenta de ${selectedUser.name} ${selectedUser.lastName} ${newActiveState ? 'reactivada' : 'suspendida'} con éxito.`);
+      await loadState();
+      setSelectedUser(data);
+    } catch (err: any) {
+      setErrorMsg(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Deletes user completely (Only Superadmin)
+  const handleDeleteUser = async () => {
+    if (!selectedUser) return;
+    const confirmMsg = `¿Está seguro de que desea ELIMINAR DEFINITIVAMENTE al usuario ${selectedUser.name} ${selectedUser.lastName}? Esta acción eliminará permanentemente la cuenta de la base de datos de forma irrecuperable.`;
+    
+    if (!window.confirm(confirmMsg)) return;
+
+    setLoading(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    try {
+      const response = await fetch(`/api/users/${selectedUser.id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentUserId: currentUser.id })
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'No se pudo eliminar el usuario.');
+      }
+
+      setSuccessMsg(`Usuario ${selectedUser.name} ${selectedUser.lastName} eliminado definitivamente de la base de datos.`);
+      setSelectedUser(null);
+      await loadState();
     } catch (err: any) {
       setErrorMsg(err.message);
     } finally {
@@ -607,56 +681,63 @@ export default function UserProfile({
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Users List Block */}
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm lg:col-span-1 flex flex-col max-h-[600px]">
-            <h3 className="font-bold text-slate-800 text-base mb-3 flex items-center gap-2">
-              <Users className="w-4.5 h-4.5 text-slate-500" />
-              Directorio de Usuarios ({state.users.length})
-            </h3>
-            
-            <div className="overflow-y-auto space-y-2 flex-1 pr-1">
-              {state.users.map((u) => {
-                const isSelected = selectedUser?.id === u.id;
-                return (
-                  <button
-                    key={u.id}
-                    onClick={() => handleSelectUser(u)}
-                    className={`w-full flex items-center gap-3 p-3 rounded-xl border text-left transition-all ${
-                      isSelected
-                        ? 'bg-indigo-50/50 border-indigo-200 ring-1 ring-indigo-200'
-                        : 'bg-white hover:bg-slate-50 border-slate-100'
-                    }`}
-                  >
-                    <img 
-                      src={u.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100"} 
-                      alt={u.name} 
-                      className="w-10 h-10 rounded-full object-cover border border-slate-100"
-                      referrerPolicy="no-referrer"
-                    />
-                    <div className="overflow-hidden flex-1">
-                      <p className="text-xs font-bold text-slate-800 leading-tight truncate">
-                        {u.name} {u.lastName}
-                      </p>
-                      <p className="text-[10px] text-slate-400 font-mono truncate">{u.email}</p>
-                      
-                      <div className="flex items-center gap-1.5 mt-1">
-                        <span className={`px-1.5 py-0.5 rounded text-[8px] font-mono font-bold uppercase ${
-                          u.role === 'SUPERADMIN' ? 'bg-red-50 text-red-600 border border-red-200/50' :
-                          u.role === 'ADMIN' ? 'bg-amber-50 text-amber-600 border border-amber-200/50' :
-                          u.role === 'MANAGER' ? 'bg-emerald-50 text-emerald-600 border border-emerald-200/50' :
-                          'bg-blue-50 text-blue-600 border border-blue-200/50'
-                        }`}>
-                          {u.role}
-                        </span>
-                        {u.active === false && (
-                          <span className="bg-red-100 text-red-700 text-[8px] px-1.5 py-0.5 rounded font-bold font-mono">
-                            INACTIVO
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+            {(() => {
+              const visibleUsers = state.users.filter(u => currentUser.role === 'SUPERADMIN' || u.role !== 'SUPERADMIN');
+              return (
+                <>
+                  <h3 className="font-bold text-slate-800 text-base mb-3 flex items-center gap-2">
+                    <Users className="w-4.5 h-4.5 text-slate-500" />
+                    Directorio de Usuarios ({visibleUsers.length})
+                  </h3>
+                  
+                  <div className="overflow-y-auto space-y-2 flex-1 pr-1">
+                    {visibleUsers.map((u) => {
+                      const isSelected = selectedUser?.id === u.id;
+                      return (
+                        <button
+                          key={u.id}
+                          onClick={() => handleSelectUser(u)}
+                          className={`w-full flex items-center gap-3 p-3 rounded-xl border text-left transition-all ${
+                            isSelected
+                              ? 'bg-indigo-50/50 border-indigo-200 ring-1 ring-indigo-200'
+                              : 'bg-white hover:bg-slate-50 border-slate-100'
+                          }`}
+                        >
+                          <img 
+                            src={u.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100"} 
+                            alt={u.name} 
+                            className="w-10 h-10 rounded-full object-cover border border-slate-100"
+                            referrerPolicy="no-referrer"
+                          />
+                          <div className="overflow-hidden flex-1">
+                            <p className="text-xs font-bold text-slate-800 leading-tight truncate">
+                              {u.name} {u.lastName}
+                            </p>
+                            <p className="text-[10px] text-slate-400 font-mono truncate">{u.email}</p>
+                            
+                            <div className="flex items-center gap-1.5 mt-1">
+                              <span className={`px-1.5 py-0.5 rounded text-[8px] font-mono font-bold uppercase ${
+                                u.role === 'SUPERADMIN' ? 'bg-red-50 text-red-600 border border-red-200/50' :
+                                u.role === 'ADMIN' ? 'bg-amber-50 text-amber-600 border border-amber-200/50' :
+                                u.role === 'MANAGER' ? 'bg-emerald-50 text-emerald-600 border border-emerald-200/50' :
+                                'bg-blue-50 text-blue-600 border border-blue-200/50'
+                              }`}>
+                                {u.role}
+                              </span>
+                              {u.active === false && (
+                                <span className="bg-red-100 text-red-700 text-[8px] px-1.5 py-0.5 rounded font-bold font-mono">
+                                  INACTIVO
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              );
+            })()}
           </div>
 
           {/* User Editor block */}
@@ -690,10 +771,10 @@ export default function UserProfile({
                     Permisos de Edición de Datos Sensibles
                   </p>
                   <p className="text-slate-500 leading-relaxed">
-                    De acuerdo a las reglas de la plataforma: 
+                    De acuerdo a las reglas vigentes: 
                     <strong> Superadmin</strong> edita Admins y Superadmins; 
-                    <strong> Admins</strong> editan Managers; 
-                    <strong> Managers, Admins y Superadmins</strong> editan Asesores.
+                    <strong> Admins</strong> editan Managers y Asesores por defecto. Los 
+                    <strong> Managers</strong> y <strong>Asesores</strong> no pueden editar datos sensibles por defecto.
                   </p>
                   <div className="pt-1 flex items-center gap-1.5 justify-between flex-wrap">
                     <div className="flex items-center gap-1.5">
@@ -887,6 +968,62 @@ export default function UserProfile({
                     </button>
                   </div>
                 </form>
+
+                {/* Account Control Card (Only for Admins and Superadmins) */}
+                {['SUPERADMIN', 'ADMIN'].includes(currentUser.role) && (
+                  <div className="mt-6 border-t border-slate-100 pt-6 space-y-4" id="account-control-panel">
+                    <div className="bg-slate-50 border border-slate-200 p-5 rounded-2xl space-y-4">
+                      <div className="flex items-center gap-2 text-indigo-700">
+                        <ShieldAlert className="w-5 h-5" />
+                        <h4 className="text-sm font-bold text-slate-800">
+                          Control de Cuenta y Acciones de Seguridad
+                        </h4>
+                      </div>
+                      <p className="text-xs text-slate-500 leading-relaxed">
+                        Herramientas administrativas para la suspensión de credenciales o eliminación definitiva de cuentas en DocFlow Pro.
+                      </p>
+
+                      <div className="flex flex-wrap gap-3 items-center">
+                        {/* Suspension button logic */}
+                        {((currentUser.role === 'SUPERADMIN' && ['ASESOR', 'MANAGER', 'ADMIN'].includes(selectedUser.role)) ||
+                          (currentUser.role === 'ADMIN' && ['ASESOR', 'MANAGER'].includes(selectedUser.role))) ? (
+                          <button
+                            type="button"
+                            onClick={handleToggleSuspension}
+                            disabled={loading}
+                            className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer shadow-xs ${
+                              mgmtActive
+                                ? 'bg-amber-100 text-amber-800 hover:bg-amber-200 border border-amber-200'
+                                : 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border border-emerald-200'
+                            }`}
+                            id="btn-mgmt-toggle-suspension"
+                          >
+                            <UserX className="w-4 h-4" />
+                            {mgmtActive ? 'Suspender Cuenta' : 'Reactivar Cuenta'}
+                          </button>
+                        ) : (
+                          <div className="text-[11px] text-slate-400 bg-slate-100/50 px-3 py-2 rounded-lg border border-slate-200/40">
+                            * No tienes permisos para suspender a este rango de usuario ({selectedUser.role}).
+                          </div>
+                        )}
+
+                        {/* Permanent deletion button logic (Only Superadmin can delete definitely) */}
+                        {currentUser.role === 'SUPERADMIN' && ['ASESOR', 'MANAGER', 'ADMIN'].includes(selectedUser.role) && (
+                          <button
+                            type="button"
+                            onClick={handleDeleteUser}
+                            disabled={loading}
+                            className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer shadow-xs sm:ml-auto"
+                            id="btn-mgmt-delete-user"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            Eliminar Definitivamente (Irrecuperable)
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {currentUser.role === 'SUPERADMIN' && (
                   <div className="mt-6 border-t border-slate-100 pt-6 space-y-4">

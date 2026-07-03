@@ -103,8 +103,8 @@ export default function Sidebar({
     { id: 'messages', label: 'Mensajes', icon: Mail, roles: ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR'] },
     { id: 'notifications', label: 'Notificaciones', icon: Bell, roles: ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR'] },
     { id: 'templates', label: 'Plantillas y Procesos', icon: FolderKanban, roles: ['SUPERADMIN', 'ADMIN', 'MANAGER'] },
-    { id: 'profile', label: 'Perfiles de Usuarios', icon: UserIcon, roles: ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR'] },
-    { id: 'settings', label: 'Configuración', icon: SettingsIcon, roles: ['SUPERADMIN', 'ADMIN', 'MANAGER'] },
+    { id: 'profile', label: 'Perfiles de Usuarios', icon: UserIcon, roles: ['SUPERADMIN', 'ADMIN'] },
+    { id: 'settings', label: 'Configuración', icon: SettingsIcon, roles: ['SUPERADMIN', 'ADMIN'] },
   ];
 
   const sortedMenuItems = [...menuItems];

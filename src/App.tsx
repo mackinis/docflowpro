@@ -44,7 +44,30 @@ export default function App() {
   // Load backend state on initialization
   const loadState = async () => {
     try {
-      const response = await fetch('/api/state');
+      const savedUserStr = sessionStorage.getItem('docflow_user');
+      const savedRealUserStr = sessionStorage.getItem('docflow_real_user');
+      let url = '/api/state';
+      const params: string[] = [];
+      if (savedUserStr) {
+        try {
+          const parsed = JSON.parse(savedUserStr);
+          if (parsed && parsed.id) {
+            params.push(`userId=${parsed.id}`);
+          }
+        } catch (e) {}
+      }
+      if (savedRealUserStr) {
+        try {
+          const parsed = JSON.parse(savedRealUserStr);
+          if (parsed && parsed.id) {
+            params.push(`realUserId=${parsed.id}`);
+          }
+        } catch (e) {}
+      }
+      if (params.length > 0) {
+        url += '?' + params.join('&');
+      }
+      const response = await fetch(url);
       if (!response.ok) {
         throw new Error('No se pudo recuperar el estado del servidor.');
       }
@@ -52,8 +75,6 @@ export default function App() {
       setState(data);
 
       // Restore user from sessionStorage if exists
-      const savedUserStr = sessionStorage.getItem('docflow_user');
-      const savedRealUserStr = sessionStorage.getItem('docflow_real_user');
       if (savedUserStr) {
         try {
           const savedUser = JSON.parse(savedUserStr);
@@ -126,11 +147,30 @@ export default function App() {
   };
 
   // Switch simulated user
-  const handleUserChange = (user: User) => {
+  const handleUserChange = async (user: User) => {
     setCurrentUser(user);
+    sessionStorage.setItem('docflow_user', JSON.stringify(user));
     // If switching roles, make sure we go back to dashboard to avoid rendering blocked tabs
     setActiveTab('dashboard');
     setActiveCaseId(null);
+
+    // Fetch state with new simulated user filtering
+    try {
+      const realUserStr = sessionStorage.getItem('docflow_real_user');
+      let realUserId = '';
+      if (realUserStr) {
+        try {
+          realUserId = JSON.parse(realUserStr).id;
+        } catch (e) {}
+      }
+      const response = await fetch(`/api/state?userId=${user.id}&realUserId=${realUserId}`);
+      if (response.ok) {
+        const data: AppDataState = await response.json();
+        setState(data);
+      }
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   // Handle current user updating (from UserProfile settings)
@@ -554,7 +594,7 @@ export default function App() {
                   />
                 )}
 
-                {activeTab === 'profile' && (
+                {activeTab === 'profile' && ['SUPERADMIN', 'ADMIN'].includes(currentUser.role) && (
                   <UserProfile
                     currentUser={currentUser}
                     state={state}

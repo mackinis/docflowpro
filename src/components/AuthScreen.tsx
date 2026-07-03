@@ -540,7 +540,7 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
                       placeholder="Ej: AB12CD"
                       value={token}
                       onChange={(e) => setToken(e.target.value)}
-                      className="w-full px-4 py-2.5 text-center font-mono font-bold text-lg tracking-widest border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 uppercase"
+                      className="w-full px-4 py-2.5 text-center font-mono font-bold text-lg tracking-widest border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                       maxLength={10}
                       id="verify-token-email"
                     />
@@ -553,7 +553,7 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
                       placeholder="Ej: WX78YZ"
                       value={smsToken}
                       onChange={(e) => setSmsToken(e.target.value)}
-                      className="w-full px-4 py-2.5 text-center font-mono font-bold text-lg tracking-widest border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 uppercase"
+                      className="w-full px-4 py-2.5 text-center font-mono font-bold text-lg tracking-widest border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                       maxLength={10}
                       id="verify-token-sms"
                     />
@@ -571,7 +571,7 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
                       setSmsToken(e.target.value);
                       setToken(e.target.value);
                     }}
-                    className="w-full px-4 py-2.5 text-center font-mono font-bold text-lg tracking-widest border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 uppercase"
+                    className="w-full px-4 py-2.5 text-center font-mono font-bold text-lg tracking-widest border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                     maxLength={10}
                     id="verify-token-sms-single"
                   />
@@ -585,7 +585,7 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
                     placeholder="Ej: AB12CD"
                     value={token}
                     onChange={(e) => setToken(e.target.value)}
-                    className="w-full px-4 py-2.5 text-center font-mono font-bold text-lg tracking-widest border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 uppercase"
+                    className="w-full px-4 py-2.5 text-center font-mono font-bold text-lg tracking-widest border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                     maxLength={10}
                     id="verify-token-email-single"
                   />
