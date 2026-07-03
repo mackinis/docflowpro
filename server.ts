@@ -3274,14 +3274,44 @@ app.post('/api/gemini/digitize-template', async (req, res) => {
 
   const shouldGenerateFlow = generateFlow === true;
 
+  // Extract actual document text first for offline and fallback uses
+  let extractedText = '';
+  if (fileBase64) {
+    try {
+      const base64Data = fileBase64.includes(',') ? fileBase64.split(',')[1] : fileBase64;
+      const detectedMimeType = mimeType || (fileBase64.includes(',') ? fileBase64.split(';')[0].split(':')[1] : 'application/pdf');
+
+      const isDocx = detectedMimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || (fileName && fileName.endsWith('.docx'));
+      const isDoc = detectedMimeType === 'application/msword' || (fileName && fileName.endsWith('.doc'));
+
+      if (isDocx || isDoc) {
+        const buffer = Buffer.from(base64Data, 'base64');
+        const result = await mammoth.extractRawText({ buffer });
+        extractedText = result.value;
+        console.log(`Word document text extracted successfully offline. Length: ${extractedText.length}`);
+      } else if (detectedMimeType.startsWith('text/')) {
+        extractedText = Buffer.from(base64Data, 'base64').toString('utf-8');
+        console.log(`Plain text file extracted successfully offline. Length: ${extractedText.length}`);
+      } else {
+        if (textProposal) {
+          extractedText = textProposal;
+        } else {
+          extractedText = `[Contenido del documento digitalizado: ${fileName || 'archivo'}]`;
+        }
+      }
+    } catch (err: any) {
+      console.error('Error in offline extraction helper:', err);
+      if (textProposal) {
+        extractedText = textProposal;
+      }
+    }
+  } else if (textProposal) {
+    extractedText = textProposal;
+  }
+
   if (!ai) {
-    // Fallback digitizer
-    const newTemplate: ProcessTemplate = {
-      id: `tmpl-dig-${Date.now()}`,
-      name: `Plantilla Digitalizada: ${industry || 'General'}`,
-      description: `Plantilla digitalizada a partir del documento subido para el rubro ${industry || 'General'}.`,
-      industry: industry || 'Administrativo',
-      originalDocumentContent: `DOCUMENTO COMPROMISO DIGITALIZADO
+    // Fallback digitizer (100% faithful to the extracted text if available)
+    const finalContent = extractedText.trim() || `DOCUMENTO COMPROMISO DIGITALIZADO
 
 En la ciudad de Buenos Aires, se establece el siguiente acuerdo entre las partes firmantes en base al documento original digitalizado.
 
@@ -3296,7 +3326,14 @@ CLAUSULAS PRINCIPALES:
 2. Este documento digitalizado se encuentra listo para completar y ser editado digitalmente de forma íntegra.
 3. Se procederá a realizar las tareas y etapas de verificación correspondientes que se desprenden del proceso.
 
-Leído y firmado de conformidad por los participantes en el legajo.`,
+Leído y firmado de conformidad por los participantes en el legajo.`;
+
+    const newTemplate: ProcessTemplate = {
+      id: `tmpl-dig-${Date.now()}`,
+      name: fileName ? `Plantilla: ${fileName.split('.')[0]}` : `Plantilla Digitalizada: ${industry || 'General'}`,
+      description: `Plantilla digitalizada a partir del documento subido para el rubro ${industry || 'General'}.`,
+      industry: industry || 'Administrativo',
+      originalDocumentContent: finalContent,
       showDocumentToAll: true,
       stages: shouldGenerateFlow ? [
         {
@@ -3392,26 +3429,9 @@ interface ProcessTemplate {
       const isDoc = detectedMimeType === 'application/msword' || (fileName && fileName.endsWith('.doc'));
 
       if (isDocx || isDoc) {
-        try {
-          const buffer = Buffer.from(base64Data, 'base64');
-          const result = await mammoth.extractRawText({ buffer });
-          const textContent = result.value;
-          parts.push({ text: `Contenido extraído del documento Word (${fileName || 'documento'}):\n${textContent}` });
-          console.log(`Word document text extracted successfully with mammoth. Length: ${textContent.length}`);
-        } catch (docxErr: any) {
-          console.error('Error parsing Word document with mammoth:', docxErr);
-          parts.push({ text: `[Error leyendo documento Word de forma nativa. Nombre de archivo: ${fileName || 'documento'}]` });
-        }
+        parts.push({ text: `Contenido extraído del documento Word (${fileName || 'documento'}):\n${extractedText}` });
       } else if (detectedMimeType.startsWith('text/')) {
-        try {
-          const textContent = Buffer.from(base64Data, 'base64').toString('utf-8');
-          parts.push({ text: `Contenido del documento de texto:\n${textContent}` });
-        } catch (e) {
-          console.error('Error decoding plain text base64 in backend:', e);
-          if (textProposal) {
-            parts.push({ text: `Texto o contenido provisto para digitalizar:\n${textProposal}` });
-          }
-        }
+        parts.push({ text: `Contenido del documento de texto:\n${extractedText}` });
       } else {
         parts.push({
           inlineData: {
@@ -3441,7 +3461,7 @@ interface ProcessTemplate {
       name: parsedTemplate.name || `Proceso Digitalizado - ${industry || 'General'}`,
       description: parsedTemplate.description || `Proceso digitalizado mediante Inteligencia Artificial Gemini 3.5.`,
       industry: parsedTemplate.industry || (industry as any) || 'Administrativo',
-      originalDocumentContent: parsedTemplate.originalDocumentContent || '',
+      originalDocumentContent: parsedTemplate.originalDocumentContent || extractedText || '',
       showDocumentToAll: true,
       stages: (parsedTemplate.stages || []).map((stg: any, sIdx: number) => ({
         id: `stg-dig-${sIdx}-${Date.now()}`,
