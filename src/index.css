@@ -139,11 +139,52 @@ html::-webkit-scrollbar, body::-webkit-scrollbar, *::-webkit-scrollbar {
 .settings-tab-cards[data-settings-section="mensajes"] > :nth-child(3) {
   grid-column: 1 / -1;
 }
-.settings-tab-cards[data-settings-section="mensajes"] > :nth-child(3) > div > .space-y-4 {
+
+/* Settings: readable permission cards in dark mode. Avoid pale panels on dark surfaces. */
+.dark .ai-role-card {
+  background-color: #111c30 !important;
+  border-color: #40516a !important;
+}
+.dark .ai-role-card .text-slate-800,
+.dark .ai-role-card .text-slate-700 {
+  color: #f1f5f9 !important;
+}
+.dark .ai-role-card [role="switch"] {
+  opacity: 1;
+}
+
+/* Messaging: two balanced columns on desktop, one on narrow screens. */
+.settings-tab-cards[data-settings-section="mensajes"] > :nth-child(3) {
+  grid-column: 1 / -1;
+}
+.messaging-role-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem;
 }
-.settings-tab-cards[data-settings-section="mensajes"] > :nth-child(3) > div > .space-y-4 > * {
-  margin-top: 0;
+.messaging-role-grid > * { min-width: 0; }
+@media (max-width: 850px) {
+  .messaging-role-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Process cards: same height and status rows aligned at the bottom. */
+.settings-tab-cards[data-settings-section="procesos"] > :nth-child(5),
+.settings-tab-cards[data-settings-section="procesos"] > :nth-child(6) {
+  display: flex !important;
+  flex-direction: column;
+  height: 100%;
+}
+.settings-tab-cards[data-settings-section="procesos"] > :nth-child(5) > div:first-child,
+.settings-tab-cards[data-settings-section="procesos"] > :nth-child(6) > div:first-child {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+.settings-tab-cards[data-settings-section="procesos"] > :nth-child(5) > div:first-child > div:last-child,
+.settings-tab-cards[data-settings-section="procesos"] > :nth-child(6) > div:first-child > div:last-child {
+  margin-top: auto;
+}
+.settings-tab-cards[data-settings-section="procesos"] > :nth-child(5) > div:first-child > p,
+.settings-tab-cards[data-settings-section="procesos"] > :nth-child(6) > div:first-child > p {
+  margin-bottom: 1.5rem;
 }
