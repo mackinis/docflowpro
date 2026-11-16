@@ -848,10 +848,10 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
       {/* SUPERADMIN TEMPLATE EDITOR MODAL */}
       {editingTemplate && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-6xl h-[90vh] min-h-0 flex flex-col overflow-hidden">
             {/* Header */}
             <div className={`p-5 border-b border-slate-100 flex items-center justify-between ${
-              editMode === 'stages' ? 'bg-indigo-50 text-indigo-900' : 'bg-amber-50 text-amber-900'
+              editMode === 'stages' ? 'bg-[#252452] text-[#f8fafc]' : 'bg-[#49371d] text-[#f8fafc]'
             }`}>
               <div className="flex items-center gap-2">
                 {editMode === 'stages' ? (
@@ -860,10 +860,10 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                   <Edit className="w-5 h-5 text-amber-700" />
                 )}
                 <div>
-                  <h4 className="text-sm font-bold">
+                  <h4 className="text-sm font-bold text-white">
                     {editMode === 'stages' ? 'Configurar Etapas del Proceso' : 'Editar Plantilla Digital'}
                   </h4>
-                  <p className={`text-[11px] ${editMode === 'stages' ? 'text-indigo-700/80' : 'text-amber-700/80'}`}>
+                  <p className={`text-[11px] ${editMode === 'stages' ? 'text-[#dbe4ff]' : 'text-[#fde68a]'}`}>
                     {editMode === 'stages' 
                       ? 'Establece las etapas de trabajo, checklists de tareas, formularios personalizados y requisitos.' 
                       : 'Modifica los metadatos generales y el texto digitalizado original completo (documento base).'}
@@ -874,14 +874,14 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                 type="button"
                 onClick={() => { setEditingTemplate(null); setEditMode(null); }} 
                 className={`p-1.5 rounded-lg cursor-pointer ${
-                  editMode === 'stages' ? 'text-indigo-700 hover:text-indigo-950' : 'text-amber-700 hover:text-amber-950'
+                  editMode === 'stages' ? 'text-white hover:text-indigo-200' : 'text-white hover:text-amber-200'
                 }`}
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveEdit} className="flex-1 overflow-y-auto p-6 space-y-6">
+            <form onSubmit={handleSaveEdit} className="flex-1 min-h-0 overflow-y-auto p-6 space-y-6">
               {/* General details */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-150">
                 <div className="space-y-1">
