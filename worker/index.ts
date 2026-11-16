@@ -3095,8 +3095,12 @@ app.post('/api/notifications/clear-all', async (c) => {
 
 app.get('/api/audit-logs', async (c) => {
   const auth = c.get('auth')!;
-  const isSuper = auth.user.role === 'SUPERADMIN' || auth.realUser.role === 'SUPERADMIN';
-  const rows = await c.env.DB.prepare('SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 500').all<any>();
+  const isSuper = auth.realUser.role === 'SUPERADMIN';
+  if (!isSuper && auth.realUser.role !== 'ADMIN') return c.json({ error: 'Acceso a auditoría no autorizado.' }, 403);
+  const requestedLimit = Number(c.req.query('limit'));
+  const limit = Number.isInteger(requestedLimit) && requestedLimit > 0 ? Math.min(requestedLimit, 1000) : 500;
+  const offset = Math.max(0, Math.min(Number(c.req.query('offset')) || 0, 100000));
+  const rows = await c.env.DB.prepare('SELECT * FROM audit_logs ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?').bind(limit, offset).all<any>();
   const logs = (rows.results || [])
     .map((l) => ({
       id: l.id,
