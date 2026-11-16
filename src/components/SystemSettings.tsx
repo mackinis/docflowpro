@@ -396,11 +396,12 @@ export default function SystemSettings({
             <h3 className="font-bold text-slate-800 text-sm">Delegar creación de usuarios</h3>
             <p className="text-xs text-slate-500">Elegí qué administradores pueden crear cuentas activas. Solo el Superadmin puede crear otros administradores.</p>
             {state.users.filter(u => u.role === 'ADMIN').map(u => (
-              <label key={u.id} className="flex items-center gap-3 text-sm text-slate-800">
-                <input type="checkbox" checked={delegatedUserCreators.includes(u.id)}
-                  onChange={e => setDelegatedUserCreators(prev => e.target.checked ? [...prev, u.id] : prev.filter(id => id !== u.id))} />
-                {u.name} {u.lastName} ({u.email})
-              </label>
+              <div key={u.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-800">
+                <span>{u.name} {u.lastName} ({u.email})</span>
+                <SettingsSwitch label={`Autorizar a ${u.name} ${u.lastName} a crear usuarios`}
+                  checked={delegatedUserCreators.includes(u.id)}
+                  onClick={() => setDelegatedUserCreators(prev => prev.includes(u.id) ? prev.filter(id => id !== u.id) : [...prev, u.id])} />
+              </div>
             ))}
             <button disabled={loading} className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
               onClick={async () => {
