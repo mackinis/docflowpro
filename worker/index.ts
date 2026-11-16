@@ -40,7 +40,6 @@ import {
 import {
   analyzeDocumentWithAI,
   digitizeTemplateWithAI,
-  generateTemplateWithAI,
 } from './ai';
 
 const SESSION_COOKIE_NAME = 'docflow_session';
@@ -3447,49 +3446,12 @@ async function handleAnalyzeDocument(c: AppContext) {
   }
 }
 
-async function handleGenerateTemplate(c: AppContext) {
-  const auth = c.get('auth')!;
-  if (!(await canUserManageTemplates(c.env.DB, auth.user.id))) {
-    return c.json({ error: 'No tienes permisos suficientes para generar plantillas.' }, 403);
-  }
-  const { industry, promptDescription, prompt } = await c.req.json();
-  const finalDescription = promptDescription || prompt || 'Proceso general';
-  const finalIndustry = industry || 'Administrativo';
-
-  try {
-    const generated = await generateTemplateWithAI(c.env, {
-      industry: finalIndustry,
-      description: finalDescription,
-    });
-    const finalTemplate: ProcessTemplate = {
-      id: `tmpl-ai-${Date.now()}-${crypto.randomUUID().slice(0, 4)}`,
-      ...generated,
-    };
-    await saveTemplateInDb(c.env.DB, finalTemplate, false);
-    await createAudit(
-      c.env.DB,
-      auth.user.id,
-      'Plantilla generada con Cloudflare Workers AI',
-      'ProcessTemplate',
-      finalTemplate.id,
-      finalTemplate.name
-    );
-    return c.json({ success: true, template: finalTemplate });
-  } catch (err: any) {
-    console.error('Workers AI template generation error:', err);
-    return c.json(
-      { error: err?.message || 'Error generando plantilla con Cloudflare Workers AI.' },
-      503
-    );
-  }
-}
-
 async function handleDigitizeTemplate(c: AppContext) {
   const auth = c.get('auth')!;
   if (!(await canUserManageTemplates(c.env.DB, auth.user.id))) {
     return c.json({ error: 'No tienes permisos suficientes para digitalizar plantillas.' }, 403);
   }
-  const { fileBase64, mimeType, fileName, textProposal, industry, generateFlow } = await c.req.json();
+  const { fileBase64, mimeType, fileName, textProposal, industry } = await c.req.json();
 
   try {
     const digitized = await digitizeTemplateWithAI(c.env, {
@@ -3498,7 +3460,7 @@ async function handleDigitizeTemplate(c: AppContext) {
       fileName,
       textProposal,
       industry: industry || 'Administrativo',
-      generateFlow: true,
+      generateFlow: false,
     });
 
     const finalTemplate: ProcessTemplate = {
@@ -3525,11 +3487,9 @@ async function handleDigitizeTemplate(c: AppContext) {
 }
 
 app.post('/api/ai/analyze-document', handleAnalyzeDocument);
-app.post('/api/ai/generate-template', handleGenerateTemplate);
 app.post('/api/ai/digitize-template', handleDigitizeTemplate);
 // Backward-compatible route aliases
 app.post('/api/gemini/analyze-document', handleAnalyzeDocument);
-app.post('/api/gemini/generate-template', handleGenerateTemplate);
 app.post('/api/gemini/digitize-template', handleDigitizeTemplate);
 
 // Catch-all for unknown /api/* routes (never return HTML)
