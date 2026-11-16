@@ -706,9 +706,9 @@ export default function CaseDetail({
                   {isCompleted ? <Check className="w-4 h-4" /> : index + 1}
                 </div>
 
-                <div className="overflow-hidden md:max-w-32">
-                  <p className="text-xs font-bold truncate leading-tight">{stg.name}</p>
-                  <p className="text-[10px] text-slate-400 truncate md:block hidden">{stg.description}</p>
+                <div className="min-w-0 w-full md:px-2">
+                  <p className="text-xs font-bold leading-snug whitespace-normal break-words">{stg.name}</p>
+                  <p className="mt-1 text-[10px] text-slate-400 leading-snug whitespace-normal break-words">{stg.description}</p>
                 </div>
               </div>
             );
