@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { zipSync, strToU8 } from 'fflate';
 import { 
   FolderDown, 
   Upload, 
@@ -97,18 +98,43 @@ export default function SharedDocumentsManager({ currentUser, users, onAddAudit 
     finally { setIsLoadingFill(false); }
   };
 
-  const downloadCompletedDocument = () => {
+  const completedDocumentText = () => fillableContent.replace(/\[CAMPO_\d+\]/g, marker => filledValues[marker] || '________________');
+
+  const saveDocumentBlob = (blob: Blob, extension: string) => {
     if (!fillingDoc) return;
-    const completed = fillableContent.replace(/\[CAMPO_\d+\]/g, marker => filledValues[marker] || marker);
-    const blob = new Blob([completed], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = fillingDoc.fileName.replace(/\.txt$/i, '') + '_completado.txt';
-    document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(url);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fillingDoc.name.replace(/[\\/:*?"<>|]/g, '_') + '_completado.' + extension;
+    document.body.appendChild(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
+  const downloadCompletedWord = () => {
+    const xmlEscape = (v: string) => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const paragraphs = completedDocumentText().split(/\r?\n/).map(line =>
+      '<w:p><w:r><w:t xml:space="preserve">' + xmlEscape(line) + '</w:t></w:r></w:p>').join('');
+    const xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>' +
+      paragraphs + '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134"/></w:sectPr></w:body></w:document>';
+    const files = {
+      '[Content_Types].xml': strToU8('<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>'),
+      '_rels/.rels': strToU8('<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>'),
+      'word/document.xml': strToU8(xml),
+    };
+    const archive = zipSync(files);
+    saveDocumentBlob(new Blob([new Uint8Array(archive)], {type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}), 'docx');
+  };
+
+  const printCompletedPdf = () => {
+    const win = window.open('', '_blank');
+    if (!win) { setError('Permití las ventanas emergentes para guardar como PDF.'); return; }
+    const escaped = completedDocumentText().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    win.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Documento completado</title><style>@page{size:A4;margin:20mm}body{font:12pt Georgia,serif;white-space:pre-wrap;line-height:1.5;color:#111}</style></head><body>' + escaped + '</body></html>');
+    win.document.close();
+    win.focus();
+    win.print();
+  };
 
   const handleOpenDocEditor = async (doc: SharedDocument) => {
     if (!documentActions.edit) return;
@@ -1018,7 +1044,8 @@ export default function SharedDocumentsManager({ currentUser, users, onAddAudit 
             </div>
             <div className="p-4 border-t border-slate-200 flex justify-end gap-2">
               <button type="button" onClick={() => setFillingDoc(null)} className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-bold">Cerrar</button>
-              <button type="button" onClick={downloadCompletedDocument} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold">Descargar documento completado</button>
+              <button type="button" onClick={downloadCompletedWord} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold">Descargar Word (.docx)</button>
+              <button type="button" onClick={printCompletedPdf} className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold">Guardar PDF</button>
             </div>
           </div>
         </div>
