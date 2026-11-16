@@ -89,8 +89,7 @@ export default function CaseDetail({
   onApproveStage,
   onAddParticipant,
   onRemoveParticipant,
-  onUpdateParticipant,
-  onUpdateCaseDocument
+  onUpdateParticipant
 }: CaseDetailProps) {
   const caseObj = cases.find(c => c.id === caseId);
   if (!caseObj) {
@@ -144,14 +143,6 @@ export default function CaseDetail({
   const [approvingDoc, setApprovingDoc] = useState<{ id: string; name: string } | null>(null);
   const [selectedAllowedRole, setSelectedAllowedRole] = useState<string>('Todos');
 
-  // View mode switcher: 'flow' (checklist stages) or 'document' (100% digitalized word document)
-  const [caseViewMode, setCaseViewMode] = useState<'flow' | 'document'>('flow');
-  const [editableDocText, setEditableDocText] = useState('');
-  const [isEditingDocText, setIsEditingDocText] = useState(false);
-  const [isSavingDoc, setIsSavingDoc] = useState(false);
-  const [showDocumentToAllLocal, setShowDocumentToAllLocal] = useState(true);
-  const [sharedViewModeLocal, setSharedViewModeLocal] = useState<'both' | 'flow' | 'document'>('both');
-
   // Advisor upload requests state
   const [requestingForReqId, setRequestingForReqId] = useState<string | null>(null);
   const [requestedExt, setRequestedExt] = useState('.pdf');
@@ -188,18 +179,6 @@ export default function CaseDetail({
     };
     fetchSharedDocs();
   }, [currentUser]);
-
-  useEffect(() => {
-    setEditableDocText(caseObj.documentContent || template?.originalDocumentContent || '');
-  }, [caseObj.documentContent, template?.originalDocumentContent]);
-
-  useEffect(() => {
-    setShowDocumentToAllLocal(caseObj.showDocumentToAll !== undefined ? caseObj.showDocumentToAll : true);
-  }, [caseObj.showDocumentToAll]);
-
-  useEffect(() => {
-    setSharedViewModeLocal(caseObj.sharedViewMode || 'both');
-  }, [caseObj.sharedViewMode]);
 
   // Re-run stage compliance check locally
   useEffect(() => {
@@ -639,102 +618,6 @@ export default function CaseDetail({
     setPBirthDate('');
     setPComments('');
     setShowAddPart(false);
-  };
-
-  // 100% Digital Document Autocomplete Logic
-  const handleAutoFillDocument = () => {
-    let text = editableDocText || caseObj.documentContent || template?.originalDocumentContent || '';
-    if (!text) {
-      alert('El documento digital no tiene contenido para autocompletar.');
-      return;
-    }
-
-    // 1. Case generic variables
-    text = text.replace(/\[Fecha\]/gi, new Date().getDate().toString());
-    const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-    text = text.replace(/\[Mes\]/gi, monthNames[new Date().getMonth()]);
-    text = text.replace(/\[Año\]/gi, new Date().getFullYear().toString());
-    text = text.replace(/\[Título del Caso\]/gi, caseObj.title);
-    text = text.replace(/\[Código del Legajo\]/gi, caseObj.code);
-    text = text.replace(/\[Código\]/gi, caseObj.code);
-    text = text.replace(/\[Descripción\]/gi, caseObj.description);
-    text = text.replace(/\[Asesor\]/gi, advisor ? `${advisor.name} ${advisor.lastName}` : '');
-    text = text.replace(/\[Manager\]/gi, manager ? `${manager.name} ${manager.lastName}` : '');
-
-    // 2. Form submission variables
-    template?.stages.forEach(stg => {
-      stg.requirements.forEach(req => {
-        if (req.type === 'form' && req.formFields) {
-          const sub = formSubmissions.find(s => s.requirementId === req.id);
-          if (sub && sub.values) {
-            req.formFields.forEach(f => {
-              const val = sub.values[f.id];
-              if (val !== undefined && val !== null && val !== '') {
-                // Replace by [Label] (e.g. [Monto de Reserva (USD)])
-                const escapedLabel = f.label.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-                const regexLabel = new RegExp(`\\[${escapedLabel}\\]`, 'gi');
-                text = text.replace(regexLabel, String(val));
-
-                // Also replace by [Id] (e.g. [f-comp-nombre])
-                const regexId = new RegExp(`\\[${f.id}\\]`, 'gi');
-                text = text.replace(regexId, String(val));
-              }
-            });
-          }
-        }
-      });
-    });
-
-    // 3. Participant variables
-    caseObj.participants.forEach(p => {
-      const role = p.comments?.split(':')[0]?.trim() || '';
-      const rolesToTry = role ? [role] : ['Cliente', 'Comprador', 'Vendedor', 'Titular', 'Garante', 'Apoderado'];
-      
-      rolesToTry.forEach(r => {
-        text = text.replace(new RegExp(`\\[Nombre Completo ${r}\\]`, 'gi'), `${p.name} ${p.lastName}`);
-        text = text.replace(new RegExp(`\\[DNI ${r}\\]`, 'gi'), p.dni);
-        text = text.replace(new RegExp(`\\[CUIT ${r}\\]`, 'gi'), p.cuitCuil);
-        text = text.replace(new RegExp(`\\[Email ${r}\\]`, 'gi'), p.email);
-        text = text.replace(new RegExp(`\\[Teléfono ${r}\\]`, 'gi'), p.phone || '');
-        text = text.replace(new RegExp(`\\[${r}\\]`, 'gi'), `${p.name} ${p.lastName}`);
-      });
-    });
-
-    setEditableDocText(text);
-    alert('¡Sincronización exitosa! Los datos del legajo se han volcado en los campos del documento.');
-  };
-
-  // Save the edited document content back to the server
-  const handleSaveDocument = async () => {
-    setIsSavingDoc(true);
-    try {
-      await onUpdateCaseDocument(caseObj.id, editableDocText, showDocumentToAllLocal, sharedViewModeLocal);
-      
-      // Auto-validate/upload any requirement of type digital_contract in current stage
-      if (currentStage) {
-        const digitalReqs = currentStage.requirements.filter(r => r.type === 'document' && r.documentSourceType === 'digital_contract');
-        for (const req of digitalReqs) {
-          const existing = documents.find(d => d.caseId === caseObj.id && d.requirementId === req.id);
-          if (!existing) {
-            await onUploadDoc(
-              currentStage.id, 
-              req.id, 
-              req.name, 
-              `${req.name.replace(/\s+/g, '_')}_digital_completado.pdf`, 
-              editableDocText.length
-            );
-          }
-        }
-      }
-
-      setIsEditingDocText(false);
-      alert('¡Documento digitalizado guardado con éxito!');
-    } catch (e) {
-      console.error(e);
-      alert('Error guardando los cambios del documento.');
-    } finally {
-      setIsSavingDoc(false);
-    }
   };
 
   const isAsesor = currentUser.role === 'ASESOR';
