@@ -197,15 +197,17 @@ export async function getAllTemplates(db: D1Database): Promise<ProcessTemplate[]
   const reqsByStage = new Map<string, any[]>();
   for (const r of reqRows.results || []) {
     const arr = reqsByStage.get(r.stage_id) || [];
+    const actorMetadata = r.type === 'task' && r.form_fields_json ? JSON.parse(r.form_fields_json) : null;
+    const isActor = r.type === 'actor' || actorMetadata?.requirementKind === 'actor';
     arr.push({
       id: r.id,
       name: r.name,
-      type: r.type,
+      type: isActor ? 'actor' : r.type,
       description: r.description || '',
       isRequired: r.is_required === 1,
       formFields: r.type === 'form' && r.form_fields_json ? JSON.parse(r.form_fields_json) : undefined,
-      actorRole: r.type === 'actor' && r.form_fields_json ? JSON.parse(r.form_fields_json).actorRole : undefined,
-      minQuantity: r.type === 'actor' && r.form_fields_json ? JSON.parse(r.form_fields_json).minQuantity : undefined,
+      actorRole: isActor && r.form_fields_json ? JSON.parse(r.form_fields_json).actorRole : undefined,
+      minQuantity: isActor && r.form_fields_json ? JSON.parse(r.form_fields_json).minQuantity : undefined,
       documentSourceType: r.document_source_type || undefined,
       linkedTemplateId: r.linked_template_id || undefined,
       linkedSharedDocumentId: r.linked_shared_document_id || undefined,
