@@ -207,12 +207,10 @@ export default function CasesList({
     }
 
     // Actores mínimos requeridos
-    const garantesActuales = participants.filter(p => p.role === 'Garante').length;
     const escribanosActuales = participants.filter(p => p.role === 'Escribano').length;
 
 
 
-    const actoresActuales = participants.filter(p => p.role !== 'Garante' && p.role !== 'Escribano').length;
     if (escribanoADesignar && escribanosActuales < 1) {
       errors.push('Activaste Escribano: debés agregar al menos un actor con rol Escribano.');
     }
