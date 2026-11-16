@@ -35,6 +35,7 @@ export default function App() {
   const [needsSetup, setNeedsSetup] = useState(false);
   const [turnstileSiteKey, setTurnstileSiteKey] = useState('');
   const [turnstileEnabled, setTurnstileEnabled] = useState(false);
+  const [publicRegistrationEnabled, setPublicRegistrationEnabled] = useState(true);
 
   // Authentication states
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -69,6 +70,7 @@ export default function App() {
       setNeedsSetup(Boolean(bootstrapData.needsSetup));
       setTurnstileSiteKey(bootstrapData.turnstileSiteKey || '');
       setTurnstileEnabled(Boolean(bootstrapData.turnstileEnabled));
+      setPublicRegistrationEnabled(bootstrapData.publicRegistrationEnabled !== false);
 
       if (!bootstrapData.user) {
         sessionStorage.removeItem('docflow_user');
@@ -435,6 +437,7 @@ export default function App() {
         needsSetup={needsSetup}
         turnstileSiteKey={turnstileSiteKey}
         turnstileEnabled={turnstileEnabled}
+        publicRegistrationEnabled={publicRegistrationEnabled}
         onLoginSuccess={async (user) => {
           // Do not render the authenticated application before the full state is loaded.
           // A transient state-fetch failure must not display a misleading connection error
