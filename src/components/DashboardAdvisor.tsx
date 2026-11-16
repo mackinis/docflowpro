@@ -121,13 +121,15 @@ export default function DashboardAdvisor({
             <ClipboardList className="w-6 h-6" />
           </div>
         </div>
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between gap-2">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between gap-2 group hover:border-slate-300 transition-all">
           <div className="space-y-1">
             <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Desempeño</span>
             <p className="text-3xl font-bold text-slate-800">{score === null ? '—' : score + '%'}</p>
             <p className="text-xs font-semibold text-indigo-700">{grade}</p>
           </div>
-          <Activity className="w-6 h-6 text-indigo-500 shrink-0" />
+          <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl group-hover:scale-110 transition-transform shrink-0">
+            <Activity className="w-6 h-6" />
+          </div>
         </div>
       </div>
 
