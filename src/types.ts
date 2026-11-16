@@ -52,7 +52,9 @@ export interface Requirement {
   type: RequirementType;
   description: string;
   isRequired: boolean;
-  actorRole?: ParticipantType;\n  minQuantity?: number;\n  formFields?: FormField[]; // Only populated for type 'form'
+  actorRole?: ParticipantType;
+  minQuantity?: number;
+  formFields?: FormField[]; // Only populated for type 'form'
   documentSourceType?: 'digital_contract' | 'download_asset' | 'manual_upload';
   linkedTemplateId?: string;
   linkedSharedDocumentId?: string;
