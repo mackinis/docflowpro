@@ -25,6 +25,14 @@ export async function ensureDatabaseReady(db: D1Database): Promise<void> {
         }
         await db.prepare('INSERT OR IGNORE INTO app_schema_migrations (name, applied_at) VALUES (?, ?)').bind(migration.name, new Date().toISOString()).run();
       }
+      // Database-level append-only protection. These triggers also apply to SQL
+      // issued outside the HTTP API, unlike application-only authorization checks.
+      await db.prepare(`CREATE TRIGGER IF NOT EXISTS audit_logs_no_update
+        BEFORE UPDATE ON audit_logs
+        BEGIN SELECT RAISE(ABORT, 'audit_logs are append-only'); END`).run();
+      await db.prepare(`CREATE TRIGGER IF NOT EXISTS audit_logs_no_delete
+        BEFORE DELETE ON audit_logs
+        BEGIN SELECT RAISE(ABORT, 'audit_logs are append-only'); END`).run();
       // Do not expose the application until the minimum schema exists.
       const users = await db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'users'").first();
       if (!users) throw new Error('Database schema is incomplete');
