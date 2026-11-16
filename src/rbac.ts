@@ -1,15 +1,16 @@
-export const RBAC_MODULES = ['dashboard','audit','cases','documents','messages','notifications','templates','users','userEmail','userRole','userPassword','userStatus','userSensitive','settings','ai'] as const;
+export const RBAC_MODULES = ['dashboard','statistics','audit','cases','documents','messages','notifications','templates','users','userEmail','userRole','userPassword','userStatus','userSensitive','settings','ai'] as const;
 export const RBAC_ACTIONS = ['view','create','edit','delete','download','manage'] as const;
 export type RbacModule = typeof RBAC_MODULES[number];
 export type RbacAction = typeof RBAC_ACTIONS[number];
 export type RbacRole = 'SUPERADMIN' | 'ADMIN' | 'MANAGER' | 'ASESOR';
 export type PermissionKey = `${RbacModule}.${RbacAction}`;
 export type RbacMatrix = { roles: Partial<Record<Exclude<RbacRole,'SUPERADMIN'>, Partial<Record<PermissionKey, boolean>>>>; users: Record<string, Partial<Record<PermissionKey, boolean>>> };
-export const RBAC_LABELS: Record<RbacModule,string> = {dashboard:'Tablero',audit:'Auditoría',cases:'Legajos',documents:'Documentos',messages:'Mensajes',notifications:'Notificaciones',templates:'Plantillas y procesos',users:'Usuarios',userEmail:'Email de acceso',userRole:'Rol de usuario',userPassword:'Contraseña de usuario',userStatus:'Estado de usuario',userSensitive:'Permisos sensibles',settings:'Configuración',ai:'Agente IA'};
+export const RBAC_LABELS: Record<RbacModule,string> = {dashboard:'Tablero',statistics:'Estadísticas de asesores',audit:'Auditoría',cases:'Legajos',documents:'Documentos',messages:'Mensajes',notifications:'Notificaciones',templates:'Plantillas y procesos',users:'Usuarios',userEmail:'Email de acceso',userRole:'Rol de usuario',userPassword:'Contraseña de usuario',userStatus:'Estado de usuario',userSensitive:'Permisos sensibles',settings:'Configuración',ai:'Agente IA'};
 export const RBAC_ACTION_LABELS: Record<RbacAction,string> = {view:'Ver',create:'Crear',edit:'Editar',delete:'Eliminar',download:'Descargar',manage:'Administrar'};
 // Asesor: explicit allowlist. Every unspecified action is denied by default.
 const ASESOR_ALLOWED: Partial<Record<RbacModule, readonly RbacAction[]>> = {
   dashboard: ['view'],
+  statistics: ['view'],
   audit: ['view'],
   cases: ['view','create','edit'],
   documents: ['view'],
@@ -29,7 +30,7 @@ const ASESOR_DEFAULTS = Object.fromEntries(
 ) as Record<PermissionKey, boolean>;
 export const RBAC_DEFAULTS: Record<Exclude<RbacRole,'SUPERADMIN'>,Partial<Record<PermissionKey,boolean>>> = {
   ADMIN: { 'userRole.edit':false, 'userSensitive.edit':false },
-  MANAGER: { 'users.manage':false,'userEmail.edit':false,'userRole.edit':false,'userPassword.edit':false,'userStatus.edit':false,'userSensitive.edit':false,'settings.manage':false,'audit.view':false },
+  MANAGER: { 'statistics.manage':true,'users.manage':false,'userEmail.edit':false,'userRole.edit':false,'userPassword.edit':false,'userStatus.edit':false,'userSensitive.edit':false,'settings.manage':false,'audit.view':false },
   ASESOR: ASESOR_DEFAULTS,
 };
 // Non-delegable boundaries for advisers, even when an old stored override says otherwise.
