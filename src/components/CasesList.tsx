@@ -316,7 +316,7 @@ export default function CasesList({
         if (!actorFiles[actor.id]?.[req.id]) errors.push('Falta ' + req.name + ' para ' + actor.name + ' ' + actor.lastName + '.');
       }
     }
-    if (errors.length) { alert('Requisitos pendientes:\\n' + errors.join('\\n')); return; }
+    if (errors.length) { alert('Requisitos pendientes:\n' + errors.join('\n')); return; }
     if (savingCase) return;
     setSavingCase(true);
     let createdId = '';
