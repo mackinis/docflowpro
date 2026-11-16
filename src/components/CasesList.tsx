@@ -155,7 +155,7 @@ export default function CasesList({
     if (garantesActuales < expectedGarantes) {
       errors.push(`Falta(n) ${expectedGarantes - garantesActuales} Garante(s) (Cargados: ${garantesActuales} de ${expectedGarantes}).`);
     }
-    if (!escribanoADesignar && escribanosActuales < 1) {
+    if (!escribanoADesignar && escribanosActuales < 1 && actorRules.some(r => r.actorRole === 'Escribano')) {
       errors.push('Falta agregar el Escribano (o tildar "Escribano a designar").');
     }
 
