@@ -6,6 +6,7 @@ import {
   ChevronUp, 
   Plus, 
   FileText, 
+  Users,
   CheckSquare, 
   FileSpreadsheet, 
   Building,
