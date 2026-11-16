@@ -14,6 +14,7 @@ import CasesList from './components/CasesList';
 import CaseDetail from './components/CaseDetail';
 import TemplatesManager from './components/TemplatesManager';
 import AuditLogs from './components/AuditLogs';
+import AdvisorStatistics from './components/AdvisorStatistics';
 import AuthScreen from './components/AuthScreen';
 import UserProfile from './components/UserProfile';
 import SystemSettings from './components/SystemSettings';
@@ -659,6 +660,8 @@ export default function App() {
                     onOpenCase={handleOpenCase}
                   />
                 )}
+
+                {activeTab === 'statistics' && <AdvisorStatistics />}
 
                 {activeTab === 'audit' && (
                   <AuditLogs
