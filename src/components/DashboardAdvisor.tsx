@@ -151,7 +151,7 @@ export default function DashboardAdvisor({
               <h3 className="text-sm font-bold text-slate-800">Documentos Observados a Resolver</h3>
             </div>
             <span className="bg-orange-500/15 text-orange-400 text-xs px-2.5 py-0.5 rounded-full font-bold">
-              Bloqueados
+              Observado
             </span>
           </div>
 
@@ -171,7 +171,7 @@ export default function DashboardAdvisor({
                   <div key={obs.id} className="py-3.5 space-y-2 text-left hover:bg-slate-50/50 rounded-lg px-2 transition-colors">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 text-[10px] font-mono">
-                        <span className="bg-red-50 text-red-700 px-1.5 py-0.5 rounded font-bold uppercase">{caseObj?.code}</span>
+                        <span className="bg-orange-500/15 text-orange-300 px-1.5 py-0.5 rounded font-bold uppercase">{caseObj?.code}</span>
                         <span className="text-slate-400">Observado el {new Date(obs.createdAt).toLocaleDateString()}</span>
                       </div>
                       <button 
@@ -182,7 +182,7 @@ export default function DashboardAdvisor({
                       </button>
                     </div>
 
-                    <div className="p-3 rounded-lg text-xs font-medium leading-relaxed" style={{ backgroundColor: "#3b1725", border: "1px solid #754352", color: "#ffffff" }}>
+                    <div className="p-3 rounded-lg text-xs font-medium leading-relaxed" style={{ backgroundColor: "#493326", border: "1px solid #77543a", color: "#ffffff" }}>
                       <p className="font-semibold mb-0.5">{isDocObs ? 'Rechazo de Documento:' : 'Observación de Proceso:'}</p>
                       {obs.text}
                     </div>
