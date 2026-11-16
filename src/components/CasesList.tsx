@@ -50,7 +50,7 @@ export default function CasesList({
 }: CasesListProps) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [caseToDelete, setCaseToDelete] = useState<Case | null>(null);
-  const isTemplateRequired = systemSettings?.processTemplateRequired !== false;
+  const isTemplateRequired = true;
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'pending_review' | 'observed' | 'completed' | 'pending_assignment'>('all');
   const [templateFilter, setTemplateFilter] = useState('all');
@@ -102,7 +102,7 @@ export default function CasesList({
   // Participant/Actor quantities and type states
   const [expectedActores, setExpectedActores] = useState(0);
   const [expectedGarantes, setExpectedGarantes] = useState(0);
-  const [escribanoADesignar, setEscribanoADesignar] = useState(true);
+  const [escribanoADesignar, setEscribanoADesignar] = useState(false);
 
   // Participant form states
   const [participants, setParticipants] = useState<Participant[]>([]);
@@ -144,6 +144,7 @@ export default function CasesList({
     const selectedProcess = templates.find(t => t.id === newTemplateId && !t.originalDocumentContent);
     const actorRules = selectedProcess?.stages.flatMap(st => st.requirements).filter(req => req.type === 'actor' && req.isRequired) || [];
     for (const rule of actorRules) {
+      if (rule.actorRole === 'Escribano') continue; // El escribano solo se exige si se activa su interruptor.
       const count = participants.filter(p => p.role === rule.actorRole && p.name.trim() && p.lastName.trim() && p.dni.trim()).length;
       const minimum = Math.max(1, Number(rule.minQuantity) || 1);
       if (count < minimum) errors.push(`Faltan ${minimum - count} ${rule.actorRole || rule.name} (mínimo ${minimum}).`);
@@ -164,8 +165,8 @@ export default function CasesList({
     if (actorRules.length === 0 && garantesActuales < expectedGarantes) {
       errors.push(`Falta(n) ${expectedGarantes - garantesActuales} Garante(s) (Cargados: ${garantesActuales} de ${expectedGarantes}).`);
     }
-    if (!escribanoADesignar && escribanosActuales < 1 && actorRules.some(r => r.actorRole === 'Escribano')) {
-      errors.push('Falta agregar el Escribano (o tildar "Escribano a designar").');
+    if (escribanoADesignar && escribanosActuales < 1) {
+      errors.push('Activaste Escribano: debés agregar al menos un actor con rol Escribano.');
     }
 
     // Actores individuales con datos incompletos
@@ -297,7 +298,7 @@ export default function CasesList({
     setParticipants([]);
     setExpectedActores(0);
     setExpectedGarantes(0);
-    setEscribanoADesignar(true);
+    setEscribanoADesignar(false);
     setCustomDocumentContent('');
     setUploadedFileName('');
     setSubmitAttempted(false);
@@ -664,40 +665,7 @@ export default function CasesList({
                       </div>
                     );
                   })()}
-                  {['SUPERADMIN', 'ADMIN', 'MANAGER'].includes(currentUser.role) && (
-                    <div className="mt-1 flex items-center gap-1.5 bg-slate-50 p-1.5 rounded-lg border border-slate-200/60">
-                      <input
-                        type="checkbox"
-                        id="toggle-template-required-inline"
-                        checked={systemSettings?.processTemplateRequired !== false}
-                        onChange={async (e) => {
-                          const newValue = e.target.checked;
-                          try {
-                            const res = await fetch('/api/system-settings', {
-                              method: 'POST',
-                              credentials: 'include',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({
-                                settings: {
-                                  processTemplateRequired: newValue
-                                },
-                                currentUserId: currentUser.id
-                              })
-                            });
-                            if (res.ok && loadState) {
-                              await loadState();
-                            }
-                          } catch (err) {
-                            console.error('Error updating template setting:', err);
-                          }
-                        }}
-                        className="w-3.5 h-3.5 text-indigo-600 focus:ring-indigo-500 border-slate-300 rounded cursor-pointer"
-                      />
-                      <label htmlFor="toggle-template-required-inline" className="text-[10px] font-semibold text-slate-600 cursor-pointer">
-                        Configurar como campo obligatorio
-                      </label>
-                    </div>
-                  )}
+
                 </div>
 
                 <div className="space-y-1.5 md:col-span-2">
@@ -756,13 +724,13 @@ export default function CasesList({
                       className="w-full text-xs p-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" />
                   </div>
                   <div className="flex flex-col justify-center gap-2">
-                    <label className="text-xs font-semibold text-slate-700">Escribano a designar</label>
+                    <label className="text-xs font-semibold text-slate-700">Requerir escribano</label>
                     <button type="button" role="switch" aria-checked={escribanoADesignar}
                       onClick={() => setEscribanoADesignar(v => !v)}
                       className={`relative h-7 w-12 rounded-full border transition-colors ${escribanoADesignar ? 'bg-indigo-600 border-indigo-500' : 'bg-slate-400 border-slate-500'}`}>
                       <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${escribanoADesignar ? 'left-6' : 'left-1'}`} />
                     </button>
-                    <p className="text-[10px] text-slate-500">{escribanoADesignar ? 'Queda pendiente de designación.' : 'Debe cargar 1 Escribano.'}</p>
+                    <p className="text-[10px] text-slate-500">{escribanoADesignar ? 'Obligatorio: agregá 1 escribano abajo.' : 'No se requiere escribano.'}</p>
                   </div>
                 </div>
               </div>
@@ -777,7 +745,7 @@ export default function CasesList({
                   
                   {/* Status Indicator bubble */}
                   <div className="text-[10px] px-2 py-1 bg-indigo-50 text-indigo-700 rounded-lg font-semibold border border-indigo-100">
-                    Mínimo Requerido: {expectedActores + expectedGarantes + (escribanoADesignar ? 0 : 1)} | Cargados: {participants.length}
+                    Mínimo Requerido: {expectedActores + expectedGarantes + (escribanoADesignar ? 1 : 0)} | Cargados: {participants.length}
                   </div>
                 </div>
 
@@ -811,7 +779,7 @@ export default function CasesList({
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-semibold text-slate-500">Fecha de Nacimiento *</label>
-                    <input type="date" value={pBirthDate} onChange={(e) => setPBirthDate(e.target.value)} className="w-full text-[11px] p-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                    <input type="date" aria-label="Fecha de nacimiento: abrir calendario" value={pBirthDate} onChange={(e) => setPBirthDate(e.target.value)} className="legajo-birth-date w-full text-[11px] p-2 pr-3 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500" />
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-semibold text-slate-500">DNI *</label>
