@@ -137,7 +137,7 @@ export default function CasesList({
       errors.push('Falta ingresar la Descripción General.');
     }
     if (isTemplateRequired && !newTemplateId) {
-      errors.push('Falta seleccionar una Plantilla de Proceso.');
+      errors.push('Falta seleccionar una Tipo de proceso.');
     }
 
     // Actores mínimos requeridos
@@ -615,7 +615,7 @@ export default function CasesList({
                 
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-slate-600">
-                    Plantilla de Proceso {isTemplateRequired ? '*' : '(Opcional)'}
+                    Tipo de proceso {isTemplateRequired ? '*' : '(Opcional)'}
                   </label>
                   <select
                     value={newTemplateId}
@@ -623,7 +623,7 @@ export default function CasesList({
                     required={isTemplateRequired}
                     className="w-full text-xs p-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500"
                   >
-                    <option value="">-- Seleccionar Plantilla de Proceso --</option>
+                    <option value="">-- Seleccionar Tipo de proceso --</option>
                     {(() => {
                       const regularTemplates = templates.filter(t => !t.id.startsWith('doc-'));
                       const virtualTemplates = templates.filter(t => t.id.startsWith('doc-'));
