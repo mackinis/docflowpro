@@ -52,7 +52,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
 
   // States for manual creation
   const [manualName, setManualName] = useState('');
-  const [manualDescription, setManualDescription] = useState('');
+  const [manualDescription, setManualDescription] = useState("Locador\nLocatario\nGarante mínimo 2\nEscribano\nDNI del locador\nDNI del locatario\nDNI de los garantes\nCopia de escritura\nBoleta de servicios");
   const [manualIndustry, setManualIndustry] = useState<ProcessTemplate['industry']>('Inmobiliaria');
   const [isCreatingManual, setIsCreatingManual] = useState(false);
 
@@ -225,7 +225,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
         alert(`¡Plantilla de proceso "${data.name}" creada correctamente!`);
         setShowProcessModal(false);
         setManualName('');
-        setManualDescription('');
+        setManualDescription("Locador\nLocatario\nGarante mínimo 2\nEscribano\nDNI del locador\nDNI del locatario\nDNI de los garantes\nCopia de escritura\nBoleta de servicios");
         setManualIndustry('Inmobiliaria');
         if (loadState) {
           await loadState();
@@ -1371,7 +1371,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                 <input required value={manualName} onChange={e => setManualName(e.target.value)} placeholder="Ej.: Reserva de contrato de locación" className="mt-1 w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg"/>
               </label>
               <label className="block text-xs font-bold text-slate-700">Descripción / Objetivo *
-                <textarea required rows={9} value={manualDescription} onChange={e => setManualDescription(e.target.value)} placeholder={"Locador\nLocatario\nGarante mínimo 2\nDNI del locador\nDNI del locatario\nDNI de los garantes\nCopia de escritura\nBoleta de servicios"} className="mt-1 w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg"/>
+                <textarea required rows={9} value={manualDescription} onChange={e => setManualDescription(e.target.value)}  className="mt-1 w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg"/>
                 <span className="block mt-1 text-[11px] font-normal text-slate-500">Los actores, sus mínimos y los documentos indicados se convierten en requisitos del proceso. Escribí cada obligación en una línea.</span>
               </label>
               <label className="block text-xs font-bold text-slate-700">Rubro Comercial / Industria *
