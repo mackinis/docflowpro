@@ -628,6 +628,7 @@ export default function CaseDetail({
 
   return (
     <div className="space-y-6">
+      <CaseHistoryPanel caseId={caseObj.id} createdAt={caseObj.createdAt} status={caseObj.status} />
       {/* Back button & top title */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
         <div className="flex items-center gap-3">
@@ -2059,5 +2060,58 @@ export default function CaseDetail({
         className="hidden"
       />
     </div>
+  );
+}
+
+
+type CaseHistoryEvent = {
+  id: string; userName: string; userRole: string; action: string;
+  entityType: string; entityName: string; createdAt: string;
+};
+
+function CaseHistoryPanel({ caseId, createdAt, status }: { caseId: string; createdAt: string; status: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const [events, setEvents] = useState<CaseHistoryEvent[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const reload = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const response = await fetch(`/api/cases/${encodeURIComponent(caseId)}/history`, { credentials: 'include' });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'No se pudo obtener el historial.');
+      setEvents(result.events || []);
+    } catch (err: any) { setError(err.message || 'Error de consulta.'); }
+    finally { setLoading(false); }
+  };
+  const elapsed = Math.max(0, Date.now() - new Date(createdAt).getTime());
+  const days = Math.floor(elapsed / 86400000);
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-3 p-4">
+        <div>
+          <h3 className="flex items-center gap-2 text-sm font-bold text-slate-800"><History className="w-4 h-4 text-indigo-500" /> Historial y Auditoría del Legajo</h3>
+          <p className="text-xs text-slate-500 mt-1">Creado: {new Date(createdAt).toLocaleString('es-AR')} · {days} días transcurridos · Estado: {status}</p>
+        </div>
+        <button type="button" className="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white" onClick={() => { setExpanded(!expanded); if (!expanded) void reload(); }}>
+          {expanded ? 'Ocultar historial' : 'Ver historial'}
+        </button>
+      </div>
+      {expanded && <div className="border-t border-slate-200 p-4 space-y-3">
+        <div className="flex justify-end"><button type="button" onClick={() => void reload()} disabled={loading} className="text-xs font-semibold text-indigo-600 disabled:opacity-50">Actualizar eventos</button></div>
+        {loading && <p className="text-xs text-slate-500">Cargando eventos…</p>}
+        {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
+        {!loading && !error && events.length === 0 && <p className="text-xs text-slate-500">No se encontraron eventos vinculados a este legajo.</p>}
+        <ol className="max-h-96 overflow-y-auto space-y-3">
+          {events.map(event => <li key={event.id} className="rounded-lg border border-slate-200 p-3">
+            <p className="text-[11px] text-slate-500">{new Date(event.createdAt).toLocaleString('es-AR')} · {event.userName} ({event.userRole})</p>
+            <p className="mt-1 text-sm font-semibold text-slate-800">{event.action}</p>
+            <p className="text-xs text-slate-500">{event.entityType} · {event.entityName}</p>
+          </li>)}
+        </ol>
+        {events.length === 1000 && <p className="text-xs text-amber-700">Se muestran los primeros 1000 eventos. La paginación está pendiente.</p>}
+      </div>}
+    </section>
   );
 }
