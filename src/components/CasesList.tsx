@@ -95,7 +95,7 @@ export default function CasesList({
   React.useEffect(() => {
     const isTemplateRequired = systemSettings?.processTemplateRequired !== false;
     if (showCreateModal && templates.length > 0) {
-      setNewTemplateId(isTemplateRequired ? templates[0].id : '');
+      setNewTemplateId(isTemplateRequired ? (templates.find(t => !t.id.startsWith('doc-'))?.id || '') : '');
     }
   }, [showCreateModal, templates, systemSettings]);
   
@@ -635,34 +635,16 @@ export default function CasesList({
                     <option value="">-- Seleccionar Tipo de proceso --</option>
                     {(() => {
                       const regularTemplates = templates.filter(t => !t.id.startsWith('doc-'));
-                      const virtualTemplates = templates.filter(t => t.id.startsWith('doc-'));
-                      const allowedVirtualTemplates = virtualTemplates.filter(vt => {
-                        const docId = vt.id.replace('doc-', '');
-                        const docObj = (sharedDocuments || []).find(d => d.id === docId);
-                        if (!docObj) return false;
-                        
-                        if (currentUser.role === 'SUPERADMIN' || currentUser.role === 'ADMIN') return true;
-                        const roleAllowed = docObj.allowedRoles?.includes(currentUser.role);
-                        const userAllowed = docObj.allowedUserIds?.includes(currentUser.id);
-                        return roleAllowed || userAllowed;
-                      });
-
                       return (
                         <>
                           {regularTemplates.length > 0 && (
-                            <optgroup label="Plantillas de Procesos Creadas">
+                            <optgroup label="Procesos configurados por responsables">
                               {regularTemplates.map(t => (
                                 <option key={t.id} value={t.id}>{t.name} ({t.industry})</option>
                               ))}
                             </optgroup>
                           )}
-                          {allowedVirtualTemplates.length > 0 && (
-                            <optgroup label="Documentos Compartidos Disponibles">
-                              {allowedVirtualTemplates.map(t => (
-                                <option key={t.id} value={t.id}>📄 {t.name.replace('Documento: ', '')}</option>
-                              ))}
-                            </optgroup>
-                          )}
+
                         </>
                       );
                     })()}
