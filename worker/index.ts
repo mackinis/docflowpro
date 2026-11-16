@@ -3461,7 +3461,6 @@ async function handleDigitizeTemplate(c: AppContext) {
       fileName,
       textProposal,
       industry: industry || 'Administrativo',
-      generateFlow: false,
     });
 
     const finalTemplate: ProcessTemplate = {
