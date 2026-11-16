@@ -2069,6 +2069,21 @@ type CaseHistoryEvent = {
   entityType: string; entityName: string; createdAt: string;
 };
 
+function formatHistoryDuration(ms: number): string {
+  const totalMinutes = Math.max(0, Math.floor((Number(ms) || 0) / 60000));
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+  return [days > 0 ? `${days} d` : '', hours > 0 ? `${hours} h` : '', `${minutes} min`].filter(Boolean).join(' · ');
+}
+
+function formatHistoryDate(value: string): string {
+  return new Date(value).toLocaleString('es-AR', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: false, hourCycle: 'h23'
+  });
+}
+
 function CaseHistoryPanel({ caseId, createdAt, status }: { caseId: string; createdAt: string; status: string }) {
   const [expanded, setExpanded] = useState(false);
   const [events, setEvents] = useState<CaseHistoryEvent[]>([]);
@@ -2094,7 +2109,7 @@ function CaseHistoryPanel({ caseId, createdAt, status }: { caseId: string; creat
       <div className="flex flex-wrap items-center justify-between gap-3 p-4">
         <div>
           <h3 className="flex items-center gap-2 text-sm font-bold text-slate-800"><History className="w-4 h-4 text-indigo-500" /> Historial y Auditoría del Legajo</h3>
-          <p className="text-xs text-slate-500 mt-1">Creado: {new Date(createdAt).toLocaleString('es-AR')} · {days} días {historySummary?.durationIsFinal ? 'hasta su finalización' : 'transcurridos'} · Estado: {status}</p>
+          <p className="text-xs text-slate-500 mt-1">Creado: {formatHistoryDate(createdAt)} · {days} días {historySummary?.durationIsFinal ? 'hasta su finalización' : 'transcurridos'} · Estado: {status}</p>
         </div>
         <button type="button" className="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white" onClick={() => { setExpanded(!expanded); if (!expanded) void reload(); }}>
           {expanded ? 'Ocultar historial' : 'Ver historial'}
@@ -2109,17 +2124,17 @@ function CaseHistoryPanel({ caseId, createdAt, status }: { caseId: string; creat
             <div className="space-y-2">
               {historySummary.stageDurations.map((stage: { stage: string; startedAt: string; endedAt: string; durationMs: number; ongoing: boolean }, index: number) => <div key={index} className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-700">
                 <span className="font-medium">{stage.stage}{stage.ongoing ? ' (en curso)' : ''}</span>
-                <span>{Math.floor(stage.durationMs / 86400000)} d · {Math.floor((stage.durationMs % 86400000) / 3600000)} h · {Math.floor((stage.durationMs % 3600000) / 60000)} min</span>
+                <span>{formatHistoryDuration(stage.durationMs)}</span>
               </div>)}
             </div>
             <p className="mt-2 text-[11px] text-slate-500">Tiempos transcurridos entre eventos registrados; no equivalen al tiempo de trabajo efectivo de cada persona.</p>
           </div>}
-          <p className="text-xs text-slate-700">Duración: {Math.floor(historySummary.durationMs / 86400000)} días, {Math.floor((historySummary.durationMs % 86400000) / 3600000)} horas · {historySummary.durationIsFinal ? 'Finalizado el ' + new Date(historySummary.completedAt).toLocaleString('es-AR') : 'Legajo en curso (duración provisional)'}</p>
+          <p className="text-xs text-slate-700">Duración: {formatHistoryDuration(historySummary.durationMs)} · {historySummary.durationIsFinal ? 'Finalizado el ' + formatHistoryDate(historySummary.completedAt) : 'Legajo en curso (duración provisional)'}</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {(historySummary.contributors || []).map((person: any) => <div key={person.userId || person.userName} className="rounded-lg bg-white border border-indigo-100 p-2">
               <p className="text-xs font-bold text-slate-800">{person.userName || 'Usuario sin identificar'} · {person.userRole}</p>
-              <p className="text-xs text-slate-600">{person.interventions} intervenciones · Primera: {new Date(person.firstAt).toLocaleString('es-AR')}</p>
-              <p className="text-xs text-slate-600">Última: {new Date(person.lastAt).toLocaleString('es-AR')}</p>
+              <p className="text-xs text-slate-600">{person.interventions} intervenciones · Primera: {formatHistoryDate(person.firstAt)}</p>
+              <p className="text-xs text-slate-600">Última: {formatHistoryDate(person.lastAt)}</p>
               <p className="text-[11px] text-slate-500">{Object.entries(person.actions || {}).map(([action, count]) => `${action} (${count})`).join(' · ')}</p>
             </div>)}
           </div>
@@ -2130,7 +2145,7 @@ function CaseHistoryPanel({ caseId, createdAt, status }: { caseId: string; creat
         {!loading && !error && events.length === 0 && <p className="text-xs text-slate-500">No se encontraron eventos vinculados a este legajo.</p>}
         <ol className="max-h-96 overflow-y-auto space-y-3">
           {events.map(event => <li key={event.id} className="rounded-lg border border-slate-200 p-3">
-            <p className="text-[11px] text-slate-500">{new Date(event.createdAt).toLocaleString('es-AR')} · {event.userName} ({event.userRole})</p>
+            <p className="text-[11px] text-slate-500">{formatHistoryDate(event.createdAt)} · {event.userName} ({event.userRole})</p>
             <p className="mt-1 text-sm font-semibold text-slate-800">{event.action}</p>
             <p className="text-xs text-slate-500">{event.entityType} · {event.entityName}</p>
           </li>)}
