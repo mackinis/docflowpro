@@ -227,7 +227,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
       if (!response.ok || data.error) {
         alert(`Error de digitalización: ${data.error || 'No se pudo digitalizar la plantilla.'}`);
       } else if (data.template) {
-        alert(`¡Plantilla "${data.template.name}" digitalizada exitosamente al 100%!`);
+        alert(`Plantilla "${data.template.name}" procesada. Revisá el texto y los campos antes de aprobarla para su uso en legajos.`);
         setShowAiModal(false);
         setDigitizeFileBase64('');
         setDigitizeFileName('');
