@@ -122,6 +122,19 @@ export default function CasesList({
   const [docRequirementId, setDocRequirementId] = useState('');
   const [actorFiles, setActorFiles] = useState<Record<string, Record<string, File>>>({});
   const [savingCase, setSavingCase] = useState(false);
+  const [advisorStats, setAdvisorStats] = useState<{total: number; completed: number; observed: number; pendingReview: number; active: number; pendingAssignment: number} | null>(null);
+  const [statsError, setStatsError] = useState('');
+  const [showAdvisorStats, setShowAdvisorStats] = useState(false);
+  const loadAdvisorStats = async () => {
+    setStatsError('');
+    try {
+      const response = await fetch('/api/cases/advisor-statistics?advisorId=' + encodeURIComponent(currentUser.id), { credentials: 'include' });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'No se pudieron consultar las estadísticas.');
+      setAdvisorStats(data);
+    } catch (err: any) { setStatsError(err.message || 'Error de consulta.'); }
+  };
+
   const filePickerRef = React.useRef<HTMLInputElement>(null);
   const process = templates.find(t => t.id === newTemplateId && !t.originalDocumentContent);
   const requiredDocs = process?.stages.flatMap(stage => stage.requirements.filter(r => r.type === 'document' && r.isRequired).map(r => ({ ...r, stageId: stage.id }))) || [];
@@ -394,6 +407,25 @@ export default function CasesList({
         </div>
       )}
 
+      <section className="rounded-2xl border border-slate-700/30 bg-slate-800/30 p-4 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div><h3 className="text-sm font-bold text-slate-100">Estadísticas de mis legajos</h3>
+            <p className="text-xs text-slate-400">Indicadores descriptivos; no representan una calificación de calidad.</p></div>
+          <button type="button" onClick={() => { setShowAdvisorStats(!showAdvisorStats); if (!showAdvisorStats) void loadAdvisorStats(); }}
+            className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-bold text-white">{showAdvisorStats ? 'Ocultar' : 'Consultar'}</button>
+        </div>
+        {showAdvisorStats && <div className="space-y-3">
+          {statsError && <p role="alert" className="text-sm text-rose-400">{statsError}</p>}
+          {advisorStats && <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {([{label:'Total',value:advisorStats.total},{label:'Finalizados',value:advisorStats.completed},
+              {label:'Observados',value:advisorStats.observed},{label:'En revisión',value:advisorStats.pendingReview}] as const).map(item =>
+              <div key={item.label} className="rounded-xl border border-slate-600 bg-slate-900/50 p-3">
+                <p className="text-xl font-bold text-white">{item.value}</p><p className="text-xs text-slate-300">{item.label}</p>
+              </div>)}
+          </div>}
+          <button type="button" className="text-xs text-indigo-300 underline" onClick={() => void loadAdvisorStats()}>Actualizar estadísticas</button>
+        </div>}
+      </section>
       {/* Upper Panel */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
