@@ -102,12 +102,12 @@ export default function DashboardAdvisor({
           </div>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-rose-200 shadow-xs flex items-center justify-between">
+        <div className="bg-white p-5 rounded-2xl border border-orange-200 shadow-xs flex items-center justify-between">
           <div className="space-y-1">
-            <span className="text-xs font-medium text-rose-600 uppercase tracking-wider">Legajos Observados</span>
-            <p className="text-3xl font-bold text-rose-500">{observedCount}</p>
+            <span className="text-xs font-medium text-orange-500 uppercase tracking-wider">Legajos Observados</span>
+            <p className="text-3xl font-bold text-orange-500">{observedCount}</p>
           </div>
-          <div className="p-3 bg-rose-500/15 text-rose-500 rounded-xl group-hover:scale-110 transition-transform shrink-0"><AlertTriangle className="w-6 h-6" /></div>
+          <div className="p-3 bg-orange-500/15 text-orange-500 rounded-xl group-hover:scale-110 transition-transform shrink-0"><AlertTriangle className="w-6 h-6" /></div>
         </div>
 
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between group hover:border-slate-300 transition-all">
