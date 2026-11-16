@@ -432,6 +432,8 @@ export default function CaseDetail({
   const [isRequestingReview, setIsRequestingReview] = useState(false);
   const [advisorReviewNote, setAdvisorReviewNote] = useState('');
   const [showReviewRequestModal, setShowReviewRequestModal] = useState(false);
+  const [resolvingObservationId, setResolvingObservationId] = useState<string | null>(null);
+  const [observationReply, setObservationReply] = useState('');
 
   // Request reassignment from manager to system
   const [showReassignModal, setShowReassignModal] = useState(false);
@@ -704,9 +706,9 @@ export default function CaseDetail({
                   {isCompleted ? <Check className="w-4 h-4" /> : index + 1}
                 </div>
 
-                <div className="overflow-hidden md:max-w-32">
-                  <p className="text-xs font-bold truncate leading-tight">{stg.name}</p>
-                  <p className="text-[10px] text-slate-400 truncate md:block hidden">{stg.description}</p>
+                <div className="min-w-0 w-full md:px-2">
+                  <p className="text-xs font-bold leading-snug whitespace-normal break-words">{stg.name}</p>
+                  <p className="mt-1 text-[10px] text-slate-400 leading-snug whitespace-normal break-words">{stg.description}</p>
                 </div>
               </div>
             );
@@ -1545,12 +1547,7 @@ export default function CaseDetail({
                           isAsesor && obs.status === 'open' && (
                             <div className="flex justify-end pt-1">
                               <button
-                                onClick={() => {
-                                  const ans = prompt('Escribe tu respuesta explicativa sobre esta observación para marcarla como solucionada:');
-                                  if (ans !== null && ans.trim() !== '') {
-                                    onResolveObservation(obs.id, ans);
-                                  }
-                                }}
+                                onClick={() => { setResolvingObservationId(obs.id); setObservationReply(''); }}
                                 className="px-2.5 py-1 bg-white hover:bg-slate-100 text-[10px] font-bold text-slate-700 border border-slate-200 rounded"
                               >
                                 Responder & Solucionar
@@ -1675,13 +1672,15 @@ export default function CaseDetail({
                     <div className="text-center space-y-1">
                       <button
                         onClick={() => setShowReviewRequestModal(true)}
-                        className="w-full md:w-auto px-5 py-3 bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-500/10 hover:scale-102 active:scale-98 cursor-pointer rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2"
+                        disabled={!validation.isValid}
+                        title={!validation.isValid ? 'Completá los requisitos pendientes antes de solicitar revisión' : undefined}
+                        className="w-full md:w-auto px-5 py-3 bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-500/10 active:scale-98 cursor-pointer rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 disabled:bg-slate-700 disabled:text-slate-400 disabled:shadow-none disabled:cursor-not-allowed"
                       >
                         <span>Pedir Revisión al Manager</span>
                         <ChevronRight className="w-4 h-4" />
                       </button>
                       <span className="text-[9px] text-slate-400 block">
-                        Notificará a tu Manager asignado
+                        {validation.isValid ? 'Notificará a tu Manager asignado' : 'Disponible al completar los requisitos pendientes'}
                       </span>
                     </div>
                   )}
@@ -1895,6 +1894,25 @@ export default function CaseDetail({
       )}
 
       {/* Modal de Solicitud de Revisión de Etapa */}
+      {resolvingObservationId && (
+        <div className="fixed inset-0 z-[60] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) setResolvingObservationId(null); }}>
+          <div role="dialog" aria-modal="true" aria-labelledby="resolve-observation-title" className="w-full max-w-md rounded-2xl border border-slate-600/50 bg-slate-800 p-6 shadow-2xl space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 id="resolve-observation-title" className="text-base font-bold text-white">Responder observación</h3>
+                <p className="mt-1 text-xs text-slate-300">Explicá cómo se solucionó la observación.</p>
+              </div>
+              <button type="button" aria-label="Cerrar" onClick={() => setResolvingObservationId(null)} className="text-slate-300 hover:text-white"><X className="w-5 h-5" /></button>
+            </div>
+            <label htmlFor="observation-reply" className="block text-xs font-semibold text-slate-200">Respuesta explicativa</label>
+            <textarea id="observation-reply" autoFocus rows={4} value={observationReply} onChange={(e) => setObservationReply(e.target.value)} placeholder="Escribí tu respuesta..." className="w-full rounded-xl border border-slate-500 bg-slate-900/60 p-3 text-sm text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => { setResolvingObservationId(null); setObservationReply(''); }} className="rounded-xl bg-slate-700 px-4 py-2 text-sm font-semibold text-slate-100 hover:bg-slate-600">Cancelar</button>
+              <button type="button" disabled={!observationReply.trim()} onClick={() => { if (resolvingObservationId && observationReply.trim()) { onResolveObservation(resolvingObservationId, observationReply.trim()); setResolvingObservationId(null); setObservationReply(''); } }} className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed">Responder y solucionar</button>
+            </div>
+          </div>
+        </div>
+      )}
       {showReviewRequestModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 max-w-md w-full border border-slate-100 shadow-2xl space-y-4">
