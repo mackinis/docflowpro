@@ -219,7 +219,9 @@ Esquema JSON obligatorio:
       "requirements": [
         {
           "name": "Título del requisito",
-          "type": "actor" | "document" | "form" | "task",\n          "actorRole": "Locador" | "Locatario" | "Garante" | "Comprador" | "Vendedor" | "Titular" | "Cliente" | "Apoderado" | "Escribano",\n          "minQuantity": 1,
+          "type": "actor" | "document" | "form" | "task",
+          "actorRole": "Locador" | "Locatario" | "Garante" | "Comprador" | "Vendedor" | "Titular" | "Cliente" | "Apoderado" | "Escribano",
+          "minQuantity": 1,
           "description": "Instrucciones para el asesor",
           "isRequired": true,
           "formFields": [
@@ -250,7 +252,9 @@ Esquema JSON obligatorio:
           type: ['actor', 'document', 'form', 'task'].includes(req.type) ? req.type : 'document',
           description: req.description || '',
           isRequired: req.isRequired !== undefined ? Boolean(req.isRequired) : true,
-          formFields: Array.isArray(req.formFields) ? req.formFields : undefined,\n          actorRole: req.type === 'actor' ? req.actorRole : undefined,\n          minQuantity: req.type === 'actor' ? Math.max(1, Number(req.minQuantity) || 1) : undefined,
+          formFields: Array.isArray(req.formFields) ? req.formFields : undefined,
+          actorRole: req.type === 'actor' ? req.actorRole : undefined,
+          minQuantity: req.type === 'actor' ? Math.max(1, Number(req.minQuantity) || 1) : undefined,
         })
       ),
     })),
@@ -378,7 +382,9 @@ Retorna ÚNICAMENTE JSON válido:
               type: ['actor', 'document', 'form', 'task'].includes(req.type) ? req.type : 'document',
               description: req.description || '',
               isRequired: req.isRequired !== undefined ? Boolean(req.isRequired) : true,
-              formFields: Array.isArray(req.formFields) ? req.formFields : undefined,\n          actorRole: req.type === 'actor' ? req.actorRole : undefined,\n          minQuantity: req.type === 'actor' ? Math.max(1, Number(req.minQuantity) || 1) : undefined,
+              formFields: Array.isArray(req.formFields) ? req.formFields : undefined,
+          actorRole: req.type === 'actor' ? req.actorRole : undefined,
+          minQuantity: req.type === 'actor' ? Math.max(1, Number(req.minQuantity) || 1) : undefined,
             })
           ),
         }))
