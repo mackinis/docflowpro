@@ -76,6 +76,39 @@ export default function SharedDocumentsManager({ currentUser, users, onAddAudit 
   const [editNameField, setEditNameField] = useState('');
   const [editContentField, setEditContentField] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
+  const [fillingDoc, setFillingDoc] = useState<SharedDocument | null>(null);
+  const [fillableContent, setFillableContent] = useState('');
+  const [filledValues, setFilledValues] = useState<Record<string, string>>({});
+  const [isLoadingFill, setIsLoadingFill] = useState(false);
+
+  const openFillableDocument = async (doc: SharedDocument) => {
+    if (!documentActions.download) return;
+    setIsLoadingFill(true);
+    try {
+      const res = await fetch(`/api/shared-documents/${doc.id}/content`, { credentials: 'include' });
+      if (!res.ok) throw new Error('No se pudo obtener el contenido del documento.');
+      const data = await res.json();
+      const content = typeof data.content === 'string' ? data.content : typeof data.text === 'string' ? data.text : '';
+      if (!content) throw new Error('El documento digitalizado no contiene texto.');
+      setFillableContent(content);
+      setFilledValues({});
+      setFillingDoc(doc);
+    } catch (err: any) { setError(err.message || 'Error al abrir el documento.'); }
+    finally { setIsLoadingFill(false); }
+  };
+
+  const downloadCompletedDocument = () => {
+    if (!fillingDoc) return;
+    const completed = fillableContent.replace(/\[CAMPO_\d+\]/g, marker => filledValues[marker] || marker);
+    const blob = new Blob([completed], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fillingDoc.fileName.replace(/\.txt$/i, '') + '_completado.txt';
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  };
+
 
   const handleOpenDocEditor = async (doc: SharedDocument) => {
     if (!documentActions.edit) return;
@@ -777,6 +810,16 @@ export default function SharedDocumentsManager({ currentUser, users, onAddAudit 
                           <span>Descargar</span>
                         </button>}
 
+                        {documentActions.download && isDigital && <button
+                          onClick={() => void openFillableDocument(doc)}
+                          disabled={isLoadingFill}
+                          className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg border border-emerald-200 disabled:opacity-50"
+                          title="Completar los campos del documento sin modificar la plantilla original"
+                        >
+                          <Edit className="w-3.5 h-3.5" />
+                          <span>Completar</span>
+                        </button>}
+
                         {documentActions.edit && <button
                           onClick={() => handleOpenDocEditor(doc)}
                           className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-all border border-slate-200"
@@ -952,6 +995,32 @@ export default function SharedDocumentsManager({ currentUser, users, onAddAudit 
               </div>
             </form>
           </motion.div>
+        </div>
+      )}
+
+      {/* Los operadores completan una copia; la plantilla publicada permanece intacta. */}
+      {fillingDoc && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-3xl w-full max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="p-4 border-b border-slate-200 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-slate-800">Completar documento: {fillingDoc.name}</h3>
+                <p className="text-xs text-slate-500">Completá los campos resaltados. Se descargará una copia, sin alterar el documento original.</p>
+              </div>
+              <button type="button" onClick={() => setFillingDoc(null)} aria-label="Cerrar" className="p-2 text-slate-600"><X className="w-4 h-4"/></button>
+            </div>
+            <div className="overflow-y-auto p-6 text-sm leading-loose text-slate-800 whitespace-pre-wrap">
+              {fillableContent.split(/(\[CAMPO_\d+\])/g).map((part, idx) =>
+                /^\[CAMPO_\d+\]$/.test(part)
+                  ? <input key={idx} aria-label={part} placeholder="Completar aquí" value={filledValues[part] || ''} onChange={e => setFilledValues(prev => ({...prev, [part]: e.target.value}))} className="inline-block min-w-40 px-2 py-1 mx-1 rounded border border-indigo-400 bg-indigo-50 text-slate-900" />
+                  : <React.Fragment key={idx}>{part}</React.Fragment>
+              )}
+            </div>
+            <div className="p-4 border-t border-slate-200 flex justify-end gap-2">
+              <button type="button" onClick={() => setFillingDoc(null)} className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-bold">Cerrar</button>
+              <button type="button" onClick={downloadCompletedDocument} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold">Descargar documento completado</button>
+            </div>
+          </div>
         </div>
       )}
 
