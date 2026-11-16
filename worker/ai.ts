@@ -191,76 +191,6 @@ Retorna ÚNICAMENTE un objeto JSON válido con esta estructura exacta:
   };
 }
 
-export async function generateTemplateWithAI(
-  env: Env,
-  params: {
-    industry: string;
-    description: string;
-  }
-): Promise<Omit<ProcessTemplate, 'id'>> {
-  const systemPrompt =
-    'Eres un Ingeniero de Procesos Documentales experto. Responde EXCLUSIVAMENTE con un objeto JSON válido, sin markdown ni texto fuera del JSON.';
-
-  const userPrompt = `Genera una plantilla de proceso reutilizable para el rubro "${params.industry}" basada en esta descripción:
-"${params.description}"
-
-Debe crear etapas con obligaciones verificables de tipo "actor", "document", "form" o "task". Las instrucciones del proceso NO son documentos a exigir: exigir únicamente documentos reales como DNI, escritura, boleta de servicios o boleto. Si el proceso requiere participantes, crear requisitos de tipo actor con actorRole y minQuantity (ejemplo: Locador 1, Locatario 1, Garante 2). La propuesta requiere revisión del responsable.
-Para los requisitos de tipo "form", incluye "formFields" con al menos 2 campos.
-
-Esquema JSON obligatorio:
-{
-  "name": "Título formal del proceso",
-  "description": "Descripción detallada",
-  "industry": "Inmobiliaria" | "Jurídico" | "Seguros" | "Financiera" | "Recursos Humanos" | "Administrativo",
-  "stages": [
-    {
-      "name": "1. Nombre de la etapa",
-      "description": "Objetivo de la etapa",
-      "requirements": [
-        {
-          "name": "Título del requisito",
-          "type": "actor" | "document" | "form" | "task",
-          "actorRole": "Locador" | "Locatario" | "Garante" | "Comprador" | "Vendedor" | "Titular" | "Cliente" | "Apoderado" | "Escribano",
-          "minQuantity": 1,
-          "description": "Instrucciones para el asesor",
-          "isRequired": true,
-          "formFields": [
-            { "id": "campo_1", "label": "Etiqueta", "type": "text" | "number" | "date" | "select" | "boolean", "required": true }
-          ]
-        }
-      ]
-    }
-  ]
-}`;
-
-  const raw = await runWorkersAiText(env, systemPrompt, userPrompt, 3072);
-  const parsed = cleanAndParseJSON(raw);
-  const now = Date.now();
-
-  return {
-    name: parsed.name || `Proceso IA - ${params.industry}`,
-    description: parsed.description || 'Proceso generado mediante Cloudflare Workers AI.',
-    industry: (parsed.industry || params.industry || 'Administrativo') as ProcessTemplate['industry'],
-    stages: (Array.isArray(parsed.stages) ? parsed.stages : []).map((stg: any, sIdx: number) => ({
-      id: `stg-ai-${sIdx}-${now}`,
-      name: stg.name || `Etapa ${sIdx + 1}`,
-      description: stg.description || '',
-      requirements: (Array.isArray(stg.requirements) ? stg.requirements : []).map(
-        (req: any, rIdx: number) => ({
-          id: `req-ai-${sIdx}-${rIdx}-${now}`,
-          name: req.name || `Requisito ${rIdx + 1}`,
-          type: ['actor', 'document', 'form', 'task'].includes(req.type) ? req.type : 'document',
-          description: req.description || '',
-          isRequired: req.isRequired !== undefined ? Boolean(req.isRequired) : true,
-          formFields: Array.isArray(req.formFields) ? req.formFields : undefined,
-          actorRole: req.type === 'actor' ? req.actorRole : undefined,
-          minQuantity: req.type === 'actor' ? Math.max(1, Number(req.minQuantity) || 1) : undefined,
-        })
-      ),
-    })),
-  };
-}
-
 export async function digitizeTemplateWithAI(
   env: Env,
   params: {
@@ -315,79 +245,28 @@ export async function digitizeTemplateWithAI(
   const systemPrompt =
     'Eres un transcriptor y digitalizador documental minucioso. Responde EXCLUSIVAMENTE con un objeto JSON válido sin markdown adicional.';
 
-  const userPrompt = params.generateFlow
-    ? `Digitaliza este documento para el rubro "${params.industry}".
-REGLAS:
-1. "originalDocumentContent" debe conservar de forma 100% literal el texto del documento, manteniendo sus líneas de subrayado "_________" sin inventar comentarios.
-2. "stages" debe contener etapas con obligaciones verificables: actores con rol y cantidad mínima, documentos reales a aportar, formularios y tareas. La hoja guía o el texto original NO se debe exigir como archivo. NO inventes requisitos no presentes en el documento.
-
-Documento fuente:
+  // A document is not a process. Preserve the full source text and turn
+  // dotted/underscored blanks into explicit fillable field markers.
+  let fieldNumber = 0;
+  const interactiveContent = extractedText.replace(/_{3,}|\.{3,}|…{2,}/g, () => `[CAMPO_${++fieldNumber}]`);
+  const userPrompt = `Extraé únicamente el título y la descripción del documento siguiente.
+No generes etapas, actores, tareas ni requisitos de legajo.
+Devolvé JSON: {"name":"Título","description":"Descripción breve"}.
+Documento:
 """
-${extractedText.slice(0, 12000)}
-"""
-
-Retorna ÚNICAMENTE JSON válido:
-{
-  "name": "Título formal",
-  "description": "Descripción breve",
-  "industry": "${params.industry}",
-  "originalDocumentContent": "Texto literal íntegro",
-  "stages": [
-    {
-      "name": "1. Etapa",
-      "description": "Objetivo",
-      "requirements": [
-        { "name": "Requisito", "type": "actor" | "document" | "form" | "task", "actorRole": "Locador", "minQuantity": 1, "description": "Detalle", "isRequired": true }
-      ]
-    }
-  ]
-}`
-    : `Genera metadatos para el siguiente documento digitalizado del rubro "${params.industry}".
-No modifiques ni resumas el contenido; devuelve el texto literal en "originalDocumentContent" y un arreglo "stages" vacío [].
-
-Documento fuente:
-"""
-${extractedText.slice(0, 12000)}
-"""
-
-Retorna ÚNICAMENTE JSON válido:
-{
-  "name": "Título formal",
-  "description": "Descripción breve",
-  "industry": "${params.industry}",
-  "originalDocumentContent": "Texto literal íntegro",
-  "stages": []
-}`;
+${extractedText.slice(0, 9000)}
+"""`;
 
   const raw = await runWorkersAiText(env, systemPrompt, userPrompt, 3584);
   const parsed = cleanAndParseJSON(raw);
   const now = Date.now();
 
   return {
-    name: parsed.name || `Proceso Digitalizado - ${params.industry}`,
-    description:
-      parsed.description || 'Proceso digitalizado mediante Cloudflare Workers AI.',
-    industry: (parsed.industry || params.industry || 'Administrativo') as ProcessTemplate['industry'],
-    originalDocumentContent: parsed.originalDocumentContent || extractedText,
+    name: parsed.name || params.fileName || 'Documento digitalizado',
+    description: parsed.description || 'Documento interactivo pendiente de aprobación.',
+    industry: (params.industry || 'Administrativo') as ProcessTemplate['industry'],
+    originalDocumentContent: interactiveContent,
     showDocumentToAll: true,
-    stages: params.generateFlow
-      ? (Array.isArray(parsed.stages) ? parsed.stages : []).map((stg: any, sIdx: number) => ({
-          id: `stg-dig-${sIdx}-${now}`,
-          name: stg.name || `Etapa ${sIdx + 1}`,
-          description: stg.description || '',
-          requirements: (Array.isArray(stg.requirements) ? stg.requirements : []).map(
-            (req: any, rIdx: number) => ({
-              id: `req-dig-${sIdx}-${rIdx}-${now}`,
-              name: req.name || `Requisito ${rIdx + 1}`,
-              type: ['actor', 'document', 'form', 'task'].includes(req.type) ? req.type : 'document',
-              description: req.description || '',
-              isRequired: req.isRequired !== undefined ? Boolean(req.isRequired) : true,
-              formFields: Array.isArray(req.formFields) ? req.formFields : undefined,
-          actorRole: req.type === 'actor' ? req.actorRole : undefined,
-          minQuantity: req.type === 'actor' ? Math.max(1, Number(req.minQuantity) || 1) : undefined,
-            })
-          ),
-        }))
-      : [],
+    stages: [],
   };
 }
