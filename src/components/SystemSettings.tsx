@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import AiAgentSettings from './AiAgentSettings';
 import { 
   Settings, 
   ShieldCheck, 
@@ -27,6 +28,7 @@ export default function SystemSettings({
   state,
   loadState
 }: SystemSettingsProps) {
+  const [settingsTab, setSettingsTab] = useState<'general' | 'accesos' | 'mensajes' | 'procesos' | 'mantenimiento' | 'ia'>('general');
   const [loading, setLoading] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -337,7 +339,22 @@ export default function SystemSettings({
         </div>
       )}
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+      <nav aria-label="Secciones de configuración" className="flex flex-wrap gap-2">
+        {([
+          ['general', 'General'], ['accesos', 'Accesos'], ['mensajes', 'Mensajes'],
+          ['procesos', 'Procesos'], ['mantenimiento', 'Sistema'], ['ia', 'Agente IA']
+        ] as const).filter(([id]) => id !== 'ia' || currentUser.role === 'SUPERADMIN' ||
+          (state.systemSettings?.aiSettingsRoles || []).includes(currentUser.role as any)).map(([id, label]) => (
+          <button key={id} type="button" onClick={() => setSettingsTab(id)}
+            aria-current={settingsTab === id ? 'page' : undefined}
+            className={`px-4 py-2 rounded-xl text-sm font-semibold border transition-colors ${settingsTab === id
+              ? 'bg-indigo-600 text-white border-indigo-600' : 'border-slate-200 bg-white text-slate-700'}`}>
+            {label}
+          </button>
+        ))}
+      </nav>
+      {settingsTab === 'ia' && <AiAgentSettings currentUser={currentUser} />}
+      <div className="settings-tab-cards grid grid-cols-1 xl:grid-cols-2 gap-6" data-settings-section={settingsTab}>
         
         {/* Card 1: Verification Policies (MFA) */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 flex flex-col justify-between" id="card-mfa-policies">
