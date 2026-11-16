@@ -191,6 +191,56 @@ app.use('/api/*', async (c, next) => {
   return next();
 });
 
+// Workers AI configuration: only server-approved models and roles can be selected.
+const AI_MODELS = [
+  { id: '@cf/meta/llama-3.3-70b-instruct-fp8-fast', name: 'Llama 3.3 70B' },
+  { id: '@cf/meta/llama-3.1-8b-instruct-fast', name: 'Llama 3.1 8B' },
+] as const;
+const AI_DELEGABLE_ROLES = ['ADMIN', 'MANAGER', 'ASESOR'] as const;
+
+app.get('/api/ai/settings', async (c) => {
+  const auth = c.get('auth')!;
+  const settings = await getSystemConfigValue(c.env.DB, 'systemSettings', DEFAULT_SYSTEM_SETTINGS);
+  const canConfigure = auth.user.role === 'SUPERADMIN' || (settings.aiSettingsRoles || []).includes(auth.user.role as any);
+  const canUse = auth.user.role === 'SUPERADMIN' || (settings.aiAllowedRoles || []).includes(auth.user.role as any);
+  if (!canConfigure && !canUse) return c.json({ error: 'Acceso al agente IA no autorizado.' }, 403);
+  return c.json({ models: AI_MODELS, model: settings.aiModel || AI_MODELS[0].id,
+    allowedRoles: settings.aiAllowedRoles || [], settingsRoles: settings.aiSettingsRoles || [],
+    canConfigure, canDelegate: auth.user.role === 'SUPERADMIN' });
+});
+
+app.post('/api/ai/settings', async (c) => {
+  const auth = c.get('auth')!;
+  const current = await getSystemConfigValue(c.env.DB, 'systemSettings', DEFAULT_SYSTEM_SETTINGS);
+  const canConfigure = auth.user.role === 'SUPERADMIN' || (current.aiSettingsRoles || []).includes(auth.user.role as any);
+  if (!canConfigure) return c.json({ error: 'No autorizado para configurar el agente IA.' }, 403);
+  const body = await c.req.json().catch(() => ({}));
+  if (!AI_MODELS.some(model => model.id === body.model)) return c.json({ error: 'Modelo no permitido.' }, 400);
+  const updated = { ...current, aiModel: body.model };
+  if (auth.user.role === 'SUPERADMIN') {
+    if (!Array.isArray(body.allowedRoles) || !Array.isArray(body.settingsRoles) ||
+      ![...body.allowedRoles, ...body.settingsRoles].every((role: string) => AI_DELEGABLE_ROLES.includes(role as any))) {
+      return c.json({ error: 'Permisos de roles inválidos.' }, 400);
+    }
+    updated.aiAllowedRoles = [...new Set(body.allowedRoles)] as any;
+    updated.aiSettingsRoles = [...new Set(body.settingsRoles)] as any;
+  }
+  await setSystemConfigValue(c.env.DB, 'systemSettings', updated);
+  await createAudit(c.env.DB, auth.realUser.id, 'Configuró Agente IA y permisos', 'Config', 'ai', body.model);
+  return c.json({ success: true });
+});
+
+app.use('/api/ai/*', async (c, next) => {
+  if (c.req.path === '/api/ai/settings') return next();
+  const auth = c.get('auth');
+  if (!auth) return c.json({ error: 'No autenticado.' }, 401);
+  const settings = await getSystemConfigValue(c.env.DB, 'systemSettings', DEFAULT_SYSTEM_SETTINGS);
+  if (auth.user.role !== 'SUPERADMIN' && !(settings.aiAllowedRoles || []).includes(auth.user.role as any)) {
+    return c.json({ error: 'El agente IA no está habilitado para su rol.' }, 403);
+  }
+  return next();
+});
+
 // ============================================================================
 // 0. Health Check
 // ============================================================================
@@ -856,6 +906,9 @@ app.post('/api/system-settings', async (c) => {
     return c.json({ error: 'Solo el Superadmin o Admin pueden configurar la plataforma.' }, 403);
   }
   const { settings } = await c.req.json();
+  if (settings && ['aiModel', 'aiAllowedRoles', 'aiSettingsRoles'].some(key => Object.prototype.hasOwnProperty.call(settings, key))) {
+    return c.json({ error: 'Configure Agente IA desde su sección específica.' }, 403);
+  }
   if (auth.user.role !== 'SUPERADMIN') {
     if (settings?.roleMessagingConfigs !== undefined) {
       return c.json({ error: 'Solo el Superadmin puede modificar las políticas de mensajería interna.' }, 403);
