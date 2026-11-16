@@ -1650,7 +1650,17 @@ app.post('/api/cases', async (c) => {
     }
   }
 
-  if (!title?.trim() || !templateId || !template?.stages?.length) {\n    return c.json({ error: 'Debe seleccionar un proceso configurado con al menos una etapa.' }, 400);\n  }\n  const actorRequirements = template.stages.flatMap(stage => stage.requirements).filter(req => req.type === 'actor' && req.isRequired);\n  for (const req of actorRequirements) {\n    const count = (Array.isArray(participants) ? participants : []).filter((p: any) => p.role === req.actorRole && p.name?.trim() && p.lastName?.trim() && p.dni?.trim()).length;\n    const min = Math.max(1, Number(req.minQuantity) || 1);\n    if (count < min) return c.json({ error: `Faltan actores obligatorios: ${req.actorRole || req.name} (${count}/${min}).` }, 400);\n  }\n\n  const caseId = `case-${Date.now()}-${crypto.randomUUID().slice(0, 4)}`;
+  if (!title?.trim() || !templateId || !template?.stages?.length) {
+    return c.json({ error: 'Debe seleccionar un proceso configurado con al menos una etapa.' }, 400);
+  }
+  const actorRequirements = template.stages.flatMap(stage => stage.requirements).filter(req => req.type === 'actor' && req.isRequired);
+  for (const req of actorRequirements) {
+    const count = (Array.isArray(participants) ? participants : []).filter((p: any) => p.role === req.actorRole && p.name?.trim() && p.lastName?.trim() && p.dni?.trim()).length;
+    const min = Math.max(1, Number(req.minQuantity) || 1);
+    if (count < min) return c.json({ error: `Faltan actores obligatorios: ${req.actorRole || req.name} (${count}/${min}).` }, 400);
+  }
+
+  const caseId = `case-${Date.now()}-${crypto.randomUUID().slice(0, 4)}`;
   const code = `EXP-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
   const finalManagerId = assignedManagerId || '';
   const status = finalManagerId ? 'active' : 'pending_assignment';
@@ -1827,7 +1837,13 @@ app.post('/api/cases/:id/request-review', async (c) => {
   const caseObj = await getCaseById(c.env.DB, id);
   if (!caseObj) return c.json({ error: 'Legajo no encontrado.' }, 404);
 
-  const templateForReview = await findTemplateOrVirtualById(c.env, caseObj.templateId);\n  const stageForReview = templateForReview?.stages?.[caseObj.currentStageIndex];\n  if (!stageForReview) return c.json({ error: 'El proceso no tiene una etapa válida.' }, 400);\n  const validationForReview = await validateStageRequirements(c.env.DB, id, stageForReview.id, templateForReview!);\n  if (!validationForReview.isValid) return c.json({ error: 'Requisitos obligatorios pendientes', reasons: validationForReview.missing }, 400);\n\n  await c.env.DB.prepare("UPDATE cases SET status = 'pending_review', updated_at = ? WHERE id = ?")
+  const templateForReview = await findTemplateOrVirtualById(c.env, caseObj.templateId);
+  const stageForReview = templateForReview?.stages?.[caseObj.currentStageIndex];
+  if (!stageForReview) return c.json({ error: 'El proceso no tiene una etapa válida.' }, 400);
+  const validationForReview = await validateStageRequirements(c.env.DB, id, stageForReview.id, templateForReview!);
+  if (!validationForReview.isValid) return c.json({ error: 'Requisitos obligatorios pendientes', reasons: validationForReview.missing }, 400);
+
+  await c.env.DB.prepare("UPDATE cases SET status = 'pending_review', updated_at = ? WHERE id = ?")
     .bind(new Date().toISOString(), id)
     .run();
 
@@ -1858,7 +1874,10 @@ app.post('/api/cases/:id/request-reassignment', async (c) => {
   const msgId = `msg-${Date.now()}-${crypto.randomUUID().slice(0, 6)}`;
   const now = new Date().toISOString();
   const subject = `Solicitud de Reasignación: Legajo "${caseObj.title}"`;
-  const content = `El Manager ${auth.user.name} ${auth.user.lastName} solicita reasignar o liberar el legajo "${caseObj.title}" (ID: ${caseObj.id}).\n\nMotivo:\n"${reason}"`;
+  const content = `El Manager ${auth.user.name} ${auth.user.lastName} solicita reasignar o liberar el legajo "${caseObj.title}" (ID: ${caseObj.id}).
+
+Motivo:
+"${reason}"`;
 
   await c.env.DB.prepare(
     `INSERT INTO system_messages (id, sender_id, sender_name, sender_role, receiver_id, receiver_name, receiver_role, subject, content, created_at, read, deleted_by_sender, deleted_by_receiver, permanent_deleted_by_sender, permanent_deleted_by_receiver)
