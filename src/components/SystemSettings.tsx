@@ -37,11 +37,16 @@ export default function SystemSettings({
   const [settingsTab, setSettingsTab] = useState<'general' | 'accesos' | 'mensajes' | 'procesos' | 'mantenimiento' | 'ia'>('general');
   const [loading, setLoading] = useState(false);
   const [publicRegistrationEnabled, setPublicRegistrationEnabled] = useState(true);
+  const [delegatedUserCreators, setDelegatedUserCreators] = useState<string[]>([]);
   React.useEffect(() => {
     if (currentUser.role !== 'SUPERADMIN') return;
     fetch('/api/admin/registration-policy', { credentials: 'include' })
       .then(async res => { if (!res.ok) throw new Error('No se pudo consultar el registro público.'); return res.json(); })
       .then(data => setPublicRegistrationEnabled(data.enabled === true))
+      .catch(err => setErrorMsg(err.message));
+    fetch('/api/admin/user-creators', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : { ids: [] })
+      .then(d => setDelegatedUserCreators(d.ids || []))
       .catch(err => setErrorMsg(err.message));
   }, [currentUser.role]);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -386,6 +391,28 @@ export default function SystemSettings({
               } catch (err: any) { setErrorMsg(err.message); }
               finally { setLoading(false); }
             }} />
+          </div>
+          <div className="border-t border-slate-200 pt-4 space-y-3">
+            <h3 className="font-bold text-slate-800 text-sm">Delegar creación de usuarios</h3>
+            <p className="text-xs text-slate-500">Elegí qué administradores pueden crear cuentas activas. Solo el Superadmin puede crear otros administradores.</p>
+            {state.users.filter(u => u.role === 'ADMIN').map(u => (
+              <label key={u.id} className="flex items-center gap-3 text-sm text-slate-800">
+                <input type="checkbox" checked={delegatedUserCreators.includes(u.id)}
+                  onChange={e => setDelegatedUserCreators(prev => e.target.checked ? [...prev, u.id] : prev.filter(id => id !== u.id))} />
+                {u.name} {u.lastName} ({u.email})
+              </label>
+            ))}
+            <button disabled={loading} className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
+              onClick={async () => {
+                setLoading(true); setErrorMsg(null); setSuccessMsg(null);
+                try {
+                  const res = await fetch('/api/admin/user-creators', { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: delegatedUserCreators }) });
+                  const data = await res.json();
+                  if (!res.ok) throw new Error(data.error || 'No se pudo guardar la delegación.');
+                  setDelegatedUserCreators(data.ids); setSuccessMsg('Permisos de creación actualizados.');
+                } catch (err: any) { setErrorMsg(err.message); }
+                finally { setLoading(false); }
+              }}>Guardar administradores habilitados</button>
           </div>
         </section>
       )}
