@@ -235,7 +235,7 @@ export default function CasesList({
   const isManagerOrAdmin = ['SUPERADMIN', 'ADMIN', 'MANAGER'].includes(currentUser.role);
 
   const handleStartEditParticipant = (p: Participant) => {
-    setSkipActorDocWarning(false); setMissingActorDocsWarning(false);
+    setMissingActorDocsWarning(false);
     setEditingParticipantId(p.id);
     setPName(p.name);
     setPLastName(p.lastName);
