@@ -191,6 +191,60 @@ app.use('/api/*', async (c, next) => {
   return next();
 });
 
+// Permission overrides are checked for every authenticated API request, before route handlers.
+app.use('/api/*', async (c, next) => {
+  const auth = c.get('auth');
+  if (!auth || auth.realUser.role === 'SUPERADMIN') return next();
+  const path = c.req.path;
+  if (path.startsWith('/api/admin/rbac')) return c.json({ error: 'Acceso RBAC reservado al Superadmin.' }, 403);
+  // Audit ingestion must remain available regardless of audit-report viewing rights.
+  if (path === '/api/audit/navigation' || path === '/api/audit-logs/log') return next();
+  const routes: Array<[RegExp, string]> = [
+    [/^\/api\/users(?:\/|$)|^\/api\/admin\/user-creators|^\/api\/admin\/registration-policy/, 'users'],
+    [/^\/api\/audit(?:-|\/)|^\/api\/audit-logs/, 'audit'],
+    [/^\/api\/cases(?:\/|$)|^\/api\/tasks(?:\/|$)|^\/api\/observations(?:\/|$)|^\/api\/forms(?:\/|$)/, 'cases'],
+    [/^\/api\/(?:documents|shared-documents|upload-requests)(?:\/|$)/, 'documents'],
+    [/^\/api\/system-messages(?:\/|$)/, 'messages'],
+    [/^\/api\/notifications(?:\/|$)/, 'notifications'],
+    [/^\/api\/templates(?:\/|$)/, 'templates'],
+    [/^\/api\/(?:system-settings|industry|verification-policy|admin\/backup|admin\/cleanup-unverified)(?:\/|$)/, 'settings'],
+    [/^\/api\/(?:ai|gemini)(?:\/|$)/, 'ai'],
+  ];
+  const matched = routes.find(([pattern]) => pattern.test(path));
+  if (!matched) return next();
+  const method = c.req.method;
+  const action = method === 'GET' ? (path.endsWith('/download') ? 'download' : 'view') : method === 'DELETE' ? 'delete' : method === 'POST' && (/\/api\/(?:users|cases|documents|shared-documents|templates)$/.test(path)) ? 'create' : 'edit';
+  const { hasRbacPermission } = await import('../src/rbac');
+  const matrix = await getSystemConfigValue(c.env.DB, 'rbacMatrix', { roles: {}, users: {} });
+  if (!hasRbacPermission(matrix, auth.realUser.role, auth.realUser.id, `${matched[1]}.${action}` as any)) {
+    return c.json({ error: 'Acción denegada por la política RBAC.' }, 403);
+  }
+  return next();
+});
+
+// Granular RBAC administration: server-side superadmin-only policy.
+app.get('/api/admin/rbac', async (c) => {
+  const auth = c.get('auth');
+  if (!auth || auth.realUser.role !== 'SUPERADMIN') return c.json({ error: 'Solo el Superadmin puede ver RBAC.' }, 403);
+  return c.json({ matrix: await getSystemConfigValue(c.env.DB, 'rbacMatrix', { roles: {}, users: {} }) });
+});
+app.put('/api/admin/rbac', async (c) => {
+  const auth = c.get('auth');
+  if (!auth || auth.realUser.role !== 'SUPERADMIN') return c.json({ error: 'Solo el Superadmin puede modificar RBAC.' }, 403);
+  const body = await c.req.json().catch(() => null);
+  const { isRbacKey } = await import('../src/rbac');
+  const roles = ['ADMIN', 'MANAGER', 'ASESOR'];
+  const input = body?.matrix;
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return c.json({ error: 'Matriz inválida.' }, 400);
+  const validate = (values: unknown) => values && typeof values === 'object' && !Array.isArray(values) && Object.entries(values).every(([key, value]) => isRbacKey(key) && typeof value === 'boolean');
+  if (!input.roles || !input.users || typeof input.roles !== 'object' || typeof input.users !== 'object' || Array.isArray(input.roles) || Array.isArray(input.users)) return c.json({ error: 'Matriz inválida.' }, 400);
+  if (Object.entries(input.roles).some(([role, permissions]) => !roles.includes(role) || !validate(permissions))) return c.json({ error: 'Roles o permisos inválidos.' }, 400);
+  if (Object.entries(input.users).some(([id, permissions]) => !/^[a-zA-Z0-9_-]{1,128}$/.test(id) || !validate(permissions))) return c.json({ error: 'Usuarios o permisos inválidos.' }, 400);
+  await setSystemConfigValue(c.env.DB, 'rbacMatrix', { roles: input.roles, users: input.users });
+  await createAudit(c.env.DB, auth.realUser.id, 'Modificó matriz RBAC', 'Config', 'rbacMatrix', 'Política granular actualizada');
+  return c.json({ success: true });
+});
+
 // Workers AI configuration: only server-approved models and roles can be selected.
 const AI_MODELS = [
   { id: '@cf/meta/llama-3.3-70b-instruct-fp8-fast', name: 'Llama 3.3 70B' },
@@ -850,6 +904,25 @@ app.put('/api/users/:id', async (c) => {
     active !== undefined ||
     isVerified !== undefined ||
     hasSensitiveEditPermissionOverride !== undefined;
+
+  // Every sensitive field is independently authorized by the persisted RBAC matrix.
+  // Hierarchy and the single-Superadmin invariant below remain additional restrictions.
+  if (isEditingSensitive && auth.realUser.role !== 'SUPERADMIN') {
+    const { hasRbacPermission } = await import('../src/rbac');
+    const matrix = await getSystemConfigValue(c.env.DB, 'rbacMatrix', { roles: {}, users: {} });
+    const checks: Array<[boolean, string]> = [
+      [email !== undefined, 'userEmail.edit'],
+      [role !== undefined, 'userRole.edit'],
+      [password !== undefined, 'userPassword.edit'],
+      [active !== undefined || isVerified !== undefined, 'userStatus.edit'],
+      [hasSensitiveEditPermissionOverride !== undefined, 'userSensitive.edit'],
+    ];
+    for (const [changed, permission] of checks) {
+      if (changed && !hasRbacPermission(matrix, auth.realUser.role, auth.realUser.id, permission as any)) {
+        return c.json({ error: 'Permiso RBAC insuficiente para modificar ' + permission }, 403);
+      }
+    }
+  }
 
   if (isEditingSensitive) {
     const actorRole = currentUser.role;
