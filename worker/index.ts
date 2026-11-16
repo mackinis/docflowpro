@@ -1659,6 +1659,33 @@ app.delete('/api/templates/:id', async (c) => {
 // 7. Cases (Expedientes / Legajos) & Participants
 // ============================================================================
 // Advisor statistics use persisted cases and audit events, never client-supplied scores.
+// Personal activity feed: scoped to the authenticated advisor, never arbitrary user input.
+app.get('/api/cases/my-activity', async (c) => {
+  const auth = c.get('auth')!;
+  const rows = await c.env.DB.prepare(
+    `SELECT a.id, a.user_name, a.user_role, a.action, a.entity_type,
+            a.entity_name, a.created_at,
+            CASE WHEN a.entity_type = 'Case' THEN a.entity_id
+                 WHEN a.entity_type = 'Document' THEN d.case_id
+                 WHEN a.entity_type = 'Observation' THEN o.case_id
+                 WHEN a.entity_type = 'Participant' THEN p.case_id END AS case_id
+     FROM audit_logs a
+     LEFT JOIN documents d ON a.entity_type = 'Document' AND a.entity_id = d.id
+     LEFT JOIN observations o ON a.entity_type = 'Observation' AND a.entity_id = o.id
+     LEFT JOIN case_participants p ON a.entity_type = 'Participant' AND a.entity_id = p.id
+     WHERE (a.entity_type = 'Case' AND a.entity_id IN (SELECT id FROM cases WHERE assigned_advisor_id = ?))
+        OR (a.entity_type = 'Document' AND d.case_id IN (SELECT id FROM cases WHERE assigned_advisor_id = ?))
+        OR (a.entity_type = 'Observation' AND o.case_id IN (SELECT id FROM cases WHERE assigned_advisor_id = ?))
+        OR (a.entity_type = 'Participant' AND p.case_id IN (SELECT id FROM cases WHERE assigned_advisor_id = ?))
+     ORDER BY a.created_at DESC, a.id DESC LIMIT 50`
+  ).bind(auth.user.id, auth.user.id, auth.user.id, auth.user.id).all<any>();
+  return c.json((rows.results || []).map((row: any) => ({
+    id: row.id, userName: row.user_name, userRole: row.user_role,
+    action: row.action, entityType: row.entity_type,
+    entityName: row.entity_name, createdAt: row.created_at, caseId: row.case_id
+  })));
+});
+
 app.get('/api/cases/advisor-statistics', async (c) => {
   const auth = c.get('auth')!;
   const requestedAdvisor = c.req.query('advisorId') || auth.user.id;
