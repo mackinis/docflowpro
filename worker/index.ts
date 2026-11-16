@@ -1674,6 +1674,7 @@ app.post('/api/cases', async (c) => {
     assignedManagerId,
     participants,
     documentContent,
+    pendingDocumentNames,
   } = body;
 
   if (!templateId || String(templateId).startsWith('doc-') || String(templateId).startsWith('tmpl-dig-')) {
@@ -1717,7 +1718,12 @@ app.post('/api/cases', async (c) => {
   const caseId = `case-${Date.now()}-${crypto.randomUUID().slice(0, 4)}`;
   const code = `EXP-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
   const finalManagerId = assignedManagerId || '';
-  const status = finalManagerId ? 'active' : 'pending_assignment';
+  const creationSettings = await getSystemConfigValue(c.env.DB, 'systemSettings', DEFAULT_SYSTEM_SETTINGS);
+  const incompleteAllowed = creationSettings?.allowIncompleteCaseDocuments === true;
+  const requiredDocNames = template.stages.flatMap(stage => stage.requirements).filter(req => req.type === 'document' && req.isRequired).map(req => req.name);
+  const pendingNames = Array.isArray(pendingDocumentNames) ? pendingDocumentNames.filter((name: unknown) => typeof name === 'string' && requiredDocNames.some(reqName => (name as string).startsWith(reqName + ' — '))) : [];
+  if (pendingNames.length && !incompleteAllowed) return c.json({ error: 'No está permitida la creación de legajos con documentos pendientes.' }, 400);
+  const status = pendingNames.length ? 'observed' : (finalManagerId ? 'active' : 'pending_assignment');
   const finalAdvisorId = assignedAdvisorId || auth.user.id;
   const now = new Date().toISOString();
   const finalDocContent = documentContent || template.originalDocumentContent || '';
@@ -1792,7 +1798,7 @@ app.post('/api/cases', async (c) => {
   await createAudit(
     c.env.DB,
     auth.user.id,
-    status === 'pending_assignment' ? 'Solicitud de legajo creada' : 'Legajo creado',
+    pendingNames.length ? `Legajo creado OBSERVADO: ${pendingNames.length} documentos pendientes (${pendingNames.join('; ')})` : status === 'pending_assignment' ? 'Solicitud de legajo creada' : 'Legajo creado',
     'Case',
     caseId,
     title
