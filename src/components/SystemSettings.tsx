@@ -488,14 +488,14 @@ export default function SystemSettings({
               Configura permisos de comunicación de forma <strong className="text-indigo-600 font-semibold">individual por perfil</strong>. Decide quiénes pueden iniciar chats y si deben esperar respuestas antes de seguir enviando.
             </p>
 
-            <div className="space-y-4">
+            <div className="messaging-role-grid">
               {['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR'].map((role) => {
                 const config = (roleConfigs as any)[role] || { allowed: true, rule: 'free' };
                 
                 return (
-                  <div key={role} className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/60 space-y-3">
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs font-bold text-slate-700 uppercase tracking-wider font-mono">
+                  <div key={role} className="p-4 rounded-xl bg-slate-50 border border-slate-200/60 space-y-3 min-w-0">
+                    <div className="flex justify-between items-center gap-3">
+                      <span className="text-xs font-bold text-slate-700 uppercase tracking-wider font-mono break-words">
                         {roleLabels[role] || role}
                       </span>
                       <SettingsSwitch checked={config.allowed} disabled={loading || !isSuperAdmin}
@@ -621,8 +621,8 @@ export default function SystemSettings({
         </div>
 
         {/* Card 5: Templates and Digitalization Permission */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 flex flex-col justify-between">
-          <div>
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col h-full">
+          <div className="flex flex-col flex-1">
             <div className="flex items-center gap-2 text-indigo-600 mb-3">
               <FolderKanban className="w-5 h-5" />
               <h2 className="font-bold text-slate-800 text-base">Permisos de Plantillas de Procesos</h2>
@@ -631,8 +631,8 @@ export default function SystemSettings({
               Determina si los Administradores y Managers tienen permitido crear, editar, duplicar, digitalizar y eliminar plantillas de procesos. El Superadmin siempre tendrá acceso sin restricciones. Los Asesores nunca podrán gestionar plantillas.
             </p>
 
-            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/60 space-y-3">
-              <div className="flex justify-between items-center">
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/60">
+              <div className="flex justify-between items-center gap-3">
                 <span className="text-xs font-bold text-slate-700 uppercase tracking-wider font-mono">
                   Admins & Managers
                 </span>
@@ -669,8 +669,8 @@ export default function SystemSettings({
               Configura si el campo "Plantilla de Proceso" es obligatorio o de carácter opcional al momento de crear nuevos legajos en la plataforma.
             </p>
 
-            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/60 space-y-3">
-              <div className="flex justify-between items-center">
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/60">
+              <div className="flex justify-between items-center gap-3">
                 <span className="text-xs font-bold text-slate-700 uppercase tracking-wider font-mono">
                   Campo Obligatorio
                 </span>
