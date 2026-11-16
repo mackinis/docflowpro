@@ -1693,7 +1693,7 @@ app.get('/api/cases/advisor-statistics', async (c) => {
   const { hasRbacPermission } = await import('../src/rbac');
   const matrix = await getSystemConfigValue(c.env.DB, 'rbacMatrix', { roles: {}, users: {} });
   const own = requestedAdvisor === auth.user.id;
-  const permission = own ? 'statistics.view' : 'statistics.manage';
+  const permission: 'statistics.view' | 'statistics.manage' = own ? 'statistics.view' : 'statistics.manage';
   if (!hasRbacPermission(matrix, auth.user.role, auth.user.id, permission)) {
     return c.json({ error: 'No tiene permiso para consultar estas estadísticas.' }, 403);
   }
