@@ -36,6 +36,14 @@ export default function SystemSettings({
 }: SystemSettingsProps) {
   const [settingsTab, setSettingsTab] = useState<'general' | 'accesos' | 'mensajes' | 'procesos' | 'mantenimiento' | 'ia'>('general');
   const [loading, setLoading] = useState(false);
+  const [publicRegistrationEnabled, setPublicRegistrationEnabled] = useState(true);
+  React.useEffect(() => {
+    if (currentUser.role !== 'SUPERADMIN') return;
+    fetch('/api/admin/registration-policy', { credentials: 'include' })
+      .then(async res => { if (!res.ok) throw new Error('No se pudo consultar el registro público.'); return res.json(); })
+      .then(data => setPublicRegistrationEnabled(data.enabled === true))
+      .catch(err => setErrorMsg(err.message));
+  }, [currentUser.role]);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -359,6 +367,28 @@ export default function SystemSettings({
           </button>
         ))}
       </nav>
+      {settingsTab === 'accesos' && isSuperAdmin && (
+        <section className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
+          <div>
+            <h2 className="text-base font-bold text-slate-800">Registro de usuarios</h2>
+            <p className="text-sm text-slate-500">Controlá si los visitantes pueden solicitar una cuenta desde el inicio de sesión. Desactivarlo bloquea también el registro en el servidor.</p>
+          </div>
+          <div className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <span className="text-sm font-semibold text-slate-800">Permitir registro público</span>
+            <SettingsSwitch checked={publicRegistrationEnabled} disabled={loading} label="Permitir registro público" onClick={async () => {
+              setLoading(true); setErrorMsg(null); setSuccessMsg(null);
+              try {
+                const res = await fetch('/api/admin/registration-policy', { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: !publicRegistrationEnabled }) });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'No se pudo guardar la política.');
+                setPublicRegistrationEnabled(data.enabled);
+                setSuccessMsg('Política de registro actualizada.');
+              } catch (err: any) { setErrorMsg(err.message); }
+              finally { setLoading(false); }
+            }} />
+          </div>
+        </section>
+      )}
       {settingsTab === 'ia' && <AiAgentSettings currentUser={currentUser} />}
       <div className="settings-tab-cards grid grid-cols-1 lg:grid-cols-2 gap-5" data-settings-section={settingsTab}>
         
