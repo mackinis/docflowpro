@@ -30,6 +30,7 @@ interface AuthScreenProps {
   needsSetup?: boolean;
   turnstileSiteKey?: string;
   turnstileEnabled?: boolean;
+  publicRegistrationEnabled?: boolean;
 }
 
 type AuthMode = 'setup' | 'login' | 'register' | 'pending_approval' | 'recover' | 'reset';
@@ -38,7 +39,8 @@ export default function AuthScreen({
   onLoginSuccess,
   needsSetup = false,
   turnstileSiteKey = '',
-  turnstileEnabled = false
+  turnstileEnabled = false,
+  publicRegistrationEnabled = true
 }: AuthScreenProps) {
   const [mode, setMode] = useState<AuthMode>(needsSetup ? 'setup' : 'login');
 
@@ -640,6 +642,7 @@ export default function AuthScreen({
                 {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Ingresar al Portal'}
               </button>
 
+              {publicRegistrationEnabled && (
               <div className="text-center pt-2">
                 <button
                   type="button"
@@ -649,10 +652,11 @@ export default function AuthScreen({
                   ¿No tienes cuenta? Regístrate aquí
                 </button>
               </div>
+              )}
             </form>
           )}
 
-          {mode === 'register' && (
+          {mode === 'register' && publicRegistrationEnabled && (
             <form onSubmit={handleRegister} className="space-y-4" id="form-register">
               <div className="text-center space-y-1 pb-1">
                 <h2 className="font-bold text-slate-800 text-lg">Crea tu cuenta de DocFlow</h2>
