@@ -247,7 +247,7 @@ export default function CasesList({
       return;
     }
 
-    if (missingDraftDocs.length) {
+    if (missingDraftDocs.length && systemSettings?.allowIncompleteCaseDocuments !== true) {
       alert('Primero cargá los documentos del actor: ' + missingDraftDocs.map(r => r.name).join(', '));
       return;
     }
@@ -313,10 +313,12 @@ export default function CasesList({
     const assignedFiles = participants.flatMap(actor => Object.entries(actorFiles[actor.id] || {}).map(([requirementId, file]) => ({ requirementId, file, actor })));
     for (const actor of participants) {
       for (const req of requiredDocs.filter(r => belongsTo(r.name, actor.role || ''))) {
-        if (!actorFiles[actor.id]?.[req.id]) errors.push('Falta ' + req.name + ' para ' + actor.name + ' ' + actor.lastName + '.');
+        if (!actorFiles[actor.id]?.[req.id] && systemSettings?.allowIncompleteCaseDocuments !== true) errors.push('Falta ' + req.name + ' para ' + actor.name + ' ' + actor.lastName + '.');
       }
     }
     if (errors.length) { alert('Requisitos pendientes:\n' + errors.join('\n')); return; }
+    const pendingDocs = participants.flatMap(actor => requiredDocs.filter(r => belongsTo(r.name, actor.role || '') && !actorFiles[actor.id]?.[r.id]).map(r => `${r.name} — ${actor.name} ${actor.lastName}`));
+    if (pendingDocs.length && systemSettings?.allowIncompleteCaseDocuments === true && !window.confirm(`El legajo tiene ${pendingDocs.length} documento(s) pendiente(s). Se registrará como OBSERVADO y requerirá intervención del responsable. ¿Continuar?`)) return;
     if (savingCase) return;
     setSavingCase(true);
     let createdId = '';
@@ -324,7 +326,7 @@ export default function CasesList({
       const advisorId = currentUser.role === 'ASESOR' ? currentUser.id : (newAdvisorId || users.find(u => u.role === 'ASESOR')?.id || '');
       const response = await fetch('/api/cases', {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: newTitle, description: newDescription, templateId: newTemplateId, assignedAdvisorId: advisorId, assignedManagerId: currentUser.role === 'ASESOR' ? '' : currentUser.id, participants, documentContent: customDocumentContent || undefined })
+        body: JSON.stringify({ title: newTitle, description: newDescription, templateId: newTemplateId, assignedAdvisorId: advisorId, assignedManagerId: currentUser.role === 'ASESOR' ? '' : currentUser.id, participants, pendingDocumentNames: pendingDocs, documentContent: customDocumentContent || undefined })
       });
       const created = await response.json();
       if (!response.ok) throw new Error(created.error || 'No se pudo crear el legajo.');
