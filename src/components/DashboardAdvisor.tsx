@@ -182,7 +182,7 @@ export default function DashboardAdvisor({
                       </button>
                     </div>
 
-                    <div className="bg-red-50 border border-red-200 text-red-950 dark:bg-[#301b29] dark:border-red-400/60 dark:text-red-50 p-3 rounded-lg text-xs font-medium leading-relaxed">
+                    <div className="p-3 rounded-lg text-xs font-medium leading-relaxed" style={{ backgroundColor: "#3b1725", border: "1px solid #fb7185", color: "#ffffff" }}>
                       <p className="font-semibold mb-0.5">{isDocObs ? 'Rechazo de Documento:' : 'Observación de Proceso:'}</p>
                       {obs.text}
                     </div>
