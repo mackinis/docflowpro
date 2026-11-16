@@ -6,7 +6,6 @@ import {
   FileCheck2, 
   Clock, 
   Activity, 
-  ArrowRight,
   ClipboardList,
   Upload,
   UserCheck
@@ -36,7 +35,6 @@ export default function DashboardAdvisor({
   // Filter items for current advisor
   const myCases = cases.filter(c => c.assignedAdvisorId === currentAdvisorId);
   const myCasesIds = myCases.map(c => c.id);
-  const [showObservedCases, setShowObservedCases] = useState(false);
 
   // Stats
   const activeCasesCount = myCases.filter(c => c.status === 'active' || c.status === 'pending_review').length;
@@ -103,14 +101,14 @@ export default function DashboardAdvisor({
           </div>
         </div>
 
-        <button type="button" onClick={() => setShowObservedCases(v => !v)} aria-expanded={showObservedCases} className="bg-white p-5 rounded-2xl border border-rose-200 shadow-xs flex items-center justify-between text-left group hover:border-rose-400 transition-all">
+        <div className="bg-white p-5 rounded-2xl border border-rose-200 shadow-xs flex items-center justify-between">
           <div className="space-y-1">
             <span className="text-xs font-medium text-rose-600 uppercase tracking-wider">Legajos Observados</span>
             <p className="text-3xl font-bold text-rose-500">{observedCount}</p>
             <p className="text-[11px] text-rose-400 font-medium">{observedCount ? 'Requieren atención' : 'Sin pendientes'}</p>
           </div>
           <div className="p-3 bg-rose-500/15 text-rose-500 rounded-xl group-hover:scale-110 transition-transform shrink-0"><AlertTriangle className="w-6 h-6" /></div>
-        </button>
+        </div>
 
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between group hover:border-slate-300 transition-all">
           <div className="space-y-1">
@@ -143,14 +141,6 @@ export default function DashboardAdvisor({
         </div>
       </div>
 
-      {showObservedCases && <section className="rounded-2xl border border-rose-200 bg-white p-5 space-y-3">
-        <h3 className="text-sm font-bold text-rose-700">Legajos observados que requieren seguimiento ({observedCount})</h3>
-        {myCases.filter(c => c.status === 'observed').map(c => <button key={c.id} type="button" onClick={() => onOpenCase(c.id)} className="w-full text-left rounded-xl border border-slate-200 p-3 hover:border-rose-400 flex items-center justify-between gap-3">
-          <div><p className="text-sm font-bold text-slate-800">{c.title}</p><p className="text-xs text-slate-500">{c.code} · Observado</p></div>
-          <ArrowRight className="w-4 h-4 text-rose-500 shrink-0" />
-        </button>)}
-        {observedCount === 0 && <p className="text-xs text-slate-500">No tenés legajos observados.</p>}
-      </section>}
       {/* Main panels: Blockers and Checklist */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* Blocked documents & observations (Actionable resolution list) */}
