@@ -197,6 +197,8 @@ app.use('/api/*', async (c, next) => {
   if (!auth || auth.realUser.role === 'SUPERADMIN') return next();
   const path = c.req.path;
   if (path.startsWith('/api/admin/rbac')) return c.json({ error: 'Acceso RBAC reservado al Superadmin.' }, 403);
+  // Audit ingestion must remain available regardless of audit-report viewing rights.
+  if (path === '/api/audit/navigation' || path === '/api/audit-logs/log') return next();
   const routes: Array<[RegExp, string]> = [
     [/^\/api\/users(?:\/|$)|^\/api\/admin\/user-creators|^\/api\/admin\/registration-policy/, 'users'],
     [/^\/api\/audit(?:-|\/)|^\/api\/audit-logs/, 'audit'],
