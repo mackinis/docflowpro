@@ -203,6 +203,7 @@ app.use('/api/*', async (c, next) => {
   const routes: Array<[RegExp, string]> = [
     [/^\/api\/users(?:\/|$)|^\/api\/admin\/user-creators|^\/api\/admin\/registration-policy/, 'users'],
     [/^\/api\/audit(?:-|\/)|^\/api\/audit-logs/, 'audit'],
+    [/^\/api\/statistics(?:\/|$)/, 'statistics'],
     [/^\/api\/cases(?:\/|$)|^\/api\/tasks(?:\/|$)|^\/api\/observations(?:\/|$)|^\/api\/forms(?:\/|$)/, 'cases'],
     [/^\/api\/(?:documents|shared-documents|upload-requests)(?:\/|$)/, 'documents'],
     [/^\/api\/system-messages(?:\/|$)/, 'messages'],
@@ -1689,9 +1690,12 @@ app.get('/api/cases/my-activity', async (c) => {
 app.get('/api/cases/advisor-statistics', async (c) => {
   const auth = c.get('auth')!;
   const requestedAdvisor = c.req.query('advisorId') || auth.user.id;
-  const isSupervisor = ['SUPERADMIN', 'ADMIN', 'MANAGER'].includes(auth.user.role);
-  if (!isSupervisor && requestedAdvisor !== auth.user.id) {
-    return c.json({ error: 'Solo puede consultar sus propias estadísticas.' }, 403);
+  const { hasRbacPermission } = await import('../src/rbac');
+  const matrix = await getSystemConfigValue(c.env.DB, 'rbacMatrix', { roles: {}, users: {} });
+  const own = requestedAdvisor === auth.user.id;
+  const permission = own ? 'statistics.view' : 'statistics.manage';
+  if (!hasRbacPermission(matrix, auth.user.role, auth.user.id, permission)) {
+    return c.json({ error: 'No tiene permiso para consultar estas estadísticas.' }, 403);
   }
   const rows = await c.env.DB.prepare(
     `SELECT assigned_advisor_id AS advisorId,
