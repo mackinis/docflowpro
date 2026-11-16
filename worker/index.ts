@@ -1704,13 +1704,17 @@ app.get('/api/cases/advisor-statistics', async (c) => {
        SUM(CASE WHEN status = 'observed' THEN 1 ELSE 0 END) AS observed,
        SUM(CASE WHEN status = 'pending_review' THEN 1 ELSE 0 END) AS pendingReview,
        SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active,
-       SUM(CASE WHEN status = 'pending_assignment' THEN 1 ELSE 0 END) AS pendingAssignment
+       SUM(CASE WHEN status = 'pending_assignment' THEN 1 ELSE 0 END) AS pendingAssignment,
+       ROUND(AVG(CASE WHEN status = 'completed' AND julianday(updated_at) >= julianday(created_at)
+         THEN (julianday(updated_at) - julianday(created_at)) * 24 END), 1) AS averageCompletedHours,
+       MIN(CASE WHEN status = 'completed' THEN created_at END) AS firstCompletedCaseCreatedAt,
+       MAX(CASE WHEN status = 'completed' THEN updated_at END) AS lastCompletedCaseUpdatedAt
      FROM cases WHERE assigned_advisor_id = ? GROUP BY assigned_advisor_id`
   ).bind(requestedAdvisor).first<any>();
-  const summary = rows || { advisorId: requestedAdvisor, total: 0, completed: 0, observed: 0, pendingReview: 0, active: 0, pendingAssignment: 0 };
+  const summary = rows || { advisorId: requestedAdvisor, total: 0, completed: 0, observed: 0, pendingReview: 0, active: 0, pendingAssignment: 0, averageCompletedHours: null, firstCompletedCaseCreatedAt: null, lastCompletedCaseUpdatedAt: null };
   return c.json({
     ...summary,
-    note: 'Indicadores descriptivos por estado actual. No constituyen calificación de desempeño ni miden responsabilidad individual.'
+    note: 'Indicadores descriptivos por estado actual. La duración estimada usa created_at y updated_at, no un evento de finalización inmutable. No constituye calificación de desempeño ni mide responsabilidad individual.'
   });
 });
 
