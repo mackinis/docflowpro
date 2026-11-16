@@ -230,7 +230,7 @@ app.post('/api/ai/settings', async (c) => {
   return c.json({ success: true });
 });
 
-app.use(['/api/ai/*', '/api/gemini/*'], async (c, next) => {
+const enforceAiRbac = async (c: AppContext, next: () => Promise<void>) => {
   if (c.req.path === '/api/ai/settings') return next();
   const auth = c.get('auth');
   if (!auth) return c.json({ error: 'No autenticado.' }, 401);
@@ -239,7 +239,9 @@ app.use(['/api/ai/*', '/api/gemini/*'], async (c, next) => {
     return c.json({ error: 'El agente IA no está habilitado para su rol.' }, 403);
   }
   return next();
-});
+};
+app.use('/api/ai/*', enforceAiRbac);
+app.use('/api/gemini/*', enforceAiRbac);
 
 // Audit every authenticated API request, including failures, without storing bodies, tokens or query strings.
 app.use('/api/*', async (c, next) => {
