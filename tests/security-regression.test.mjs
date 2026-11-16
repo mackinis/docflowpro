@@ -44,3 +44,12 @@ test('AI configuration has a dedicated tab', () => {
   assert.match(ui, /'ia', 'Agente IA'/);
   assert.match(ui, /<AiAgentSettings currentUser=\{currentUser\}/);
 });
+
+test('clients cannot forge forensic audit events', () => {
+  assert.match(worker, /app\.post\('\/api\/audit-logs\/log', \(c\) => c\.json\(\{ error: 'Los registros de auditoría se generan exclusivamente en el servidor\.' \}, 403\)\)/);
+});
+
+test('forensic audit browsing is restricted and paginated', () => {
+  assert.match(worker, /auth\.realUser\.role !== 'ADMIN'/);
+  assert.match(worker, /LIMIT \? OFFSET \?/);
+});
