@@ -413,7 +413,9 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
   const handleAddRequirement = (stageIdx: number, type: RequirementType) => {
     const newReq: Requirement = {
       id: `req-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      name: type === 'document' ? 'Nuevo Documento' : type === 'form' ? 'Nuevo Formulario' : type === 'actor' ? 'Locador' : 'Nueva Tarea',\n      actorRole: type === 'actor' ? 'Locador' : undefined,\n      minQuantity: type === 'actor' ? 1 : undefined,
+      name: type === 'document' ? 'Nuevo Documento' : type === 'form' ? 'Nuevo Formulario' : type === 'actor' ? 'Locador' : 'Nueva Tarea',
+      actorRole: type === 'actor' ? 'Locador' : undefined,
+      minQuantity: type === 'actor' ? 1 : undefined,
       type,
       description: '',
       isRequired: true,
@@ -1095,7 +1097,19 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                                     />
                                   </div>
 
-                                  {req.type === 'actor' && (\n                                    <div className="pl-7 flex flex-wrap gap-3 items-end">\n                                      <label className="text-xs text-slate-700">Rol obligatorio\n                                        <select className="block border border-slate-300 rounded p-2 bg-white text-slate-900" value={req.actorRole || 'Locador'} onChange={e => { handleRequirementFieldChange(sIdx, req.id, 'actorRole', e.target.value); handleRequirementFieldChange(sIdx, req.id, 'name', e.target.value); }}>\n                                          {['Locador','Locatario','Garante','Comprador','Vendedor','Titular','Cliente','Apoderado','Escribano'].map(role => <option key={role} value={role}>{role}</option>)}\n                                        </select>\n                                      </label>\n                                      <label className="text-xs text-slate-700">Cantidad mínima\n                                        <input type="number" min="1" max="50" className="block w-24 border border-slate-300 rounded p-2 bg-white text-slate-900" value={req.minQuantity || 1} onChange={e => handleRequirementFieldChange(sIdx, req.id, 'minQuantity', Math.max(1, Number(e.target.value) || 1))} />\n                                      </label>\n                                    </div>\n                                  )}\n                                  {/* Sub-fields for Form Fields definition */}
+                                  {req.type === 'actor' && (
+                                    <div className="pl-7 flex flex-wrap gap-3 items-end">
+                                      <label className="text-xs text-slate-700">Rol obligatorio
+                                        <select className="block border border-slate-300 rounded p-2 bg-white text-slate-900" value={req.actorRole || 'Locador'} onChange={e => { handleRequirementFieldChange(sIdx, req.id, 'actorRole', e.target.value); handleRequirementFieldChange(sIdx, req.id, 'name', e.target.value); }}>
+                                          {['Locador','Locatario','Garante','Comprador','Vendedor','Titular','Cliente','Apoderado','Escribano'].map(role => <option key={role} value={role}>{role}</option>)}
+                                        </select>
+                                      </label>
+                                      <label className="text-xs text-slate-700">Cantidad mínima
+                                        <input type="number" min="1" max="50" className="block w-24 border border-slate-300 rounded p-2 bg-white text-slate-900" value={req.minQuantity || 1} onChange={e => handleRequirementFieldChange(sIdx, req.id, 'minQuantity', Math.max(1, Number(e.target.value) || 1))} />
+                                      </label>
+                                    </div>
+                                  )}
+                                  {/* Sub-fields for Form Fields definition */}
                                   {req.type === 'form' && (
                                     <div className="pl-7 space-y-1">
                                       <label className="text-[8px] font-bold text-slate-400 uppercase block">Campos del Formulario (separados por coma)</label>
