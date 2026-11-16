@@ -241,6 +241,29 @@ app.use('/api/ai/*', async (c, next) => {
   return next();
 });
 
+// Audit every authenticated API request, including failures, without storing bodies, tokens or query strings.
+app.use('/api/*', async (c, next) => {
+  const auth = c.get('auth');
+  const started = Date.now();
+  await next();
+  if (!auth) return;
+  try {
+    await createAudit(c.env.DB, auth.realUser.id,
+      `${c.req.method} ${c.req.path} · HTTP ${c.res.status} · ${Date.now() - started}ms`,
+      'ApiRequest', c.req.path, auth.user.id === auth.realUser.id ? 'Acceso autenticado' : `Actuando como ${auth.user.id}`);
+  } catch (err) { console.error('Failed to record API forensic event:', err); }
+});
+
+app.post('/api/audit/navigation', async (c) => {
+  const auth = c.get('auth')!;
+  const body = await c.req.json().catch(() => ({}));
+  const tab = typeof body.tab === 'string' && /^[a-z-]{1,40}$/.test(body.tab) ? body.tab : 'unknown';
+  const caseId = typeof body.caseId === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(body.caseId) ? body.caseId : '';
+  await createAudit(c.env.DB, auth.realUser.id, 'Navegación: ' + tab,
+    'Navigation', caseId || tab, auth.user.id === auth.realUser.id ? tab : `Impersonación ${auth.user.id}: ${tab}`);
+  return c.json({ success: true });
+});
+
 // ============================================================================
 // 0. Health Check
 // ============================================================================
@@ -3283,6 +3306,11 @@ app.all('*', async (c) => {
 
 export default {
   fetch: app.fetch,
+  async scheduled(_event: ScheduledEvent, env: Env): Promise<void> {
+    const cutoff = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
+    await ensureDatabaseReady(env.DB);
+    await env.DB.prepare('DELETE FROM audit_logs WHERE created_at < ?').bind(cutoff).run();
+  },
   async queue(batch: MessageBatch<QueueJob>, env: Env): Promise<void> {
     for (const msg of batch.messages) {
       try {
