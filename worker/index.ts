@@ -1687,6 +1687,36 @@ app.get('/api/cases/my-activity', async (c) => {
   })));
 });
 
+// Team-level statistics: only users with statistics.manage may inspect other advisors.
+app.get('/api/statistics/advisors', async (c) => {
+  const auth = c.get('auth')!;
+  const { hasRbacPermission } = await import('../src/rbac');
+  const matrix = await getSystemConfigValue(c.env.DB, 'rbacMatrix', { roles: {}, users: {} });
+  if (!hasRbacPermission(matrix, auth.user.role, auth.user.id, 'statistics.manage')) {
+    return c.json({ error: 'No tiene permiso para consultar estadísticas del equipo.' }, 403);
+  }
+  const rows = await c.env.DB.prepare(
+    `SELECT u.id AS advisorId, u.name AS name, u.last_name AS lastName,
+       COUNT(cs.id) AS total,
+       SUM(CASE WHEN cs.status = 'completed' THEN 1 ELSE 0 END) AS completed,
+       SUM(CASE WHEN cs.status = 'observed' THEN 1 ELSE 0 END) AS observed,
+       SUM(CASE WHEN cs.status = 'pending_review' THEN 1 ELSE 0 END) AS pendingReview,
+       SUM(CASE WHEN cs.status = 'active' THEN 1 ELSE 0 END) AS active
+     FROM users u LEFT JOIN cases cs ON cs.assigned_advisor_id = u.id
+     WHERE u.role = 'ASESOR'
+     GROUP BY u.id, u.name, u.last_name ORDER BY total DESC, u.name ASC`
+  ).all<any>();
+  return c.json({
+    advisors: (rows.results || []).map((row: any) => ({
+      ...row,
+      total: Number(row.total || 0), completed: Number(row.completed || 0),
+      observed: Number(row.observed || 0), pendingReview: Number(row.pendingReview || 0),
+      active: Number(row.active || 0)
+    })),
+    note: 'Estadísticas descriptivas por estado actual. No son una calificación individual ni atribuyen culpabilidad por observaciones.'
+  });
+});
+
 app.get('/api/cases/advisor-statistics', async (c) => {
   const auth = c.get('auth')!;
   const requestedAdvisor = c.req.query('advisorId') || auth.user.id;
