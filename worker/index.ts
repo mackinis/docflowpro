@@ -874,6 +874,13 @@ app.put('/api/users/:id', async (c) => {
     }
   }
 
+  // Only the Superadmin may grant or revoke administrator status.
+  if (role !== undefined && String(role).toUpperCase() === 'ADMIN' && targetRow.role !== 'ADMIN' && currentUser.role !== 'SUPERADMIN') {
+    return c.json({ error: 'Solo el Superadmin puede designar administradores.' }, 403);
+  }
+  if (targetRow.role === 'ADMIN' && role !== undefined && String(role).toUpperCase() !== 'ADMIN' && currentUser.role !== 'SUPERADMIN') {
+    return c.json({ error: 'Solo el Superadmin puede modificar el rol de un administrador.' }, 403);
+  }
   // Exactly one Superadmin: the role cannot be assigned through user management.
   if (role !== undefined && String(role).toUpperCase() === 'SUPERADMIN' && targetRow.role !== 'SUPERADMIN') {
     return c.json({ error: 'Solo puede existir un Superadmin. Este rol no puede asignarse a otras cuentas.' }, 403);
