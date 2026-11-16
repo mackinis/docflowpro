@@ -900,8 +900,6 @@ export default function CasesList({
                     <button
                       type="button"
                       onClick={handleAddParticipant}
-                      disabled={missingDraftDocs.length > 0}
-                      title={missingDraftDocs.length ? 'Faltan: ' + missingDraftDocs.map(r => r.name).join(', ') : undefined}
                       className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs rounded-lg transition-colors border border-indigo-700 shadow-xs"
                     >
                       {editingParticipantId ? 'Guardar Cambios' : 'Añadir Actor'}
