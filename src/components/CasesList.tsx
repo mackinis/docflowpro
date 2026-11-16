@@ -146,6 +146,7 @@ export default function CasesList({
   const actorRequiredDocs = requiredDocs.filter(req => belongsTo(req.name, pType));
   const missingDraftDocs = actorRequiredDocs.filter(req => !actorFiles[draftKey]?.[req.id]);
   const onActorFileSelected = (file?: File) => {
+    setSkipActorDocWarning(false); setMissingActorDocsWarning(false);
     if (!file || !docRequirementId) return;
     if (!file.size || file.size > 20 * 1024 * 1024) { alert('El archivo debe tener contenido y pesar menos de 20 MB.'); return; }
     setActorFiles(prev => ({ ...prev, [draftKey]: { ...prev[draftKey], [docRequirementId]: file } }));
@@ -228,6 +229,7 @@ export default function CasesList({
   const isManagerOrAdmin = ['SUPERADMIN', 'ADMIN', 'MANAGER'].includes(currentUser.role);
 
   const handleStartEditParticipant = (p: Participant) => {
+    setSkipActorDocWarning(false); setMissingActorDocsWarning(false);
     setEditingParticipantId(p.id);
     setPName(p.name);
     setPLastName(p.lastName);
