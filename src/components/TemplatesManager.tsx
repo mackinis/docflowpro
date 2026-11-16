@@ -25,6 +25,40 @@ import {
 } from 'lucide-react';
 import { ProcessTemplate, User, Stage, Requirement, RequirementType, FormField } from '../types';
 
+
+// La igualdad estricta solo ignora espacios: conserva tildes, signos, mayúsculas y caracteres.
+const withoutSpaces = (value: string) => value.replace(/\\s+/gu, '');
+const comparable = (value: string) => value.normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLocaleLowerCase('es').replace(/[^a-z0-9]+/g, ' ').trim();
+const similarity = (a: string, b: string): number => {
+  const x = comparable(a), y = comparable(b);
+  if (x === y) return 1;
+  if (!x || !y) return 0;
+  const previous = Array.from({ length: y.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= x.length; i++) {
+    let diagonal = previous[0];
+    previous[0] = i;
+    for (let j = 1; j <= y.length; j++) {
+      const old = previous[j];
+      previous[j] = Math.min(previous[j] + 1, previous[j - 1] + 1, diagonal + (x[i - 1] === y[j - 1] ? 0 : 1));
+      diagonal = old;
+    }
+  }
+  return 1 - previous[y.length] / Math.max(x.length, y.length);
+};
+const requirementLines = (value: string) => value.split(/\\r?\\n/).map(line => line.trim()).filter(Boolean);
+const compareRequirements = (a: string, b: string) => {
+  const left = requirementLines(a), right = requirementLines(b);
+  const normalized = (line: string) => comparable(line).replace(/\\b(del|de la|de los|de las)\\b/g, '').replace(/\\s+/g, ' ').trim();
+  const other = [...right];
+  const removed: string[] = [];
+  for (const line of left) {
+    const idx = other.findIndex(item => normalized(item) === normalized(line));
+    if (idx >= 0) other.splice(idx, 1);
+    else removed.push(line);
+  }
+  return { removed, added: other };
+};
+
 interface TemplatesManagerProps {
   templates: ProcessTemplate[];
   currentUser: User;
@@ -202,6 +236,41 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
     if (!manualName.trim() || !manualDescription.trim()) {
       alert('Ingresá el nombre y la descripción con los requisitos del proceso.');
       return;
+    }
+    // Primero verificar duplicados estrictos; luego pedir confirmación ante similitudes.
+    // Actualizar desde el servidor para no depender únicamente de la lista renderizada.
+    let existing = templates.filter(t => !t.id.startsWith('doc-') && !t.originalDocumentContent);
+    try {
+      const check = await fetch('/api/templates', { credentials: 'include' });
+      if (!check.ok) throw new Error('No se pudo verificar la lista de procesos.');
+      const latest = await check.json();
+      if (!Array.isArray(latest)) throw new Error('Respuesta inválida al verificar procesos.');
+      existing = latest.filter((t: ProcessTemplate) => !t.id.startsWith('doc-') && !t.originalDocumentContent);
+    } catch {
+      alert('No se pudo comprobar si el proceso ya existe. Volvé a intentarlo para evitar duplicados.');
+      return;
+    }
+    const sameIndustry = existing.filter(t => withoutSpaces(t.industry) === withoutSpaces(manualIndustry));
+    const exact = sameIndustry.find(t =>
+      withoutSpaces(t.name) === withoutSpaces(manualName) &&
+      withoutSpaces(t.description) === withoutSpaces(manualDescription)
+    );
+    if (exact) {
+      alert(`Duplicado confirmado: el proceso «${exact.name}» ya existe con el mismo rubro, nombre y descripción/requisitos (ignorando solamente espacios). No se guardó.`);
+      return;
+    }
+    const similar = sameIndustry
+      .map(t => ({ template: t, nameScore: similarity(t.name, manualName), descScore: similarity(t.description, manualDescription) }))
+      .filter(item => item.nameScore >= 0.76 || item.descScore >= 0.86)
+      .sort((a, b) => Math.max(b.nameScore, b.descScore) - Math.max(a.nameScore, a.descScore))[0];
+    if (similar) {
+      const diff = compareRequirements(similar.template.description, manualDescription);
+      const changes = [
+        diff.added.length ? 'Requisitos nuevos:\\n' + diff.added.map(line => '+ ' + line).join('\\n') : '',
+        diff.removed.length ? 'Requisitos del proceso existente que no figuran en el nuevo:\\n' + diff.removed.map(line => '- ' + line).join('\\n') : '',
+        !diff.added.length && !diff.removed.length ? 'Los requisitos parecen equivalentes; revisá si realmente necesitás otro proceso.' : ''
+      ].filter(Boolean).join('\\n\\n');
+      if (!window.confirm(`Proceso muy parecido detectado: «${similar.template.name}».\\n\\nNombre nuevo: ${manualName}\\n\\n${changes}\\n\\n¿Confirmás que querés crear otro proceso distinto?`)) return;
     }
     setIsCreatingManual(true);
     try {
