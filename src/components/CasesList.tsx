@@ -55,32 +55,6 @@ export default function CasesList({
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'pending_review' | 'observed' | 'completed' | 'pending_assignment'>('all');
   const [templateFilter, setTemplateFilter] = useState('all');
 
-  const base64ToUnicode = (str: string) => {
-    try {
-      const base64Part = str.includes(',') ? str.split(',')[1] : str;
-      return decodeURIComponent(escape(atob(base64Part)));
-    } catch (e) {
-      try {
-        const base64Part = str.includes(',') ? str.split(',')[1] : str;
-        return atob(base64Part);
-      } catch (err) {
-        return '';
-      }
-    }
-  };
-
-  const availableDigitizedDocs = (sharedDocuments || []).filter(doc => {
-    const isDigital = doc.name?.toLowerCase().includes('digitalizado') || 
-                      doc.fileName?.endsWith('_digitalizado.txt') || 
-                      doc.fileName?.endsWith('.txt');
-    if (!isDigital) return false;
-    
-    if (currentUser.role === 'SUPERADMIN' || currentUser.role === 'ADMIN') return true;
-    const roleAllowed = doc.allowedRoles?.includes(currentUser.role);
-    const userAllowed = doc.allowedUserIds?.includes(currentUser.id);
-    return roleAllowed || userAllowed;
-  });
-
   // Form states for new Case
   const [newTitle, setNewTitle] = useState('');
   const [newDescription, setNewDescription] = useState('');
@@ -94,22 +68,28 @@ export default function CasesList({
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const lowerName = file.name.toLowerCase();
+    if (!lowerName.endsWith('.txt') && !lowerName.endsWith('.md') && !lowerName.endsWith('.csv')) {
+      setUploadedFileName('');
+      e.target.value = '';
+      alert('Para extraer texto real de archivos PDF, Word o imágenes utiliza "Plantillas y Procesos -> Digitalizar Plantilla / Documento" (procesado por Cloudflare Workers AI), o selecciona un archivo de texto (.txt).');
+      return;
+    }
+
     setUploadedFileName(file.name);
     setIsExtractingFile(true);
 
     const reader = new FileReader();
     reader.onload = (event) => {
-      const text = event.target?.result as string;
-      if (file.name.toLowerCase().endsWith('.txt')) {
-        setCustomDocumentContent(text);
-      } else {
-        // Simple simulated extractor for docx/pdf to give a lovely visual experience
-        const simulatedText = `CONTRATO DE ADHESIÓN DIGITALIZADO - ${file.name.replace(/\.[^/.]+$/, "")}\n\nEn la ciudad de Buenos Aires, a los [Fecha] días del mes de [Mes], entre el Sr./Sra. [Nombre Completo Cliente], DNI [DNI Cliente] por una parte, y la empresa por la otra, se conviene la presente transacción sobre la propiedad bajo el proceso de la plantilla seleccionada.\n\nVALOR DE LA OPERACIÓN: $[Monto del Contrato]\n\nEste documento se cargó desde el archivo original digitalizado: ${file.name}.`;
-        setCustomDocumentContent(simulatedText);
-      }
+      const text = (event.target?.result as string) || '';
+      setCustomDocumentContent(text);
       setIsExtractingFile(false);
     };
-    reader.readAsText(file);
+    reader.onerror = () => {
+      setIsExtractingFile(false);
+      alert('No se pudo leer el archivo seleccionado.');
+    };
+    reader.readAsText(file, 'utf-8');
   };
   
   React.useEffect(() => {
@@ -485,6 +465,7 @@ export default function CasesList({
                             try {
                               const response = await fetch(`/api/cases/${c.id}/assign-manager`, {
                                 method: 'POST',
+                                credentials: 'include',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ managerId: currentUser.id, currentUserId: currentUser.id })
                               });
@@ -513,6 +494,7 @@ export default function CasesList({
                             try {
                               const response = await fetch(`/api/cases/${c.id}/assign-manager`, {
                                 method: 'POST',
+                                credentials: 'include',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ managerId: selectedId, currentUserId: currentUser.id })
                               });
@@ -693,6 +675,7 @@ export default function CasesList({
                           try {
                             const res = await fetch('/api/system-settings', {
                               method: 'POST',
+                              credentials: 'include',
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({
                                 settings: {
@@ -997,7 +980,8 @@ export default function CasesList({
                 onClick={async () => {
                   try {
                     const response = await fetch(`/api/cases/${caseToDelete.id}?currentUserId=${currentUser.id}`, {
-                      method: 'DELETE'
+                      method: 'DELETE',
+                      credentials: 'include'
                     });
                     if (!response.ok) {
                       const err = await response.json();

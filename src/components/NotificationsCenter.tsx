@@ -46,6 +46,7 @@ export default function NotificationsCenter({
     try {
       const res = await fetch(`/api/notifications/${id}/read`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' }
       });
       if (res.ok) {
@@ -63,6 +64,7 @@ export default function NotificationsCenter({
     try {
       const res = await fetch('/api/notifications/read-all', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: currentUser.id })
       });
@@ -81,7 +83,8 @@ export default function NotificationsCenter({
   const handleDeleteNotification = async (id: string) => {
     try {
       const res = await fetch(`/api/notifications/${id}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        credentials: 'include'
       });
       if (res.ok) {
         await loadState();
@@ -101,6 +104,7 @@ export default function NotificationsCenter({
     try {
       const res = await fetch('/api/notifications/clear-all', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: currentUser.id })
       });

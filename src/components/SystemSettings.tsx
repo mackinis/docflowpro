@@ -34,10 +34,10 @@ export default function SystemSettings({
   // Policies state
   const [policies, setPolicies] = useState(() => {
     return state.verificationPolicies || {
-      global: 'email',
-      ASESOR: 'email',
-      MANAGER: 'email',
-      ADMIN: 'email'
+      global: 'admin_approval',
+      ASESOR: 'admin_approval',
+      MANAGER: 'admin_approval',
+      ADMIN: 'admin_approval'
     };
   });
 
@@ -123,6 +123,7 @@ export default function SystemSettings({
     try {
       const res = await fetch('/api/system-settings', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           settings: {
@@ -146,7 +147,7 @@ export default function SystemSettings({
     }
   };
 
-  const handleUpdateGlobalPolicy = async (value: 'email' | 'sms' | 'both') => {
+  const handleUpdateGlobalPolicy = async (value: 'admin_approval' | 'direct') => {
     setLoading(true);
     setSuccessMsg(null);
     setErrorMsg(null);
@@ -158,6 +159,7 @@ export default function SystemSettings({
 
       const res = await fetch('/api/verification-policy', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           policies: updatedPolicies,
@@ -171,7 +173,7 @@ export default function SystemSettings({
       }
 
       setPolicies(updatedPolicies as any);
-      setSuccessMsg('Política de Verificación (MFA) actualizada con éxito.');
+      setSuccessMsg('Política de verificación de registro actualizada con éxito.');
       await loadState();
     } catch (err: any) {
       setErrorMsg(err.message);
@@ -187,6 +189,7 @@ export default function SystemSettings({
     try {
       const res = await fetch('/api/industry', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           industry,
@@ -226,6 +229,7 @@ export default function SystemSettings({
 
       const res = await fetch('/api/system-settings', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           settings: {
@@ -258,6 +262,7 @@ export default function SystemSettings({
       const newValue = !allowAdminManagerTemplates;
       const res = await fetch('/api/system-settings', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           settings: {
@@ -347,11 +352,19 @@ export default function SystemSettings({
             
             <div className="space-y-4">
               {(() => {
-                const currentPolicy = policies?.global || 'email';
+                const rawPolicy = policies?.global || 'admin_approval';
+                const currentPolicy = rawPolicy === 'direct' ? 'direct' : 'admin_approval';
                 const options = [
-                  { value: 'email', label: 'Email', description: 'Verificación exclusiva por correo electrónico' },
-                  { value: 'sms', label: 'SMS', description: 'Verificación exclusiva por mensaje de texto (SMS)' },
-                  { value: 'both', label: 'Ambos Requeridos', description: 'Debe validar tanto su correo electrónico como su celular vía SMS' }
+                  {
+                    value: 'admin_approval',
+                    label: 'Aprobación por Administrador',
+                    description: 'Las cuentas nuevas requieren aprobación manual de un Administrador o Superadministrador en Perfiles de Usuarios (100% Cloudflare, sin proveedores externos de Email/SMS).'
+                  },
+                  {
+                    value: 'direct',
+                    label: 'Acceso Directo Inmediato',
+                    description: 'Las cuentas nuevas registradas con Cloudflare Turnstile quedan verificadas automáticamente para iniciar sesión de inmediato.'
+                  }
                 ];
 
                 return (
@@ -361,7 +374,7 @@ export default function SystemSettings({
                         Política Activa Global
                       </span>
                       <span className="text-[10px] font-mono bg-indigo-600 text-white px-2.5 py-0.5 rounded-full uppercase font-bold">
-                        {currentPolicy === 'both' ? 'Email + SMS' : currentPolicy}
+                        {currentPolicy === 'direct' ? 'Acceso Directo' : 'Aprobación Admin'}
                       </span>
                     </div>
 
@@ -658,6 +671,7 @@ export default function SystemSettings({
                       const currentValue = state.systemSettings?.processTemplateRequired !== false;
                       const res = await fetch('/api/system-settings', {
                         method: 'POST',
+                        credentials: 'include',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                           settings: {
@@ -696,7 +710,7 @@ export default function SystemSettings({
               <h2 className="font-bold text-slate-800 text-base">Herramientas de Mantenimiento y Seguridad</h2>
             </div>
             <p className="text-xs text-slate-500 leading-relaxed mb-4">
-              Funciones críticas exclusivas para Administradores y Superadministradores para el resguardo de la información y la optimización de los registros en Firestore.
+              Funciones críticas exclusivas para Administradores y Superadministradores para el resguardo de la información y la optimización de los registros en Cloudflare D1 y R2.
             </p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
@@ -720,6 +734,7 @@ export default function SystemSettings({
                     try {
                       const res = await fetch('/api/admin/backup', {
                         method: 'POST',
+                        credentials: 'include',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ currentUserId: currentUser.id })
                       });
@@ -760,7 +775,7 @@ export default function SystemSettings({
                     Autolimpieza de Cuentas Inactivas
                   </h3>
                   <p className="text-[11px] text-slate-500 leading-relaxed mt-1">
-                    Elimina manualmente cuentas creadas hace más de una hora que aún no hayan completado su proceso de verificación de correo o SMS, liberando espacio basura en Firestore.
+                    Elimina manualmente cuentas creadas hace más de una hora que aún sigan pendientes de aprobación administrativa, manteniendo optimizada la base de datos Cloudflare D1.
                   </p>
                 </div>
                 <button
@@ -776,6 +791,7 @@ export default function SystemSettings({
                     try {
                       const res = await fetch('/api/admin/cleanup-unverified', {
                         method: 'POST',
+                        credentials: 'include',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ currentUserId: currentUser.id })
                       });

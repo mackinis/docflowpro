@@ -38,7 +38,7 @@ export default function SharedDocumentsManager({ currentUser, users, onAddAudit 
 
   // Upload Form State
   const [docName, setDocName] = useState('');
-  const [selectedFile, setSelectedFile] = useState<{ name: string; size: number; base64: string } | null>(null);
+  const [selectedFile, setSelectedFile] = useState<{ file: File; name: string; size: number } | null>(null);
   const [audienceType, setAudienceType] = useState<'all' | 'roles' | 'users'>('all');
   const [allowedRoles, setAllowedRoles] = useState<string[]>(['ADMIN', 'MANAGER', 'ASESOR']);
   const [allowedUserIds, setAllowedUserIds] = useState<string[]>([]);
@@ -67,34 +67,24 @@ export default function SharedDocumentsManager({ currentUser, users, onAddAudit 
   const [editContentField, setEditContentField] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
 
-  // Unicode-safe Base64 helpers
-  const base64ToUnicode = (str: string) => {
-    try {
-      const base64Part = str.includes(',') ? str.split(',')[1] : str;
-      return decodeURIComponent(escape(atob(base64Part)));
-    } catch (e) {
-      try {
-        const base64Part = str.includes(',') ? str.split(',')[1] : str;
-        return atob(base64Part);
-      } catch (err) {
-        return '';
-      }
-    }
-  };
-
-  const unicodeToBase64 = (str: string) => {
-    return btoa(unescape(encodeURIComponent(str)));
-  };
-
-  const handleOpenDocEditor = (doc: SharedDocument) => {
+  const handleOpenDocEditor = async (doc: SharedDocument) => {
     setEditingDoc(doc);
     setEditNameField(doc.name);
-    
+    setEditContentField('');
+
     const isDigital = doc.name.toLowerCase().includes('digitalizado') || doc.fileName.endsWith('_digitalizado.txt') || doc.fileName.endsWith('.txt');
-    if (isDigital && doc.dataUrl) {
-      setEditContentField(base64ToUnicode(doc.dataUrl));
-    } else {
-      setEditContentField('');
+    if (isDigital) {
+      try {
+        const res = await fetch(`/api/shared-documents/${doc.id}/content`, {
+          credentials: 'include'
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setEditContentField(data.content || '');
+        }
+      } catch (err) {
+        console.error('Error loading shared document text content:', err);
+      }
     }
   };
 
@@ -115,13 +105,12 @@ export default function SharedDocumentsManager({ currentUser, users, onAddAudit 
       };
 
       if (isDigital) {
-        const encodedContent = `data:text/plain;base64,${unicodeToBase64(editContentField)}`;
-        payload.dataUrl = encodedContent;
-        payload.fileSize = editContentField.length;
+        payload.textContent = editContentField;
       }
 
       const res = await fetch(`/api/shared-documents/${editingDoc.id}`, {
         method: 'PUT',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
@@ -193,6 +182,7 @@ export default function SharedDocumentsManager({ currentUser, users, onAddAudit 
 
       const res = await fetch(`/api/shared-documents/${editingPermissionsDoc.id}`, {
         method: 'PUT',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
@@ -217,7 +207,9 @@ export default function SharedDocumentsManager({ currentUser, users, onAddAudit 
     try {
       setLoading(true);
       setError(null);
-      const res = await fetch(`/api/shared-documents?userId=${currentUser.id}&role=${currentUser.role}`);
+      const res = await fetch(`/api/shared-documents?userId=${currentUser.id}&role=${currentUser.role}`, {
+        credentials: 'include'
+      });
       if (!res.ok) throw new Error('Error al cargar la biblioteca de documentos.');
       const data = await res.json();
       setDocuments(data);
@@ -253,22 +245,14 @@ export default function SharedDocumentsManager({ currentUser, users, onAddAudit 
   };
 
   const processFile = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      setSelectedFile({
-        name: file.name,
-        size: file.size,
-        base64: reader.result as string
-      });
-      if (!docName) {
-        // Auto-fill name without extension
-        setDocName(file.name.replace(/\.[^/.]+$/, ""));
-      }
-    };
-    reader.onerror = () => {
-      setError('No se pudo leer el archivo seleccionado.');
-    };
-    reader.readAsDataURL(file);
+    setSelectedFile({
+      file,
+      name: file.name,
+      size: file.size
+    });
+    if (!docName) {
+      setDocName(file.name.replace(/\.[^/.]+$/, ""));
+    }
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -286,7 +270,7 @@ export default function SharedDocumentsManager({ currentUser, users, onAddAudit 
     }
   };
 
-  // Submit shared document upload
+  // Submit shared document upload via multipart FormData to Cloudflare R2
   const handleUploadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedFile || !docName.trim()) {
@@ -299,20 +283,24 @@ export default function SharedDocumentsManager({ currentUser, users, onAddAudit 
       setError(null);
       setSuccess(null);
 
-      const payload = {
-        name: docName.trim(),
-        fileName: selectedFile.name,
-        fileSize: selectedFile.size,
-        fileBase64: selectedFile.base64,
-        allowedRoles: audienceType === 'all' ? ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR'] : (audienceType === 'roles' ? allowedRoles : []),
-        allowedUserIds: audienceType === 'users' ? allowedUserIds : [],
-        currentUserId: currentUser.id
-      };
+      const finalRoles =
+        audienceType === 'all'
+          ? ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR']
+          : audienceType === 'roles'
+          ? allowedRoles
+          : [];
+      const finalUserIds = audienceType === 'users' ? allowedUserIds : [];
+
+      const formData = new FormData();
+      formData.append('name', docName.trim());
+      formData.append('file', selectedFile.file);
+      formData.append('allowedRoles', JSON.stringify(finalRoles));
+      formData.append('allowedUserIds', JSON.stringify(finalUserIds));
 
       const res = await fetch('/api/shared-documents', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        credentials: 'include',
+        body: formData
       });
 
       if (!res.ok) {
@@ -334,32 +322,26 @@ export default function SharedDocumentsManager({ currentUser, users, onAddAudit 
     }
   };
 
-  // Handle Download File
-  const handleDownload = (doc: SharedDocument) => {
-    if (!doc.dataUrl) {
-      setError('Este documento no posee contenido descargable.');
-      return;
+  // Handle real R2 file download
+  const handleDownload = async (doc: SharedDocument) => {
+    try {
+      const downloadEndpoint = doc.downloadUrl || `/api/shared-documents/${doc.id}/download`;
+      const res = await fetch(downloadEndpoint, { credentials: 'include' });
+      if (!res.ok) {
+        throw new Error('Este documento no posee contenido descargable disponible en R2.');
+      }
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = doc.fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
+    } catch (err: any) {
+      setError(err.message || 'No se pudo descargar el documento.');
     }
-
-    // Log client-side download action
-    fetch('/api/audit-logs/log', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userId: currentUser.id,
-        action: `Visualizó / descargó documento compartido "${doc.name}"`,
-        entityType: 'SharedDocument',
-        entityId: doc.id,
-        entityName: doc.name
-      })
-    }).catch(err => console.error('Failed to log audit:', err));
-
-    const link = document.createElement('a');
-    link.href = doc.dataUrl;
-    link.download = doc.fileName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
   };
 
   // Handle Delete Shared Document
@@ -368,7 +350,8 @@ export default function SharedDocumentsManager({ currentUser, users, onAddAudit 
     try {
       setError(null);
       const res = await fetch(`/api/shared-documents/${deleteDoc.id}?currentUserId=${currentUser.id}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        credentials: 'include'
       });
       if (!res.ok) {
         const errData = await res.json();

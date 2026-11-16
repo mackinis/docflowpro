@@ -100,8 +100,12 @@ export interface Case {
 export type DocStatus = 'pending' | 'uploaded' | 'in_review' | 'approved' | 'rejected' | 'expired';
 
 export interface DocumentVersion {
+  id?: string;
   fileName: string;
   fileSize: number;
+  mimeType?: string;
+  r2Key?: string;
+  downloadUrl?: string;
   uploadedBy: string;
   uploadedAt: string;
 }
@@ -115,6 +119,9 @@ export interface Document {
   status: DocStatus;
   fileName?: string;
   fileSize?: number;
+  mimeType?: string;
+  r2Key?: string;
+  downloadUrl?: string;
   uploadedBy?: string;
   uploadedAt?: string;
   versions: DocumentVersion[];
@@ -193,10 +200,10 @@ export interface AppDataState {
   formSubmissions: FormDataValue[];
   activeIndustry?: string;
   verificationPolicies?: {
-    global?: 'email' | 'sms' | 'both';
-    ASESOR?: 'email' | 'sms' | 'both';
-    MANAGER?: 'email' | 'sms' | 'both';
-    ADMIN?: 'email' | 'sms' | 'both';
+    global?: 'admin_approval' | 'direct' | 'email' | 'sms' | 'both';
+    ASESOR?: 'admin_approval' | 'direct' | 'email' | 'sms' | 'both';
+    MANAGER?: 'admin_approval' | 'direct' | 'email' | 'sms' | 'both';
+    ADMIN?: 'admin_approval' | 'direct' | 'email' | 'sms' | 'both';
   };
   systemMessages?: SystemMessage[];
   systemSettings?: SystemSettings;
@@ -226,11 +233,14 @@ export interface SharedDocument {
   name: string;
   fileName: string;
   fileSize: number;
+  mimeType?: string;
+  r2Key?: string;
+  downloadUrl?: string;
   uploadedBy: string;
   uploadedAt: string;
   allowedRoles?: string[]; // e.g. ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR']
   allowedUserIds?: string[]; // specific user IDs
-  dataUrl?: string; // base64 URL of content
+  dataUrl?: string; // legacy compatibility
 }
 
 export interface SystemMessage {
@@ -248,9 +258,13 @@ export interface SystemMessage {
   deletedBySender?: boolean;
   deletedByReceiver?: boolean;
   attachments?: {
+    id?: string;
     name: string;
     size: number;
-    dataUrl?: string; // simulation of file data
+    mimeType?: string;
+    r2Key?: string;
+    downloadUrl?: string;
+    dataUrl?: string;
   }[];
 }
 

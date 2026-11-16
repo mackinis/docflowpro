@@ -4,32 +4,32 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx server.ts",
-    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
-    "start": "node dist/server.cjs",
-    "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit"
+    "dev": "sh -c 'vite build && wrangler d1 migrations apply docflow-pro-db --local --persist-to .wrangler/state && exec wrangler dev --local --port 3000 --ip 0.0.0.0 --persist-to .wrangler/state'",
+    "dev:remote": "vite build && wrangler dev --port 3000 --ip 0.0.0.0 --persist-to .wrangler/state",
+    "dev:frontend": "vite",
+    "build": "vite build",
+    "clean": "rm -rf dist .wrangler/tmp",
+    "lint": "tsc --noEmit && tsc -p tsconfig.worker.json --noEmit",
+    "db:migrate:local": "wrangler d1 migrations apply docflow-pro-db --local --persist-to .wrangler/state",
+    "db:migrate:remote": "wrangler d1 migrations apply docflow-pro-db --remote",
+    "deploy": "npm run build && wrangler deploy"
   },
   "dependencies": {
-    "@google/genai": "^2.4.0",
+    "@cloudflare/workers-types": "^5.20261116.1",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
-    "dotenv": "^17.2.3",
-    "express": "^4.21.2",
-    "firebase": "^12.15.0",
+    "fflate": "^0.8.3",
+    "hono": "^4.13.18",
     "lucide-react": "^0.546.0",
-    "mammoth": "^1.12.0",
     "motion": "^12.23.24",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
-    "vite": "^6.2.3"
+    "vite": "^6.2.3",
+    "wrangler": "^4.162.0"
   },
   "devDependencies": {
-    "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
-    "esbuild": "^0.25.0",
     "tailwindcss": "^4.1.14",
-    "tsx": "^4.21.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.3"
   }

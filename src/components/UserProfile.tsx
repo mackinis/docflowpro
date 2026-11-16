@@ -126,6 +126,7 @@ export default function UserProfile({
     try {
       const response = await fetch('/api/auth/update-profile', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: currentUser.id,
@@ -166,6 +167,7 @@ export default function UserProfile({
     try {
       const response = await fetch('/api/industry', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           industry,
@@ -243,6 +245,7 @@ export default function UserProfile({
     try {
       const response = await fetch(`/api/users/${selectedUser.id}`, {
         method: 'PUT',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
@@ -258,6 +261,35 @@ export default function UserProfile({
       
       // Update our selected user instance
       setSelectedUser(data);
+    } catch (err: any) {
+      setErrorMsg(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Approve & Verify pending account (Admin / Superadmin)
+  const handleApproveUser = async () => {
+    if (!selectedUser) return;
+    setLoading(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    try {
+      const response = await fetch(`/api/users/${selectedUser.id}/approve`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'No se pudo aprobar la cuenta.');
+      }
+      setMgmtActive(true);
+      setSuccessMsg(`Cuenta de ${selectedUser.name} ${selectedUser.lastName} aprobada y verificada con éxito.`);
+      await loadState();
+      if (data.user) {
+        setSelectedUser(data.user);
+      }
     } catch (err: any) {
       setErrorMsg(err.message);
     } finally {
@@ -282,6 +314,7 @@ export default function UserProfile({
     try {
       const response = await fetch(`/api/users/${selectedUser.id}`, {
         method: 'PUT',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           currentUserId: currentUser.id,
@@ -318,6 +351,7 @@ export default function UserProfile({
     try {
       const response = await fetch(`/api/users/${selectedUser.id}`, {
         method: 'DELETE',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ currentUserId: currentUser.id })
       });
@@ -726,6 +760,11 @@ export default function UserProfile({
                                   INACTIVO
                                 </span>
                               )}
+                              {u.isVerified === false && (
+                                <span className="bg-amber-100 text-amber-800 text-[8px] px-1.5 py-0.5 rounded font-bold font-mono">
+                                  PENDIENTE
+                                </span>
+                              )}
                             </div>
                           </div>
                         </button>
@@ -981,6 +1020,19 @@ export default function UserProfile({
                       </p>
 
                       <div className="flex flex-wrap gap-3 items-center">
+                        {selectedUser.isVerified === false && (
+                          <button
+                            type="button"
+                            onClick={handleApproveUser}
+                            disabled={loading}
+                            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer shadow-xs"
+                            id="btn-mgmt-approve-user"
+                          >
+                            <CheckCircle className="w-4 h-4" />
+                            Aprobar y Verificar Cuenta
+                          </button>
+                        )}
+
                         {/* Suspension button logic */}
                         {((currentUser.role === 'SUPERADMIN' && ['ASESOR', 'MANAGER', 'ADMIN'].includes(selectedUser.role)) ||
                           (currentUser.role === 'ADMIN' && ['ASESOR', 'MANAGER'].includes(selectedUser.role))) ? (

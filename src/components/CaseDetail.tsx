@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   ArrowLeft, 
   Calendar, 
@@ -7,10 +7,12 @@ import {
   CheckCircle, 
   AlertTriangle, 
   Upload, 
+  Download,
   FileText, 
   Check, 
   ChevronRight, 
   Clock, 
+  History,
   Sparkles, 
   MessageSquare, 
   FileCheck2, 
@@ -50,7 +52,7 @@ interface CaseDetailProps {
   uploadRequests?: UploadRequest[];
   loadState?: () => Promise<void>;
   onBack: () => void;
-  onUploadDoc: (stageId: string, reqId: string, reqName: string, fileName: string, fileSize: number) => void;
+  onUploadDoc: (stageId: string, reqId: string, reqName: string, fileName: string, fileSize: number, file?: File) => void | Promise<void>;
   onReviewDoc: (docId: string, status: 'approved' | 'rejected', observationText?: string, allowedRoles?: string[]) => void;
   onToggleTask: (taskId: string, status: 'pending' | 'completed') => void;
   onSubmitForm: (reqId: string, values: Record<string, string | number | boolean>) => void;
@@ -162,11 +164,20 @@ export default function CaseDetail({
   const [isRejecting, setIsRejecting] = useState(false);
   const [submittingReview, setSubmittingReview] = useState(false);
   const [sharedDocs, setSharedDocs] = useState<any[]>([]);
+  const caseFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [pendingUploadContext, setPendingUploadContext] = useState<{
+    reqId: string;
+    reqName: string;
+    allowedExt?: string;
+    allowedMaxWeight?: number;
+  } | null>(null);
 
   useEffect(() => {
     const fetchSharedDocs = async () => {
       try {
-        const res = await fetch(`/api/shared-documents?userId=${currentUser.id}&role=${currentUser.role}`);
+        const res = await fetch(`/api/shared-documents?userId=${currentUser.id}&role=${currentUser.role}`, {
+          credentials: 'include'
+        });
         if (res.ok) {
           const data = await res.json();
           setSharedDocs(data);
@@ -267,8 +278,8 @@ export default function CaseDetail({
     alert('Formulario guardado con éxito.');
   };
 
-  // Upload file simulation with approved request verification
-  const handleMockFileUpload = (reqId: string, reqName: string) => {
+  // Trigger real file picker for document requirement upload (with authorization check for ASESOR)
+  const handleTriggerFileUpload = (reqId: string, reqName: string) => {
     if (currentUser.role === 'ASESOR') {
       const approvedReq = uploadRequests?.find(
         r => r.caseId === caseId && r.requirementId === reqId && r.status === 'approved'
@@ -277,38 +288,70 @@ export default function CaseDetail({
         alert('No tienes autorización aprobada para subir este documento.');
         return;
       }
-      
-      const ext = approvedReq.allowedExtension || '.pdf';
-      const maxWeightMb = approvedReq.allowedMaxWeight || 5;
-
-      const baseName = reqName.replace(/\s+/g, '_');
-      const fileName = `${baseName}${ext}`;
-      
-      const allowedSizeBytes = maxWeightMb * 1024 * 1024;
-      const fileSize = Math.floor(Math.min(2 * 1024 * 1024, allowedSizeBytes - 100 * 1024)); // Under limit, max 2MB
-
-      onUploadDoc(currentStage!.id, reqId, reqName, fileName, fileSize);
-      alert(`Documento "${fileName}" subido con éxito bajo la autorización del Manager (Límite: ${maxWeightMb}MB, Ext: ${ext})`);
+      setPendingUploadContext({
+        reqId,
+        reqName,
+        allowedExt: approvedReq.allowedExtension || '.pdf',
+        allowedMaxWeight: approvedReq.allowedMaxWeight || 5
+      });
     } else {
-      const defaultFileNames: Record<string, string> = {
-        'Reserva Firmada': 'Reserva_Firma_Firmado.pdf',
-        'Escritura de Propiedad Antecedente': 'Escritura_Matriz_Certificada.pdf',
-        'Plano de Mensura Aprobado': 'Plano_Catastral_Mensurado.pdf',
-        'Boleto Compraventa Firmado': 'Boleto_Firmas_Certificadas.pdf',
-        'Código de Oferta de Transferencia (COTI)': 'AFIP_COTI_Certificado.pdf',
-        'Estado de Deuda de Impuestos': 'Libre_Deuda_Provincial.pdf',
-        'Escritura Matriz Definitiva': 'Escritura_Traslativa_Dominio.pdf',
-        'DNI de Locatario y Garante': 'DNI_Frente_Reverso_Locatario.pdf',
-        'Demostración de Ingresos': 'Recibos_Sueldo_Ultimos3.pdf',
-        'Título de Propiedad en Garantía': 'Escritura_Garantia_Inmueble.pdf',
-        'Contrato de Locación Firmado': 'Contrato_Locacion_Firmado_Colegio.pdf',
-        'Formulario de Solicitud de Préstamo': 'Solicitud_Mutuo_Hipotecario.pdf'
-      };
+      setPendingUploadContext({ reqId, reqName });
+    }
 
-      const fileName = defaultFileNames[reqName] || `${reqName.replace(/\s+/g, '_')}_Copia.pdf`;
-      const fileSize = Math.floor(500 * 1024 + Math.random() * 3 * 1024 * 1024); // 500KB to 3.5MB
+    setTimeout(() => {
+      if (caseFileInputRef.current) {
+        caseFileInputRef.current.value = '';
+        caseFileInputRef.current.click();
+      }
+    }, 0);
+  };
 
-      onUploadDoc(currentStage!.id, reqId, reqName, fileName, fileSize);
+  const handleCaseFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const ctx = pendingUploadContext;
+    e.target.value = '';
+    setPendingUploadContext(null);
+
+    if (!file || !ctx || !currentStage) return;
+
+    if (currentUser.role === 'ASESOR' && ctx.allowedExt) {
+      const expectedExt = ctx.allowedExt.toLowerCase();
+      if (!file.name.toLowerCase().endsWith(expectedExt)) {
+        alert(`Extensión no permitida. Solo se autorizó subir archivos con extensión ${expectedExt}.`);
+        return;
+      }
+    }
+
+    if (currentUser.role === 'ASESOR' && ctx.allowedMaxWeight) {
+      const maxBytes = ctx.allowedMaxWeight * 1024 * 1024;
+      if (file.size > maxBytes) {
+        alert(`El archivo excede el peso máximo autorizado de ${ctx.allowedMaxWeight} MB.`);
+        return;
+      }
+    }
+
+    await onUploadDoc(currentStage.id, ctx.reqId, ctx.reqName, file.name, file.size, file);
+  };
+
+  const handleDownloadCaseDoc = async (docId: string, fileName: string, downloadUrl?: string) => {
+    try {
+      const url = downloadUrl || `/api/documents/${docId}/download`;
+      const res = await fetch(url, { credentials: 'include' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'No se pudo descargar el documento desde Cloudflare R2.');
+      }
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(objectUrl);
+    } catch (err: any) {
+      alert(err.message || 'Error descargando documento.');
     }
   };
 
@@ -317,6 +360,7 @@ export default function CaseDetail({
       const response = await fetch('/api/upload-requests/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           caseId,
           stageId,
@@ -345,6 +389,7 @@ export default function CaseDetail({
       const response = await fetch('/api/upload-requests/review', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           id: reqObjId,
           status,
@@ -378,6 +423,7 @@ export default function CaseDetail({
       const response = await fetch(`/api/cases/${caseObj.id}/assign-manager`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           managerId: currentUser.id,
           currentUserId: currentUser.id
@@ -418,6 +464,7 @@ export default function CaseDetail({
       const response = await fetch(`/api/cases/${caseObj.id}/request-reassignment`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           currentUserId: currentUser.id,
           reason: reassignReason
@@ -446,6 +493,7 @@ export default function CaseDetail({
       const response = await fetch(`/api/cases/${caseObj.id}/request-review`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           currentUserId: currentUser.id,
           note: advisorReviewNote
@@ -468,15 +516,16 @@ export default function CaseDetail({
     }
   };
 
-  // AI Compliance Audit Trigger
+  // AI Compliance Audit Trigger (Cloudflare Workers AI)
   const handleAICorrespondenceAudit = async (docId: string, docName: string, reqName: string, reqDesc: string, file: string) => {
     setAuditingDocId(docId);
     setAuditResult(null);
 
     try {
-      const response = await fetch('/api/gemini/analyze-document', {
+      const response = await fetch('/api/ai/analyze-document', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           documentId: docId,
           requirementName: reqName,
@@ -487,17 +536,18 @@ export default function CaseDetail({
       });
 
       const data = await response.json();
-      setAuditResult(data);
-      
-      // Update local context
-      if (data.approved) {
-        onReviewDoc(docId, 'approved');
-      } else {
-        onReviewDoc(docId, 'rejected', data.suggestedObservation || 'Rechazado automáticamente por la Auditoría de IA.');
+      if (!response.ok) {
+        throw new Error(data.error || 'Error ejecutando la auditoría con Cloudflare Workers AI.');
       }
-    } catch (e) {
+      setAuditResult(data);
+
+      // Worker already persists document review status, observations, and notifications in D1
+      if (loadState) {
+        await loadState();
+      }
+    } catch (e: any) {
       console.error(e);
-      alert('Error ejecutando la auditoría de IA.');
+      alert(e.message || 'Error ejecutando la auditoría de IA.');
     } finally {
       setAuditingDocId(null);
     }
@@ -1144,6 +1194,7 @@ export default function CaseDetail({
                         const response = await fetch(`/api/cases/${caseObj.id}/assign-manager`, {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
+                          credentials: 'include',
                           body: JSON.stringify({ managerId: selectedId, currentUserId: currentUser.id })
                         });
                         if (!response.ok) {
@@ -1299,29 +1350,24 @@ export default function CaseDetail({
                                   <p className="text-[10px] text-emerald-700 font-medium">Debe descargarse: <strong>{linkedSharedDoc.name}</strong></p>
                                   <button
                                     type="button"
-                                    onClick={() => {
-                                      if (linkedSharedDoc.dataUrl) {
-                                        // Log client-side action in backend
-                                        fetch('/api/audit-logs/log', {
-                                          method: 'POST',
-                                          headers: { 'Content-Type': 'application/json' },
-                                          body: JSON.stringify({
-                                            userId: currentUser.id,
-                                            action: `Visualizó / descargó documento "${linkedSharedDoc.fileName}"`,
-                                            entityType: 'Document',
-                                            entityId: linkedSharedDoc.id,
-                                            entityName: linkedSharedDoc.fileName
-                                          })
-                                        }).catch(err => console.error('Failed to log audit:', err));
-
+                                    onClick={async () => {
+                                      try {
+                                        const url = linkedSharedDoc.downloadUrl || `/api/shared-documents/${linkedSharedDoc.id}/download`;
+                                        const res = await fetch(url, { credentials: 'include' });
+                                        if (!res.ok) {
+                                          throw new Error('Contenido descargable no disponible en R2.');
+                                        }
+                                        const blob = await res.blob();
+                                        const objectUrl = URL.createObjectURL(blob);
                                         const link = document.createElement('a');
-                                        link.href = linkedSharedDoc.dataUrl;
+                                        link.href = objectUrl;
                                         link.download = linkedSharedDoc.fileName;
                                         document.body.appendChild(link);
                                         link.click();
                                         document.body.removeChild(link);
-                                      } else {
-                                        alert('Contenido descargable no disponible.');
+                                        URL.revokeObjectURL(objectUrl);
+                                      } catch (err: any) {
+                                        alert(err.message || 'Contenido descargable no disponible.');
                                       }
                                     }}
                                     className="mt-1 flex items-center gap-1 px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[9px] font-bold cursor-pointer transition-colors"
@@ -1442,7 +1488,15 @@ export default function CaseDetail({
                                 <div className="flex items-center gap-1.5 pt-1 text-[11px] text-slate-500 font-mono">
                                   <FileText className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                                   <span className="truncate max-w-sm font-semibold">{doc.fileName}</span>
-                                  <span className="text-[9px] text-slate-400 shrink-0">({Math.round(doc.fileSize! / 1024)} KB)</span>
+                                  <span className="text-[9px] text-slate-400 shrink-0">({Math.round((doc.fileSize || 0) / 1024)} KB)</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDownloadCaseDoc(doc.id, doc.fileName!, doc.downloadUrl)}
+                                    className="ml-1 inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded text-[9px] font-bold cursor-pointer transition-colors"
+                                  >
+                                    <Download className="w-3 h-3" />
+                                    <span>Descargar</span>
+                                  </button>
                                 </div>
                               )}
                             </div>
@@ -1499,7 +1553,7 @@ export default function CaseDetail({
                                               Autorizado (Máx: {approvedReq.allowedMaxWeight}MB, Ext: {approvedReq.allowedExtension})
                                             </span>
                                             <button
-                                              onClick={() => handleMockFileUpload(req.id, req.name)}
+                                              onClick={() => handleTriggerFileUpload(req.id, req.name)}
                                               className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-[10px] font-bold rounded-lg shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
                                             >
                                               <Upload className="w-3.5 h-3.5 text-slate-400" />
@@ -2426,7 +2480,8 @@ export default function CaseDetail({
                 onClick={async () => {
                   try {
                     const response = await fetch(`/api/cases/${caseObj.id}?currentUserId=${currentUser.id}`, {
-                      method: 'DELETE'
+                      method: 'DELETE',
+                      credentials: 'include'
                     });
                     if (!response.ok) {
                       const err = await response.json();
@@ -2450,6 +2505,12 @@ export default function CaseDetail({
           </div>
         </div>
       )}
+      <input
+        type="file"
+        ref={caseFileInputRef}
+        onChange={handleCaseFileSelected}
+        className="hidden"
+      />
     </div>
   );
 }

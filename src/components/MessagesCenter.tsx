@@ -103,6 +103,7 @@ export default function MessagesCenter({
       try {
         const res = await fetch('/api/system-messages/read', {
           method: 'POST',
+          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ messageId: msg.id })
         });
@@ -115,7 +116,7 @@ export default function MessagesCenter({
     }
   };
 
-  // Handle local file uploads (converts to base64 for simulator durability)
+  // Read local file uploads as dataUrl for R2 persistence on send
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
@@ -159,6 +160,7 @@ export default function MessagesCenter({
     try {
       const res = await fetch('/api/system-messages', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           senderId: currentUser.id,
@@ -203,6 +205,7 @@ export default function MessagesCenter({
     try {
       const res = await fetch('/api/system-messages/trash', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messageId: msg.id,
@@ -232,6 +235,7 @@ export default function MessagesCenter({
     try {
       const res = await fetch('/api/system-messages/trash', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messageId: msg.id,
@@ -264,6 +268,7 @@ export default function MessagesCenter({
     try {
       const res = await fetch('/api/system-messages/delete-permanent', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messageId: msg.id,
@@ -680,21 +685,43 @@ export default function MessagesCenter({
                             </div>
                           </div>
                           
-                          {/* Real simulator download using dataUrl if present, otherwise fallback */}
-                          <a 
-                            href={file.dataUrl || '#'} 
-                            download={file.name}
-                            onClick={(e) => {
-                              if (!file.dataUrl) {
-                                e.preventDefault();
-                                alert(`Simulación de descarga del archivo: ${file.name}`);
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                if (file.downloadUrl) {
+                                  const res = await fetch(file.downloadUrl, { credentials: 'include' });
+                                  if (!res.ok) {
+                                    throw new Error('Archivo adjunto no disponible en R2.');
+                                  }
+                                  const blob = await res.blob();
+                                  const blobUrl = URL.createObjectURL(blob);
+                                  const link = document.createElement('a');
+                                  link.href = blobUrl;
+                                  link.download = file.name;
+                                  document.body.appendChild(link);
+                                  link.click();
+                                  document.body.removeChild(link);
+                                  URL.revokeObjectURL(blobUrl);
+                                } else if (file.dataUrl) {
+                                  const link = document.createElement('a');
+                                  link.href = file.dataUrl;
+                                  link.download = file.name;
+                                  document.body.appendChild(link);
+                                  link.click();
+                                  document.body.removeChild(link);
+                                } else {
+                                  throw new Error('Este adjunto no contiene datos binarios almacenados.');
+                                }
+                              } catch (err: any) {
+                                alert(err.message || 'Error al descargar el archivo adjunto.');
                               }
                             }}
-                            className="p-1.5 text-slate-500 hover:text-indigo-600 rounded-lg hover:bg-slate-200 transition-colors flex items-center justify-center shrink-0"
+                            className="p-1.5 text-slate-500 hover:text-indigo-600 rounded-lg hover:bg-slate-200 transition-colors flex items-center justify-center shrink-0 cursor-pointer"
                             title="Descargar adjunto"
                           >
                             <Download className="w-4 h-4" />
-                          </a>
+                          </button>
                         </div>
                       ))}
                     </div>

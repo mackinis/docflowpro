@@ -1,36 +1,59 @@
-import React, { useState } from 'react';
-import { 
-  Briefcase, 
-  Mail, 
-  Lock, 
-  User as UserIcon, 
-  Phone, 
-  MapPin, 
-  CheckCircle, 
-  AlertTriangle, 
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  Briefcase,
+  Mail,
+  Lock,
+  MapPin,
+  CheckCircle,
+  AlertTriangle,
   Loader2,
   KeyRound,
-  RefreshCw,
-  Compass,
+  ShieldCheck,
+  Clock,
   Eye,
   EyeOff
 } from 'lucide-react';
 import { User } from '../types';
 
-interface AuthScreenProps {
-  onLoginSuccess: (user: User) => void;
+declare global {
+  interface Window {
+    turnstile?: {
+      render: (container: string | HTMLElement, options: Record<string, any>) => string;
+      reset: (widgetId?: string) => void;
+      remove: (widgetId?: string) => void;
+    };
+  }
 }
 
-export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
-  // Modes: 'login', 'register', 'verify'
-  const [mode, setMode] = useState<'login' | 'register' | 'verify'>('login');
-  
-  // Form fields
+interface AuthScreenProps {
+  onLoginSuccess: (user: User) => void | Promise<void>;
+  needsSetup?: boolean;
+  turnstileSiteKey?: string;
+  turnstileEnabled?: boolean;
+}
+
+type AuthMode = 'setup' | 'login' | 'register' | 'pending_approval' | 'recover' | 'reset';
+
+export default function AuthScreen({
+  onLoginSuccess,
+  needsSetup = false,
+  turnstileSiteKey = '',
+  turnstileEnabled = false
+}: AuthScreenProps) {
+  const [mode, setMode] = useState<AuthMode>(needsSetup ? 'setup' : 'login');
+
+  useEffect(() => {
+    if (needsSetup) {
+      setMode('setup');
+    }
+  }, [needsSetup]);
+
+  // Common login / recovery fields
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showLoginPassword, setShowLoginPassword] = useState(false);
-  
-  // Registration fields
+
+  // Registration & setup fields
   const [name, setName] = useState('');
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('+54');
@@ -42,40 +65,187 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // Verification code fields
-  const [verifyEmail, setVerifyEmail] = useState('');
-  const [token, setToken] = useState('');
-  const [smsToken, setSmsToken] = useState('');
+  // Password reset fields
+  const [resetToken, setResetToken] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
 
-  const [appliedPolicy, setAppliedPolicy] = useState<'email' | 'sms' | 'both' | null>(null);
+  // Pending approval info
+  const [pendingEmail, setPendingEmail] = useState('');
+
+  // Cloudflare Turnstile state
+  const [turnstileToken, setTurnstileToken] = useState('');
+  const turnstileContainerRef = useRef<HTMLDivElement>(null);
+  const turnstileWidgetIdRef = useRef<string | null>(null);
 
   // Statuses
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  // Login handler
-  const handleLogin = async (e: React.FormEvent) => {
+  const modeNeedsTurnstile =
+    Boolean(turnstileEnabled && turnstileSiteKey) &&
+    ['setup', 'login', 'register', 'recover'].includes(mode);
+
+  const resetTurnstile = () => {
+    setTurnstileToken('');
+    if (window.turnstile && turnstileWidgetIdRef.current) {
+      try {
+        window.turnstile.reset(turnstileWidgetIdRef.current);
+      } catch {
+        // ignore reset race
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (!modeNeedsTurnstile) {
+      if (window.turnstile && turnstileWidgetIdRef.current) {
+        try {
+          window.turnstile.remove(turnstileWidgetIdRef.current);
+        } catch {
+          // ignore cleanup
+        }
+        turnstileWidgetIdRef.current = null;
+      }
+      return;
+    }
+
+    let cancelled = false;
+    const mountWidget = () => {
+      if (cancelled || !turnstileContainerRef.current || !window.turnstile) return;
+      if (turnstileWidgetIdRef.current) {
+        try {
+          window.turnstile.remove(turnstileWidgetIdRef.current);
+        } catch {
+          // ignore cleanup
+        }
+        turnstileWidgetIdRef.current = null;
+      }
+      turnstileContainerRef.current.innerHTML = '';
+      turnstileWidgetIdRef.current = window.turnstile.render(turnstileContainerRef.current, {
+        sitekey: turnstileSiteKey,
+        theme: 'light',
+        callback: (token: string) => setTurnstileToken(token),
+        'expired-callback': () => setTurnstileToken(''),
+        'error-callback': () => setTurnstileToken('')
+      });
+    };
+
+    if (window.turnstile) {
+      mountWidget();
+    } else {
+      const existingScript = document.querySelector<HTMLScriptElement>(
+        'script[src*="challenges.cloudflare.com/turnstile/v0/api.js"]'
+      );
+      if (existingScript) {
+        existingScript.addEventListener('load', mountWidget, { once: true });
+      } else {
+        const script = document.createElement('script');
+        script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+        script.async = true;
+        script.defer = true;
+        script.onload = mountWidget;
+        document.head.appendChild(script);
+      }
+    }
+
+    return () => {
+      cancelled = true;
+      if (window.turnstile && turnstileWidgetIdRef.current) {
+        try {
+          window.turnstile.remove(turnstileWidgetIdRef.current);
+        } catch {
+          // ignore cleanup
+        }
+        turnstileWidgetIdRef.current = null;
+      }
+    };
+  }, [mode, modeNeedsTurnstile, turnstileSiteKey]);
+
+  const switchMode = (nextMode: AuthMode) => {
+    setMode(nextMode);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    setTurnstileToken('');
+  };
+
+  // Setup Initial Superadmin
+  const handleSetupAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setErrorMsg(null);
     setSuccessMsg(null);
 
+    if (password.length < 8) {
+      setErrorMsg('La contraseña debe tener al menos 8 caracteres.');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setErrorMsg('Las contraseñas no coinciden. Por favor, verifícalas.');
+      return;
+    }
+    if (modeNeedsTurnstile && !turnstileToken) {
+      setErrorMsg('Por favor completa la verificación de seguridad de Cloudflare Turnstile.');
+      return;
+    }
+
+    setLoading(true);
     try {
-      const response = await fetch('/api/auth/login', {
+      const response = await fetch('/api/auth/setup-admin', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({
+          name,
+          lastName,
+          email,
+          phone,
+          password,
+          turnstileToken
+        })
       });
 
       const data = await response.json();
       if (!response.ok || data.error) {
-        if (data.requiresVerification) {
-          setVerifyEmail(data.email);
-          setMode('verify');
-          if (data.verificationPolicy) {
-            setAppliedPolicy(data.verificationPolicy);
-          }
+        throw new Error(data.error || 'No se pudo configurar el Superadministrador inicial.');
+      }
+
+      if (data.success && data.user) {
+        await onLoginSuccess(data.user);
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message);
+      resetTurnstile();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Login handler
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    if (modeNeedsTurnstile && !turnstileToken) {
+      setErrorMsg('Por favor completa la verificación de seguridad de Cloudflare Turnstile.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, turnstileToken })
+      });
+
+      const data = await response.json();
+      if (!response.ok || data.error) {
+        if (data.requiresAdminApproval) {
+          setPendingEmail(data.email || email);
+          setMode('pending_approval');
           setErrorMsg(data.error);
           return;
         }
@@ -83,10 +253,11 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
       }
 
       if (data.success && data.user) {
-        onLoginSuccess(data.user);
+        await onLoginSuccess(data.user);
       }
     } catch (err: any) {
       setErrorMsg(err.message);
+      resetTurnstile();
     } finally {
       setLoading(false);
     }
@@ -95,19 +266,27 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
   // Register handler
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setErrorMsg(null);
     setSuccessMsg(null);
 
+    if (password.length < 8) {
+      setErrorMsg('La contraseña debe tener al menos 8 caracteres.');
+      return;
+    }
     if (password !== confirmPassword) {
       setErrorMsg('Las contraseñas no coinciden. Por favor, verifícalas.');
-      setLoading(false);
+      return;
+    }
+    if (modeNeedsTurnstile && !turnstileToken) {
+      setErrorMsg('Por favor completa la verificación de seguridad de Cloudflare Turnstile.');
       return;
     }
 
+    setLoading(true);
     try {
       const response = await fetch('/api/auth/register', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name,
@@ -119,7 +298,7 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
           province,
           country,
           password,
-          role: 'ASESOR'
+          turnstileToken
         })
       });
 
@@ -128,87 +307,95 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
         throw new Error(data.error || 'Error durante el registro.');
       }
 
-      setVerifyEmail(data.email);
-      setMode('verify');
-      if (data.verificationPolicy) {
-        setAppliedPolicy(data.verificationPolicy);
+      if (data.requiresAdminApproval) {
+        setPendingEmail(data.email || email);
+        setMode('pending_approval');
+        setSuccessMsg(
+          data.message ||
+            'Registro completado. Un Administrador o Superadministrador debe aprobar tu cuenta en Perfiles de Usuarios.'
+        );
+      } else {
+        setMode('login');
+        setSuccessMsg(data.message || 'Registro completado. Ya puedes iniciar sesión con tus credenciales.');
+        setPassword('');
+        setConfirmPassword('');
       }
-
-      let methodMsg = 'su correo electrónico';
-      if (data.verificationPolicy === 'sms') {
-        methodMsg = 'su teléfono celular vía SMS';
-      } else if (data.verificationPolicy === 'both') {
-        methodMsg = 'su correo electrónico y teléfono celular vía SMS (se requieren dos códigos distintos)';
-      }
-
-      setSuccessMsg(`¡Registro exitoso! Se han enviado los tokens de verificación correspondientes a ${methodMsg}.`);
     } catch (err: any) {
       setErrorMsg(err.message);
+      resetTurnstile();
     } finally {
       setLoading(false);
     }
   };
 
-  // Verification handler
-  const handleVerify = async (e: React.FormEvent) => {
+  // Password recovery request
+  const handleRecoverPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setErrorMsg(null);
     setSuccessMsg(null);
 
+    if (modeNeedsTurnstile && !turnstileToken) {
+      setErrorMsg('Por favor completa la verificación de seguridad de Cloudflare Turnstile.');
+      return;
+    }
+
+    setLoading(true);
     try {
-      const payload = {
-        email: verifyEmail,
-        token: token,
-        smsToken: appliedPolicy === 'both' || appliedPolicy === 'sms' ? smsToken : undefined
-      };
-
-      const response = await fetch('/api/auth/verify', {
+      const response = await fetch('/api/auth/recover-password', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({ email, turnstileToken })
       });
-
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error || 'Token de verificación incorrecto.');
+        throw new Error(data.error || 'No se pudo procesar la solicitud de recuperación.');
       }
-
-      if (data.success && data.user) {
-        setSuccessMsg('¡Cuenta verificada exitosamente! Iniciando sesión...');
-        setTimeout(() => {
-          onLoginSuccess(data.user);
-        }, 1500);
-      }
+      setSuccessMsg(
+        data.message ||
+          'Si el correo existe en la plataforma, un Administrador puede restablecer o verificar tu acceso desde Perfiles de Usuarios.'
+      );
+      resetTurnstile();
     } catch (err: any) {
       setErrorMsg(err.message);
+      resetTurnstile();
     } finally {
       setLoading(false);
     }
   };
 
-  // Resend code handler
-  const handleResendToken = async () => {
-    setLoading(true);
+  // Password reset with token
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
     setErrorMsg(null);
     setSuccessMsg(null);
 
-    try {
-      const response = await fetch('/api/auth/resend-token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: verifyEmail || email })
-      });
+    if (newPassword.length < 8) {
+      setErrorMsg('La nueva contraseña debe tener al menos 8 caracteres.');
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      setErrorMsg('Las contraseñas no coinciden.');
+      return;
+    }
 
+    setLoading(true);
+    try {
+      const response = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: resetToken, newPassword })
+      });
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error || 'Error al reenviar el código.');
+        throw new Error(data.error || 'Token inválido o expirado.');
       }
-
-      setSuccessMsg(data.message || 'Código de verificación reenviado.');
-      if (data.verificationPolicy) {
-        setAppliedPolicy(data.verificationPolicy);
-      }
+      setMode('login');
+      setSuccessMsg('Contraseña restablecida con éxito. Ya puedes iniciar sesión.');
+      setResetToken('');
+      setNewPassword('');
+      setConfirmNewPassword('');
     } catch (err: any) {
       setErrorMsg(err.message);
     } finally {
@@ -221,10 +408,9 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
       <div className="w-full max-w-lg bg-white rounded-3xl border border-slate-200 shadow-xl overflow-hidden flex flex-col">
         {/* Upper Brand panel */}
         <div className="p-8 bg-slate-900 text-white text-center space-y-3 relative overflow-hidden">
-          {/* Subtle decorations */}
           <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-500/10 rounded-full blur-xl"></div>
           <div className="absolute -bottom-8 -left-8 w-32 h-32 bg-indigo-600/10 rounded-full blur-xl"></div>
-          
+
           <div className="p-3.5 bg-indigo-600 rounded-2xl inline-block mx-auto text-white shadow-lg shadow-indigo-500/20">
             <Briefcase className="w-7 h-7" />
           </div>
@@ -232,14 +418,14 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
             <h1 className="font-display font-bold text-2xl tracking-tight bg-gradient-to-r from-white via-slate-100 to-indigo-200 bg-clip-text text-transparent">
               DocFlow Pro
             </h1>
-            <p className="text-[10px] font-mono text-slate-400 tracking-widest uppercase mt-0.5">DocFlow Pro / Gestión Documental</p>
+            <p className="text-[10px] font-mono text-slate-400 tracking-widest uppercase mt-0.5">
+              DocFlow Pro / Gestión Documental
+            </p>
           </div>
         </div>
 
         {/* Dynamic content area */}
         <div className="p-8 flex-1 space-y-6">
-          
-          {/* Messages */}
           {successMsg && (
             <div className="flex items-start gap-3 bg-emerald-50 border border-emerald-100 text-emerald-800 p-4 rounded-2xl text-xs" id="auth-success-alert">
               <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
@@ -252,6 +438,135 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
               <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
               <p className="font-medium leading-relaxed">{errorMsg}</p>
             </div>
+          )}
+
+          {mode === 'setup' && (
+            <form onSubmit={handleSetupAdmin} className="space-y-4" id="form-setup-admin">
+              <div className="text-center space-y-1.5 pb-2">
+                <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-full inline-block mx-auto border border-indigo-100">
+                  <ShieldCheck className="w-6 h-6" />
+                </div>
+                <h2 className="font-bold text-slate-800 text-lg">Configuración Inicial de Superadministrador</h2>
+                <p className="text-xs text-slate-500">
+                  Crea la primera cuenta maestra del sistema en Cloudflare D1. Este paso solo se ejecuta una vez.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-slate-600">Nombre</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Nombre"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl"
+                    id="setup-name"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-slate-600">Apellido</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Apellido"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl"
+                    id="setup-lastname"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-slate-600">Correo electrónico</label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="superadmin@empresa.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl"
+                    id="setup-email"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-slate-600">Teléfono</label>
+                  <input
+                    type="text"
+                    placeholder="+54 11 5555-0000"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl"
+                    id="setup-phone"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-slate-600">Contraseña (mín. 8 caracteres)</label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      minLength={8}
+                      placeholder="••••••••"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full pl-3 pr-9 py-2 text-xs border border-slate-200 rounded-xl"
+                      id="setup-password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-slate-600">Confirmar contraseña</label>
+                  <div className="relative">
+                    <input
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      required
+                      minLength={8}
+                      placeholder="••••••••"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      className="w-full pl-3 pr-9 py-2 text-xs border border-slate-200 rounded-xl"
+                      id="setup-confirm-password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      {showConfirmPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {modeNeedsTurnstile && (
+                <div className="flex justify-center pt-1">
+                  <div ref={turnstileContainerRef} />
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md disabled:opacity-50"
+                id="btn-setup-submit"
+              >
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Crear Superadministrador y Comenzar'}
+              </button>
+            </form>
           )}
 
           {mode === 'login' && (
@@ -280,11 +595,18 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
               <div className="space-y-1.5">
                 <div className="flex justify-between items-center">
                   <label className="text-xs font-semibold text-slate-600">Contraseña</label>
+                  <button
+                    type="button"
+                    onClick={() => switchMode('recover')}
+                    className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 cursor-pointer"
+                  >
+                    ¿Olvidaste tu contraseña?
+                  </button>
                 </div>
                 <div className="relative">
                   <Lock className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
                   <input
-                    type={showLoginPassword ? "text" : "password"}
+                    type={showLoginPassword ? 'text' : 'password'}
                     required
                     placeholder="••••••••"
                     value={password}
@@ -296,12 +618,18 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
                     type="button"
                     onClick={() => setShowLoginPassword(!showLoginPassword)}
                     className="absolute right-3.5 top-3 text-slate-400 hover:text-slate-600 cursor-pointer"
-                    title={showLoginPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                    title={showLoginPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
                   >
                     {showLoginPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
               </div>
+
+              {modeNeedsTurnstile && (
+                <div className="flex justify-center pt-1">
+                  <div ref={turnstileContainerRef} />
+                </div>
+              )}
 
               <button
                 type="submit"
@@ -315,8 +643,8 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
               <div className="text-center pt-2">
                 <button
                   type="button"
-                  onClick={() => { setMode('register'); setErrorMsg(null); setSuccessMsg(null); }}
-                  className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors"
+                  onClick={() => switchMode('register')}
+                  className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors cursor-pointer"
                 >
                   ¿No tienes cuenta? Regístrate aquí
                 </button>
@@ -328,7 +656,7 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
             <form onSubmit={handleRegister} className="space-y-4" id="form-register">
               <div className="text-center space-y-1 pb-1">
                 <h2 className="font-bold text-slate-800 text-lg">Crea tu cuenta de DocFlow</h2>
-                <p className="text-xs text-slate-400">Completa todos tus datos de contacto y selecciona tu rol</p>
+                <p className="text-xs text-slate-400">Completa tus datos para solicitar acceso como Asesor</p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -392,7 +720,7 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
                   <input
                     type="text"
                     required
-                    placeholder="Calle Falsa 123"
+                    placeholder="Av. Corrientes 1234"
                     value={address}
                     onChange={(e) => setAddress(e.target.value)}
                     className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl"
@@ -442,11 +770,12 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-[11px] font-semibold text-slate-600">Contraseña</label>
+                  <label className="text-[11px] font-semibold text-slate-600">Contraseña (mín. 8)</label>
                   <div className="relative">
                     <input
-                      type={showPassword ? "text" : "password"}
+                      type={showPassword ? 'text' : 'password'}
                       required
+                      minLength={8}
                       placeholder="••••••••"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
@@ -457,7 +786,7 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
-                      title={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                      title={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
                     >
                       {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                     </button>
@@ -467,8 +796,9 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
                   <label className="text-[11px] font-semibold text-slate-600">Confirmar</label>
                   <div className="relative">
                     <input
-                      type={showConfirmPassword ? "text" : "password"}
+                      type={showConfirmPassword ? 'text' : 'password'}
                       required
+                      minLength={8}
                       placeholder="••••••••"
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
@@ -479,13 +809,19 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
                       type="button"
                       onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
-                      title={showConfirmPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                      title={showConfirmPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
                     >
                       {showConfirmPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                     </button>
                   </div>
                 </div>
               </div>
+
+              {modeNeedsTurnstile && (
+                <div className="flex justify-center pt-1">
+                  <div ref={turnstileContainerRef} />
+                </div>
+              )}
 
               <button
                 type="submit"
@@ -499,8 +835,8 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
               <div className="text-center">
                 <button
                   type="button"
-                  onClick={() => { setMode('login'); setErrorMsg(null); setSuccessMsg(null); }}
-                  className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors"
+                  onClick={() => switchMode('login')}
+                  className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors cursor-pointer"
                 >
                   ¿Ya tienes cuenta? Inicia sesión aquí
                 </button>
@@ -508,87 +844,62 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
             </form>
           )}
 
-          {mode === 'verify' && (
-            <form onSubmit={handleVerify} className="space-y-4" id="form-verify">
-               <div className="text-center space-y-1.5 pb-2">
-                <div className="p-3 bg-amber-50 text-amber-600 rounded-full inline-block mx-auto border border-amber-200">
+          {mode === 'pending_approval' && (
+            <div className="space-y-5 text-center py-2" id="panel-pending-approval">
+              <div className="p-3.5 bg-amber-50 text-amber-600 rounded-full inline-block mx-auto border border-amber-200">
+                <Clock className="w-7 h-7" />
+              </div>
+              <div className="space-y-2">
+                <h2 className="font-bold text-slate-800 text-lg">Cuenta Pendiente de Aprobación</h2>
+                <p className="text-xs text-slate-600 max-w-sm mx-auto leading-relaxed">
+                  Tu cuenta{pendingEmail ? ` (${pendingEmail})` : ''} fue registrada correctamente y está pendiente de activación por un Administrador o Superadministrador en <strong>Perfiles de Usuarios</strong>.
+                </p>
+                <p className="text-[11px] text-slate-400 max-w-sm mx-auto">
+                  Una vez aprobada por el administrador de tu organización, podrás ingresar con tu correo y contraseña.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => switchMode('login')}
+                className="w-full py-3 bg-slate-900 hover:bg-indigo-600 text-white font-semibold rounded-xl text-xs transition-all cursor-pointer shadow-md"
+                id="btn-pending-back-login"
+              >
+                Volver al Inicio de Sesión
+              </button>
+            </div>
+          )}
+
+          {mode === 'recover' && (
+            <form onSubmit={handleRecoverPassword} className="space-y-4" id="form-recover">
+              <div className="text-center space-y-1.5 pb-2">
+                <div className="p-3 bg-indigo-50 text-indigo-600 rounded-full inline-block mx-auto border border-indigo-100">
                   <KeyRound className="w-6 h-6" />
                 </div>
-                <h2 className="font-bold text-slate-800 text-lg">
-                  {appliedPolicy === 'sms' ? 'Verifica tu número de teléfono' :
-                   appliedPolicy === 'both' ? 'Verificación de Seguridad Doble' :
-                   'Verifica tu correo electrónico'}
-                </h2>
+                <h2 className="font-bold text-slate-800 text-lg">Recuperar Acceso</h2>
                 <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
-                  {appliedPolicy === 'sms' ? (
-                    <>Hemos enviado un código SMS de verificación a su teléfono registrado. Completa el código para activar tu acceso.</>
-                  ) : appliedPolicy === 'both' ? (
-                    <>Hemos enviado códigos de verificación a su correo electrónico y por SMS a su teléfono. Completa con ambos códigos para activar tu acceso.</>
-                  ) : (
-                    <>Hemos enviado un código alfanumérico a <strong>{verifyEmail}</strong>. Completa el código para activar tu acceso.</>
-                  )}
+                  Registra una solicitud de recuperación para tu cuenta o solicita a un Administrador el restablecimiento desde Perfiles de Usuarios.
                 </p>
               </div>
 
-              {appliedPolicy === 'both' ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-slate-600 block">Código Email</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Ej: AB12CD"
-                      value={token}
-                      onChange={(e) => setToken(e.target.value)}
-                      className="w-full px-4 py-2.5 text-center font-mono font-bold text-lg tracking-widest border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                      maxLength={10}
-                      id="verify-token-email"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-slate-600 block">Código SMS</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Ej: WX78YZ"
-                      value={smsToken}
-                      onChange={(e) => setSmsToken(e.target.value)}
-                      className="w-full px-4 py-2.5 text-center font-mono font-bold text-lg tracking-widest border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                      maxLength={10}
-                      id="verify-token-sms"
-                    />
-                  </div>
-                </div>
-              ) : appliedPolicy === 'sms' ? (
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-600 block">Código de Verificación SMS</label>
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-600">Correo electrónico</label>
+                <div className="relative">
+                  <Mail className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
                   <input
-                    type="text"
+                    type="email"
                     required
-                    placeholder="Ej: AB12CD"
-                    value={smsToken || token}
-                    onChange={(e) => {
-                      setSmsToken(e.target.value);
-                      setToken(e.target.value);
-                    }}
-                    className="w-full px-4 py-2.5 text-center font-mono font-bold text-lg tracking-widest border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                    maxLength={10}
-                    id="verify-token-sms-single"
+                    placeholder="correo@ejemplo.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    id="recover-email"
                   />
                 </div>
-              ) : (
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-600 block">Código de Verificación Email</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ej: AB12CD"
-                    value={token}
-                    onChange={(e) => setToken(e.target.value)}
-                    className="w-full px-4 py-2.5 text-center font-mono font-bold text-lg tracking-widest border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                    maxLength={10}
-                    id="verify-token-email-single"
-                  />
+              </div>
+
+              {modeNeedsTurnstile && (
+                <div className="flex justify-center pt-1">
+                  <div ref={turnstileContainerRef} />
                 </div>
               )}
 
@@ -596,32 +907,99 @@ export default function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
                 type="submit"
                 disabled={loading}
                 className="w-full py-3 bg-slate-900 hover:bg-indigo-600 text-white font-semibold rounded-xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md disabled:opacity-50"
-                id="btn-verify-submit"
+                id="btn-recover-submit"
               >
-                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Verificar y Activar Cuenta'}
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Registrar Solicitud de Recuperación'}
               </button>
 
-              <div className="border-t border-slate-100 pt-3 flex flex-col md:flex-row justify-between items-center gap-2">
+              <div className="border-t border-slate-100 pt-3 flex justify-between items-center text-xs">
                 <button
                   type="button"
-                  onClick={handleResendToken}
-                  disabled={loading}
-                  className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-1"
+                  onClick={() => switchMode('reset')}
+                  className="text-indigo-600 hover:text-indigo-800 font-semibold cursor-pointer"
                 >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  Reenviar código de verificación
+                  ¿Ya tienes un token? Restablecer clave
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setMode('login'); setErrorMsg(null); setSuccessMsg(null); }}
-                  className="text-xs text-slate-500 hover:text-slate-700 font-medium"
+                  onClick={() => switchMode('login')}
+                  className="text-slate-500 hover:text-slate-700 font-medium cursor-pointer"
+                >
+                  Volver
+                </button>
+              </div>
+            </form>
+          )}
+
+          {mode === 'reset' && (
+            <form onSubmit={handleResetPassword} className="space-y-4" id="form-reset-password">
+              <div className="text-center space-y-1.5 pb-2">
+                <h2 className="font-bold text-slate-800 text-lg">Restablecer Contraseña</h2>
+                <p className="text-xs text-slate-500">Ingresa tu token de recuperación y una nueva contraseña segura.</p>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-600">Token de recuperación</label>
+                <input
+                  type="text"
+                  required
+                  value={resetToken}
+                  onChange={(e) => setResetToken(e.target.value)}
+                  placeholder="Pega tu token aquí"
+                  className="w-full px-3.5 py-2.5 text-sm font-mono border border-slate-200 rounded-xl"
+                  id="reset-token"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-slate-600">Nueva contraseña</label>
+                  <input
+                    type="password"
+                    required
+                    minLength={8}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl"
+                    id="reset-new-password"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-slate-600">Confirmar contraseña</label>
+                  <input
+                    type="password"
+                    required
+                    minLength={8}
+                    value={confirmNewPassword}
+                    onChange={(e) => setConfirmNewPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl"
+                    id="reset-confirm-password"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md disabled:opacity-50"
+                id="btn-reset-submit"
+              >
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Guardar Nueva Contraseña'}
+              </button>
+
+              <div className="text-center">
+                <button
+                  type="button"
+                  onClick={() => switchMode('login')}
+                  className="text-xs text-slate-500 hover:text-slate-700 font-medium cursor-pointer"
                 >
                   Volver al inicio de sesión
                 </button>
               </div>
             </form>
           )}
-
         </div>
       </div>
     </div>

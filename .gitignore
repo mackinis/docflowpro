@@ -6,3 +6,8 @@ coverage/
 *.log
 .env*
 !.env.example
+.wrangler/
+.dev.vars
+!.dev.vars.example
+migration-output/
+migrations/data-import.sql

@@ -325,7 +325,12 @@ export default function Sidebar({
         {/* System Settings/Display controls */}
         <div className="space-y-2">
           <button
-            onClick={() => {
+            onClick={async () => {
+              try {
+                await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+              } catch {
+                // proceed to clear client state
+              }
               sessionStorage.removeItem('docflow_user');
               sessionStorage.removeItem('docflow_real_user');
               window.location.reload();
@@ -339,7 +344,7 @@ export default function Sidebar({
           </button>
           
           <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'} pt-1`}>
-            {!isCollapsed && <span className="text-[11px] text-slate-500 font-mono">v1.2.0 (PWA)</span>}
+            {!isCollapsed && <span className="text-[11px] text-slate-500 font-mono">v2.0.0 (Cloudflare)</span>}
             <button 
               onClick={toggleTheme} 
               className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors shrink-0 cursor-pointer"

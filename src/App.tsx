@@ -31,7 +31,12 @@ export default function App() {
   // App data state
   const [state, setState] = useState<AppDataState | null>(null);
   
-  // Simulated authentication states
+  // Bootstrap & Turnstile states
+  const [needsSetup, setNeedsSetup] = useState(false);
+  const [turnstileSiteKey, setTurnstileSiteKey] = useState('');
+  const [turnstileEnabled, setTurnstileEnabled] = useState(false);
+
+  // Authentication states
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [realUser, setRealUser] = useState<User | null>(null);
   
@@ -39,72 +44,56 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [activeCaseId, setActiveCaseId] = useState<string | null>(null);
 
-  // Load backend state on initialization
-  const loadState = async (userIdOverride?: string) => {
+  // Load backend state via Cloudflare Worker session cookie
+  const loadState = async () => {
     try {
-      const savedUserStr = sessionStorage.getItem('docflow_user');
-      const savedRealUserStr = sessionStorage.getItem('docflow_real_user');
-      let url = '/api/state';
-      const params: string[] = [];
-      const targetUserId = userIdOverride || (savedUserStr ? JSON.parse(savedUserStr).id : undefined);
-      
-      if (targetUserId) {
-        params.push(`userId=${targetUserId}`);
+      setError(null);
+      const bootstrapRes = await fetch('/api/auth/bootstrap-status', {
+        credentials: 'include'
+      });
+      if (!bootstrapRes.ok) {
+        throw new Error('No se pudo conectar con el servidor Cloudflare Worker.');
       }
-      if (savedRealUserStr) {
-        try {
-          const parsed = JSON.parse(savedRealUserStr);
-          if (parsed && parsed.id) {
-            params.push(`realUserId=${parsed.id}`);
-          }
-        } catch (e) {}
+      const bootstrapData = await bootstrapRes.json();
+      setNeedsSetup(Boolean(bootstrapData.needsSetup));
+      setTurnstileSiteKey(bootstrapData.turnstileSiteKey || '');
+      setTurnstileEnabled(Boolean(bootstrapData.turnstileEnabled));
+
+      if (!bootstrapData.user) {
+        sessionStorage.removeItem('docflow_user');
+        sessionStorage.removeItem('docflow_real_user');
+        setCurrentUser(null);
+        setRealUser(null);
+        setState(null);
+        return;
       }
-      if (params.length > 0) {
-        url += '?' + params.join('&');
+
+      const response = await fetch('/api/state', {
+        credentials: 'include'
+      });
+      if (response.status === 401) {
+        sessionStorage.removeItem('docflow_user');
+        sessionStorage.removeItem('docflow_real_user');
+        setCurrentUser(null);
+        setRealUser(null);
+        setState(null);
+        return;
       }
-      const response = await fetch(url);
       if (!response.ok) {
         throw new Error('No se pudo recuperar el estado del servidor.');
       }
       const data: AppDataState = await response.json();
       setState(data);
 
-      // Restore user from sessionStorage or override if exists
-      const effectiveUserStr = userIdOverride ? JSON.stringify({ id: userIdOverride }) : savedUserStr;
-      if (effectiveUserStr) {
-        try {
-          const savedUser = JSON.parse(effectiveUserStr);
-          const matchedUser = data.users.find(u => u.id === savedUser.id);
-          if (matchedUser && matchedUser.active !== false) {
-            setCurrentUser(matchedUser);
-            
-            if (savedRealUserStr) {
-              const savedReal = JSON.parse(savedRealUserStr);
-              const matchedReal = data.users.find(u => u.id === savedReal.id);
-              setRealUser(matchedReal || matchedUser);
-            } else {
-              setRealUser(matchedUser);
-              sessionStorage.setItem('docflow_real_user', JSON.stringify(matchedUser));
-            }
-          } else {
-            sessionStorage.removeItem('docflow_user');
-            sessionStorage.removeItem('docflow_real_user');
-            setCurrentUser(null);
-            setRealUser(null);
-          }
-        } catch (e) {
-          sessionStorage.removeItem('docflow_user');
-          sessionStorage.removeItem('docflow_real_user');
-          setCurrentUser(null);
-          setRealUser(null);
-        }
-      } else {
-        setCurrentUser(null);
-        setRealUser(null);
-      }
+      const sessionUser: User = bootstrapData.user;
+      const sessionRealUser: User = bootstrapData.realUser || bootstrapData.user;
+      setCurrentUser(sessionUser);
+      setRealUser(sessionRealUser);
+      sessionStorage.setItem('docflow_user', JSON.stringify(sessionUser));
+      sessionStorage.setItem('docflow_real_user', JSON.stringify(sessionRealUser));
     } catch (err: any) {
       console.error(err);
-      setError(err.message || 'Error de conexión con el servidor backend.');
+      setError(err.message || 'Error de conexión con el servidor Cloudflare Worker.');
     } finally {
       setLoading(false);
     }
@@ -117,15 +106,19 @@ export default function App() {
   // Sync state helper wrapper
   const syncOperation = async (url: string, options: RequestInit, successMsg?: string) => {
     try {
+      const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
+      const headers: Record<string, string> = {
+        ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+        ...((options.headers as Record<string, string>) || {})
+      };
+
       const response = await fetch(url, {
         ...options,
-        headers: {
-          'Content-Type': 'application/json',
-          ...(options.headers || {})
-        }
+        credentials: 'include',
+        headers
       });
       if (!response.ok) {
-        const errData = await response.json();
+        const errData = await response.json().catch(() => ({}));
         throw new Error(errData.error || 'Ocurrió un error en el servidor.');
       }
       
@@ -133,7 +126,6 @@ export default function App() {
       await loadState();
       
       if (successMsg) {
-        // Simple elegant browser alert for feedback
         alert(successMsg);
       }
     } catch (err: any) {
@@ -142,16 +134,26 @@ export default function App() {
     }
   };
 
-  // Switch simulated user
+  // Switch active role/user (Superadmin server-verified impersonation)
   const handleUserChange = async (user: User) => {
-    setCurrentUser(user);
-    sessionStorage.setItem('docflow_user', JSON.stringify(user));
-    // If switching roles, make sure we go back to dashboard to avoid rendering blocked tabs
-    setActiveTab('dashboard');
-    setActiveCaseId(null);
-
-    // Fetch state with new simulated user filtering consolidated
-    await loadState(user.id);
+    try {
+      const response = await fetch('/api/auth/impersonate', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetUserId: user.id })
+      });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || 'No se pudo cambiar de usuario.');
+      }
+      setActiveTab('dashboard');
+      setActiveCaseId(null);
+      await loadState();
+    } catch (err: any) {
+      console.error(err);
+      alert(`Error al simular rol: ${err.message}`);
+    }
   };
 
   // Handle current user updating (from UserProfile settings)
@@ -180,35 +182,48 @@ export default function App() {
     }, `Legajo "${caseData.title}" creado con éxito.`);
   };
 
-  // Upload/Mock Document
-  const handleUploadDoc = async (stageId: string, reqId: string, reqName: string, fileName: string, fileSize: number) => {
+  // Upload Document (real file to Cloudflare R2 or digital contract registration)
+  const handleUploadDoc = async (stageId: string, reqId: string, reqName: string, fileName: string, fileSize: number, file?: File) => {
     if (!activeCaseId || !currentUser) return;
-    await syncOperation('/api/documents/upload', {
-      method: 'POST',
-      body: JSON.stringify({
-        caseId: activeCaseId,
-        stageId,
-        requirementId: reqId,
-        fileName,
-        fileSize,
-        uploadedBy: currentUser.id
-      })
-    });
+    if (file) {
+      const formData = new FormData();
+      formData.append('caseId', activeCaseId);
+      formData.append('stageId', stageId);
+      formData.append('requirementId', reqId);
+      formData.append('name', reqName);
+      formData.append('file', file);
+      await syncOperation('/api/documents/upload', {
+        method: 'POST',
+        body: formData
+      });
+    } else {
+      await syncOperation('/api/documents/upload', {
+        method: 'POST',
+        body: JSON.stringify({
+          caseId: activeCaseId,
+          stageId,
+          requirementId: reqId,
+          name: reqName,
+          fileName,
+          fileSize,
+          uploadedBy: currentUser.id
+        })
+      });
+    }
   };
 
-  // Advisor replace document
+  // Advisor replace document with real file binary in Cloudflare R2
   const handleReplaceDoc = async (caseId: string, stageId: string, reqId: string, docName: string, file: File) => {
     if (!currentUser) return;
+    const formData = new FormData();
+    formData.append('caseId', caseId);
+    formData.append('stageId', stageId);
+    formData.append('requirementId', reqId);
+    formData.append('name', docName);
+    formData.append('file', file);
     await syncOperation('/api/documents/upload', {
       method: 'POST',
-      body: JSON.stringify({
-        caseId,
-        stageId,
-        requirementId: reqId,
-        fileName: file.name,
-        fileSize: file.size,
-        uploadedBy: currentUser.id
-      })
+      body: formData
     });
   };
 
@@ -401,40 +416,44 @@ export default function App() {
     );
   }
 
-  // Render Connection error
-  if (error || !state) {
+  // Render AuthScreen if no user is signed in (check BEFORE state/error so setup/login renders cleanly)
+  if (!currentUser && !error) {
     return (
-      <div className="h-screen w-screen flex flex-col items-center justify-center bg-slate-50 p-6">
-        <div className="bg-white p-8 rounded-2xl border border-red-100 shadow-xl max-w-md text-center space-y-4">
-          <AlertCircle className="w-14 h-14 text-red-500 mx-auto" />
-          <h2 className="text-xl font-bold text-slate-800">Error de Conexión</h2>
-          <p className="text-sm text-slate-500">
-            No se pudo conectar con el servidor backend Express de la plataforma. Asegúrese de que el servidor esté activo.
-          </p>
-          <button 
-            onClick={loadState} 
-            className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-xs"
-          >
-            Reintentar Conexión
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // Render AuthScreen if no user is signed in
-  if (!currentUser) {
-    return (
-      <AuthScreen 
-        onLoginSuccess={(user) => {
+      <AuthScreen
+        needsSetup={needsSetup}
+        turnstileSiteKey={turnstileSiteKey}
+        turnstileEnabled={turnstileEnabled}
+        onLoginSuccess={async (user) => {
           setCurrentUser(user);
           setRealUser(user);
           sessionStorage.setItem('docflow_user', JSON.stringify(user));
           sessionStorage.setItem('docflow_real_user', JSON.stringify(user));
           setActiveTab('dashboard');
           setActiveCaseId(null);
+          await loadState();
         }}
       />
+    );
+  }
+
+  // Render Connection error
+  if (error || !state || !currentUser) {
+    return (
+      <div className="h-screen w-screen flex flex-col items-center justify-center bg-slate-50 p-6">
+        <div className="bg-white p-8 rounded-2xl border border-red-100 shadow-xl max-w-md text-center space-y-4">
+          <AlertCircle className="w-14 h-14 text-red-500 mx-auto" />
+          <h2 className="text-xl font-bold text-slate-800">Error de Conexión</h2>
+          <p className="text-sm text-slate-500">
+            No se pudo conectar con el servidor Cloudflare Worker de la plataforma. Asegúrese de que el servicio esté activo.
+          </p>
+          <button 
+            onClick={() => loadState()} 
+            className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-xs"
+          >
+            Reintentar Conexión
+          </button>
+        </div>
+      </div>
     );
   }
 

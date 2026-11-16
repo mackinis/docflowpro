@@ -96,7 +96,9 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
   React.useEffect(() => {
     const fetchSharedDocs = async () => {
       try {
-        const res = await fetch(`/api/shared-documents?userId=${currentUser.id}&role=${currentUser.role}`);
+        const res = await fetch(`/api/shared-documents?userId=${currentUser.id}&role=${currentUser.role}`, {
+          credentials: 'include'
+        });
         if (res.ok) {
           const data = await res.json();
           setSharedDocs(data);
@@ -158,8 +160,9 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
     setIsGenerating(true);
 
     try {
-      const response = await fetch('/api/gemini/generate-template', {
+      const response = await fetch('/api/ai/generate-template', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           prompt: aiPrompt,
@@ -170,8 +173,8 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
       const data = await response.json();
       console.log('Respuesta recibida de generación por IA:', data);
 
-      if (data.error) {
-        alert(`Error de IA: ${data.error}`);
+      if (!response.ok || data.error) {
+        alert(`Error de IA: ${data.error || 'No se pudo generar la plantilla.'}`);
       } else if (data.template) {
         alert(`¡Flujo de trabajo "${data.template.name}" generado exitosamente por la Inteligencia Artificial!`);
         setShowAiModal(false);
@@ -196,11 +199,6 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
     if (e && typeof e.preventDefault === 'function') {
       e.preventDefault();
     }
-    console.log('Iniciando digitalización de plantilla con IA...');
-    console.log('digitizeFileBase64 largo:', digitizeFileBase64 ? digitizeFileBase64.length : 0);
-    console.log('digitizeText:', digitizeText);
-    console.log('digitizeIndustry:', digitizeIndustry);
-
     if (!digitizeFileBase64 && !digitizeText.trim()) {
       alert('Por favor, cargue un documento (arrastrando o seleccionando) o ingrese el texto de la plantilla.');
       return;
@@ -209,8 +207,9 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
     setIsDigitizing(true);
 
     try {
-      const response = await fetch('/api/gemini/digitize-template', {
+      const response = await fetch('/api/ai/digitize-template', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           fileBase64: digitizeFileBase64,
@@ -225,8 +224,8 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
       const data = await response.json();
       console.log('Respuesta recibida de digitalización por IA:', data);
 
-      if (data.error) {
-        alert(`Error de digitalización: ${data.error}`);
+      if (!response.ok || data.error) {
+        alert(`Error de digitalización: ${data.error || 'No se pudo digitalizar la plantilla.'}`);
       } else if (data.template) {
         alert(`¡Plantilla "${data.template.name}" digitalizada exitosamente al 100%!`);
         setShowAiModal(false);
@@ -260,6 +259,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
     try {
       const response = await fetch('/api/templates', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: manualName,
@@ -303,6 +303,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
     try {
       const response = await fetch('/api/templates', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: newName,
@@ -337,6 +338,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
         try {
           const response = await fetch(`/api/templates/${templateId}?currentUserId=${currentUser.id}`, {
             method: 'DELETE',
+            credentials: 'include',
             headers: { 'Content-Type': 'application/json' }
           });
 
@@ -467,6 +469,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
 
       const response = await fetch(`/api/templates/${editingTemplate.id}`, {
         method: 'PUT',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
@@ -512,6 +515,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
 
       const response = await fetch('/api/shared-documents', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: `${tpl.name} (Digitalizado)`,
@@ -530,7 +534,8 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
         
         try {
           await fetch(`/api/templates/${tpl.id}?currentUserId=${currentUser.id}`, {
-            method: 'DELETE'
+            method: 'DELETE',
+            credentials: 'include'
           });
         } catch (delErr) {
           console.error('Error al eliminar plantilla después de ser aprobada:', delErr);
@@ -583,7 +588,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
             </span>
             <h3 className="text-base font-display font-bold tracking-tight">¿Deseas digitalizar un nuevo proceso de oficina?</h3>
             <p className="text-xs text-slate-300 leading-relaxed">
-              Describe el trámite o proceso (ej: "Trámite de Préstamo", "Onboarding de Cliente", "Habilitación Comercial") y Gemini creará automáticamente las etapas, checklists y documentos requeridos.
+              Describe el trámite o proceso (ej: "Trámite de Préstamo", "Onboarding de Cliente", "Habilitación Comercial") y Cloudflare Workers AI creará automáticamente las etapas, checklists y documentos requeridos.
             </p>
           </div>
           <button
@@ -1298,7 +1303,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                   <div className="bg-indigo-50 border border-indigo-150 p-4 rounded-xl flex items-center gap-3">
                     <Loader2 className="w-5 h-5 animate-spin text-indigo-600 shrink-0" />
                     <div className="text-xs text-indigo-800">
-                      <p className="font-bold">Estructurando Proceso con Gemini...</p>
+                      <p className="font-bold">Estructurando Proceso con Cloudflare Workers AI...</p>
                       <p className="opacity-80">Creando etapas, requisitos documentales, checklists de tareas y esquemas de campos.</p>
                     </div>
                   </div>
@@ -1307,7 +1312,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
             ) : aiTab === 'digitize' ? (
               <form onSubmit={handleDigitizeTemplate} className="flex-1 overflow-y-auto p-5 space-y-4">
                 <p className="text-xs text-slate-500 leading-relaxed">
-                  Sube un archivo de proceso existente (PDF, foto, documento de texto) o pega su checklist. La IA de Gemini digitalizará al 100% el contenido, transformándolo en un flujo inteligente estructurado y usable inmediatamente.
+                  Sube un archivo de proceso existente (PDF, foto, documento de texto) o pega su checklist. Cloudflare Workers AI digitalizará al 100% el contenido, transformándolo en un flujo inteligente estructurado y usable inmediatamente.
                 </p>
 
                 {/* Drag and Drop File Upload Area */}
@@ -1482,7 +1487,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                   <div className="bg-indigo-50 border border-indigo-150 p-4 rounded-xl flex items-center gap-3">
                     <Loader2 className="w-5 h-5 animate-spin text-indigo-600 shrink-0" />
                     <div className="text-xs text-indigo-800">
-                      <p className="font-bold">Digitalizando al 100% con Gemini...</p>
+                      <p className="font-bold">Digitalizando al 100% con Cloudflare Workers AI...</p>
                       <p className="opacity-80">Procesando contenido del documento, extrayendo requisitos y adaptándolo como plantilla interactiva.</p>
                     </div>
                   </div>
