@@ -66,6 +66,17 @@ export default function UserProfile({
 
   // User Management States
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [canCreateAccounts, setCanCreateAccounts] = useState(currentUser.role === 'SUPERADMIN');
+  const [newAccount, setNewAccount] = useState({ name: '', lastName: '', email: '', password: '', role: 'ASESOR' });
+  React.useEffect(() => {
+    if (currentUser.role === 'SUPERADMIN') return;
+    if (currentUser.role !== 'ADMIN') { setCanCreateAccounts(false); return; }
+    fetch('/api/users/creation-permission', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : { allowed: false })
+      .then(d => setCanCreateAccounts(Boolean(d.allowed)))
+      .catch(() => setCanCreateAccounts(false));
+  }, [currentUser.id, currentUser.role]);
+
   const [mgmtName, setMgmtName] = useState('');
   const [mgmtLastName, setMgmtLastName] = useState('');
   const [mgmtEmail, setMgmtEmail] = useState('');
@@ -414,6 +425,40 @@ export default function UserProfile({
         )}
       </div>
 
+      {innerTab === 'user-management' && canCreateAccounts && (
+        <form className="rounded-2xl border border-slate-200 bg-white p-5 space-y-3" onSubmit={async e => {
+          e.preventDefault(); setLoading(true); setErrorMsg(null); setSuccessMsg(null);
+          try {
+            const res = await fetch('/api/users', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newAccount) });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'No se pudo crear la cuenta.');
+            setSuccessMsg('Cuenta creada, verificada y habilitada para iniciar sesión.');
+            setNewAccount({ name: '', lastName: '', email: '', password: '', role: 'ASESOR' });
+            await loadState();
+          } catch (err: any) { setErrorMsg(err.message); }
+          finally { setLoading(false); }
+        }}>
+          <h3 className="font-bold text-slate-800">Crear usuario habilitado</h3>
+          <p className="text-xs text-slate-500">El usuario podrá iniciar sesión inmediatamente con la contraseña asignada.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {(['name','lastName','email','password'] as const).map(key => (
+              <label key={key} className="text-xs font-semibold text-slate-700">
+                {{ name: 'Nombre', lastName: 'Apellido', email: 'Correo electrónico', password: 'Contraseña inicial' }[key]}
+                <input required type={key === 'password' ? 'password' : key === 'email' ? 'email' : 'text'} minLength={key === 'password' ? 8 : undefined}
+                  autoComplete="off" value={newAccount[key]} onChange={e => setNewAccount(v => ({ ...v, [key]: e.target.value }))}
+                  className="mt-1 block w-full rounded-lg border border-slate-300 bg-white p-2 text-sm text-slate-900" />
+              </label>
+            ))}
+          </div>
+          <label className="block text-xs font-semibold text-slate-700">Rol
+            <select value={newAccount.role} onChange={e => setNewAccount(v => ({ ...v, role: e.target.value }))} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white p-2 text-sm text-slate-900">
+              <option value="ASESOR">Asesor</option><option value="MANAGER">Manager</option>
+              {currentUser.role === 'SUPERADMIN' && <option value="ADMIN">Administrador</option>}
+            </select>
+          </label>
+          <button disabled={loading} className="rounded-xl bg-indigo-600 px-4 py-2 text-white text-sm font-bold disabled:opacity-50">Crear y habilitar usuario</button>
+        </form>
+      )}
       {/* Success / Error Messages */}
       {successMsg && (
         <div className="flex items-center gap-3 bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-xl text-sm" id="msg-profile-success">
