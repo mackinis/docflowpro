@@ -122,19 +122,8 @@ export default function CasesList({
   const [docRequirementId, setDocRequirementId] = useState('');
   const [actorFiles, setActorFiles] = useState<Record<string, Record<string, File>>>({});
   const [savingCase, setSavingCase] = useState(false);
-  const [advisorStats, setAdvisorStats] = useState<{total: number; completed: number; observed: number; pendingReview: number; active: number; pendingAssignment: number} | null>(null);
-  const [statsError, setStatsError] = useState('');
-  const [showAdvisorStats, setShowAdvisorStats] = useState(false);
-  const loadAdvisorStats = async () => {
-    setStatsError('');
-    try {
-      const response = await fetch('/api/cases/advisor-statistics?advisorId=' + encodeURIComponent(currentUser.id), { credentials: 'include' });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'No se pudieron consultar las estadísticas.');
-      setAdvisorStats(data);
-    } catch (err: any) { setStatsError(err.message || 'Error de consulta.'); }
-  };
-
+  const [missingActorDocsWarning, setMissingActorDocsWarning] = useState(false);
+  const [skipActorDocWarning, setSkipActorDocWarning] = useState(false);
   const filePickerRef = React.useRef<HTMLInputElement>(null);
   const process = templates.find(t => t.id === newTemplateId && !t.originalDocumentContent);
   const requiredDocs = process?.stages.flatMap(stage => stage.requirements.filter(r => r.type === 'document' && r.isRequired).map(r => ({ ...r, stageId: stage.id }))) || [];
@@ -148,6 +137,12 @@ export default function CasesList({
     return n.includes(r);
   };
   const draftKey = editingParticipantId || pType + ':' + pDni.replace(/\D/g, '');
+  const actorRulesForForm = process?.stages.flatMap(s => s.requirements).filter(r => r.type === 'actor' && r.isRequired) || [];
+  const remainingRoles = actorRulesForForm.filter(rule => participants.filter(p => p.role === rule.actorRole).length < Math.max(1, Number(rule.minQuantity) || 1)).map(rule => rule.actorRole as ParticipantType);
+  const availableRoles = Array.from(new Set([...remainingRoles.filter(r => r !== 'Escribano'), ...(escribanoADesignar && !participants.some(p => p.role === 'Escribano') ? ['Escribano' as ParticipantType] : [])]));
+  React.useEffect(() => {
+    if (!editingParticipantId && availableRoles.length && !availableRoles.includes(pType)) setPType(availableRoles[0]);
+  }, [newTemplateId, participants, escribanoADesignar, editingParticipantId, pType]);
   const actorRequiredDocs = requiredDocs.filter(req => belongsTo(req.name, pType));
   const missingDraftDocs = actorRequiredDocs.filter(req => !actorFiles[draftKey]?.[req.id]);
   const onActorFileSelected = (file?: File) => {
@@ -201,9 +196,7 @@ export default function CasesList({
     const garantesActuales = participants.filter(p => p.role === 'Garante').length;
     const escribanosActuales = participants.filter(p => p.role === 'Escribano').length;
 
-    if (participants.length === 0) {
-      errors.push('Falta agregar actores. El legajo no puede crearse con 0 actores (se requiere al menos 1).');
-    }
+
 
     const actoresActuales = participants.filter(p => p.role !== 'Garante' && p.role !== 'Escribano').length;
     if (actorRules.length === 0 && actoresActuales < expectedActores) {
@@ -255,15 +248,15 @@ export default function CasesList({
   };
 
   const handleAddParticipant = () => {
+    if (!editingParticipantId && !availableRoles.includes(pType)) { alert('No quedan roles pendientes de carga para este proceso.'); return; }
     if (!pName || !pLastName || !pDni || !pCuit || !pBirthDate || !pEmail || !pPhone) {
       alert('Favor de completar todos los campos obligatorios del actor (Nombre, Apellido, Fecha de Nacimiento, DNI, CUIT/CUIL, Email, Teléfono/Celular).');
       return;
     }
 
-    if (missingDraftDocs.length && systemSettings?.allowIncompleteCaseDocuments !== true) {
-      alert('Primero cargá los documentos del actor: ' + missingDraftDocs.map(r => r.name).join(', '));
-      return;
-    }
+    if (missingDraftDocs.length && !skipActorDocWarning) { setMissingActorDocsWarning(true); return; }
+    setSkipActorDocWarning(false);
+    setMissingActorDocsWarning(false);
     if (editingParticipantId) {
       setParticipants(prev => prev.map(p => {
         if (p.id === editingParticipantId) {
@@ -309,6 +302,7 @@ export default function CasesList({
     setPPhone('');
     setPBirthDate('');
     setPComments('');
+    setMissingActorDocsWarning(false);
   };
 
   const handleRemoveParticipant = (id: string) => {
@@ -407,25 +401,6 @@ export default function CasesList({
         </div>
       )}
 
-      <section className="rounded-2xl border border-slate-700/30 bg-slate-800/30 p-4 space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <div><h3 className="text-sm font-bold text-slate-100">Estadísticas de mis legajos</h3>
-            <p className="text-xs text-slate-400">Indicadores descriptivos; no representan una calificación de calidad.</p></div>
-          <button type="button" onClick={() => { setShowAdvisorStats(!showAdvisorStats); if (!showAdvisorStats) void loadAdvisorStats(); }}
-            className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-bold text-white">{showAdvisorStats ? 'Ocultar' : 'Consultar'}</button>
-        </div>
-        {showAdvisorStats && <div className="space-y-3">
-          {statsError && <p role="alert" className="text-sm text-rose-400">{statsError}</p>}
-          {advisorStats && <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {([{label:'Total',value:advisorStats.total},{label:'Finalizados',value:advisorStats.completed},
-              {label:'Observados',value:advisorStats.observed},{label:'En revisión',value:advisorStats.pendingReview}] as const).map(item =>
-              <div key={item.label} className="rounded-xl border border-slate-600 bg-slate-900/50 p-3">
-                <p className="text-xl font-bold text-white">{item.value}</p><p className="text-xs text-slate-300">{item.label}</p>
-              </div>)}
-          </div>}
-          <button type="button" className="text-xs text-indigo-300 underline" onClick={() => void loadAdvisorStats()}>Actualizar estadísticas</button>
-        </div>}
-      </section>
       {/* Upper Panel */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -790,7 +765,7 @@ export default function CasesList({
                   <h4 className="text-sm font-bold text-slate-800">Cantidad de Actores Requeridos</h4>
                 </div>
                 <p className="text-[11px] text-slate-500">
-                  Indica la cantidad mínima esperada para cada rol. El sistema validará que los cargues antes de crear el legajo.
+                  Cantidades definidas automáticamente por la plantilla del proceso. Solo podés decidir si cargar el escribano ahora.
                 </p>
                 
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-150 grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -808,13 +783,13 @@ export default function CasesList({
                       className="w-full text-xs p-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" />
                   </div>
                   <div className="flex flex-col justify-center gap-2">
-                    <label className="text-xs font-semibold text-slate-700">Requerir escribano</label>
+                    <label className="text-xs font-semibold text-slate-700">Cargar escribano ahora</label>
                     <button type="button" role="switch" aria-checked={escribanoADesignar}
                       onClick={() => setEscribanoADesignar(v => !v)}
                       className={`relative h-7 w-12 rounded-full border transition-colors ${escribanoADesignar ? 'bg-indigo-600 border-indigo-500' : 'bg-slate-400 border-slate-500'}`}>
                       <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${escribanoADesignar ? 'left-6' : 'left-1'}`} />
                     </button>
-                    <p className="text-[10px] text-slate-500">{escribanoADesignar ? 'Obligatorio: agregá 1 escribano abajo.' : 'No se requiere escribano.'}</p>
+                    <p className="text-[10px] text-slate-500">{escribanoADesignar ? 'Obligatorio: agregá 1 escribano abajo.' : 'Datos del escribano pospuestos.'}</p>
                   </div>
                 </div>
               </div>
@@ -829,7 +804,7 @@ export default function CasesList({
                   
                   {/* Status Indicator bubble */}
                   <div className="text-[10px] px-2 py-1 bg-indigo-50 text-indigo-700 rounded-lg font-semibold border border-indigo-100">
-                    Mínimo Requerido: {expectedActores + expectedGarantes + (escribanoADesignar ? 1 : 0)} | Cargados: {participants.length}
+                    Mínimo Requerido: {actorRulesForForm.filter(r => r.actorRole !== 'Escribano').reduce((n,r) => n + Math.max(1,Number(r.minQuantity)||1),0) + (escribanoADesignar ? 1 : 0)} | Cargados: {participants.length}
                   </div>
                 </div>
 
@@ -842,15 +817,8 @@ export default function CasesList({
                       onChange={(e) => setPType(e.target.value as ParticipantType)}
                       className="w-full text-[11px] p-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
                     >
-                      <option value="Vendedor">Vendedor</option>
-                      <option value="Comprador">Comprador</option>
-                      <option value="Locador">Locador</option>
-                      <option value="Locatario">Locatario</option>
-                      <option value="Garante">Garante</option>
-                      <option value="Escribano">Escribano</option>
-                      <option value="Cliente">Cliente</option>
-                      <option value="Titular">Titular</option>
-                      <option value="Apoderado">Apoderado</option>
+                      {(editingParticipantId ? Array.from(new Set([pType, ...availableRoles])) : availableRoles).map(role => <option key={role} value={role}>{role}</option>)}
+
                     </select>
                   </div>
                   <div className="space-y-1">
@@ -885,6 +853,11 @@ export default function CasesList({
                     <label className="text-[10px] font-semibold text-slate-500">Observaciones del Actor</label>
                     <input type="text" value={pComments} onChange={(e) => setPComments(e.target.value)} placeholder="Comentarios, facultades..." className="w-full text-[11px] p-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500" />
                   </div>
+                  {missingActorDocsWarning && <div role="alertdialog" aria-label="Documentos pendientes del actor" className="sm:col-span-3 rounded-xl border border-amber-300 bg-amber-50 p-4 space-y-2">
+                    <p className="text-sm font-bold text-amber-900">Documentos pendientes</p>
+                    <p className="text-xs text-amber-900">No cargaste: {missingDraftDocs.map(r => r.name).join(', ')}. Podés continuar agregando actores, pero si creás el legajo sin estos documentos quedará OBSERVADO y requerirá revisión del responsable.</p>
+                    <div className="flex justify-end gap-2"><button type="button" onClick={() => setMissingActorDocsWarning(false)} className="rounded-lg border border-amber-400 px-3 py-2 text-xs">Volver a cargar documentos</button><button type="button" onClick={() => { setMissingActorDocsWarning(false); /* confirm bypass is handled below */ setSkipActorDocWarning(true); }} className="rounded-lg bg-amber-700 px-3 py-2 text-xs font-bold text-white">Continuar sin documentos</button></div>
+                  </div>}
                   <div className="sm:col-span-3 flex justify-end gap-2 pt-1.5">
                     {editingParticipantId && (
                       <button
