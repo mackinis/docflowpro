@@ -17,7 +17,8 @@ import {
   ChevronRight,
   Settings as SettingsIcon,
   Mail,
-  FolderDown
+  FolderDown,
+  BarChart3
 } from 'lucide-react';
 import { User, Notification } from '../types';
 
@@ -58,6 +59,15 @@ export default function Sidebar({
 }: SidebarProps) {
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [canViewTeamStatistics, setCanViewTeamStatistics] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    setCanViewTeamStatistics(false);
+    fetch('/api/permissions/me', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(data => {
+      if (!cancelled) setCanViewTeamStatistics(Boolean(data?.statistics?.manage));
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [currentUser.id, currentUser.role]);
   
   // Theme state initialized from sessionStorage
   const [darkMode, setDarkMode] = useState(() => {
@@ -97,6 +107,7 @@ export default function Sidebar({
 
   const menuItems = [
     { id: 'dashboard', label: 'Tablero Principal', icon: LayoutDashboard, roles: ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR'] },
+    { id: 'statistics', label: 'Estadísticas', icon: BarChart3, roles: ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR'] },
     { id: 'audit', label: 'Auditoría', icon: ShieldAlert, roles: ['SUPERADMIN', 'ADMIN'] },
     { id: 'cases', label: 'Legajos', icon: FileText, roles: ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR'] },
     { id: 'documents', label: 'Documentos', icon: FolderDown, roles: ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR'] },
@@ -126,7 +137,7 @@ export default function Sidebar({
     });
   }
 
-  const allowedMenuItems = sortedMenuItems.filter(item => item.roles.includes(currentUser.role));
+  const allowedMenuItems = sortedMenuItems.filter(item => item.roles.includes(currentUser.role) && (item.id !== 'statistics' || canViewTeamStatistics));
 
   const handleNotificationClick = (n: Notification) => {
     onMarkNotificationRead(n.id);
