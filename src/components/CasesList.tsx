@@ -118,6 +118,32 @@ export default function CasesList({
   const [pComments, setPComments] = useState('');
 
   const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [docModalOpen, setDocModalOpen] = useState(false);
+  const [docRequirementId, setDocRequirementId] = useState('');
+  const [actorFiles, setActorFiles] = useState<Record<string, Record<string, File>>>({});
+  const [savingCase, setSavingCase] = useState(false);
+  const filePickerRef = React.useRef<HTMLInputElement>(null);
+  const process = templates.find(t => t.id === newTemplateId && !t.originalDocumentContent);
+  const requiredDocs = process?.stages.flatMap(stage => stage.requirements.filter(r => r.type === 'document' && r.isRequired).map(r => ({ ...r, stageId: stage.id }))) || [];
+  const normalized = (v: string) => v.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const belongsTo = (name: string, role: string) => {
+    const n = normalized(name), r = normalized(role);
+    if (r === 'garante') return /garant/.test(n);
+    if (r === 'locador') return /locador|propietario|escritura|servicio|impuesto/.test(n);
+    if (r === 'locatario') return /locatario|inquilino/.test(n);
+    if (r === 'vendedor') return /vendedor|escritura/.test(n);
+    return n.includes(r);
+  };
+  const draftKey = editingParticipantId || pType + ':' + pDni.replace(/\D/g, '');
+  const actorRequiredDocs = requiredDocs.filter(req => belongsTo(req.name, pType));
+  const missingDraftDocs = actorRequiredDocs.filter(req => !actorFiles[draftKey]?.[req.id]);
+  const onActorFileSelected = (file?: File) => {
+    if (!file || !docRequirementId) return;
+    if (!file.size || file.size > 20 * 1024 * 1024) { alert('El archivo debe tener contenido y pesar menos de 20 MB.'); return; }
+    setActorFiles(prev => ({ ...prev, [draftKey]: { ...prev[draftKey], [docRequirementId]: file } }));
+    setDocModalOpen(false);
+    setDocRequirementId('');
+  };
 
   React.useEffect(() => {
     if (showCreateModal) {
@@ -221,6 +247,10 @@ export default function CasesList({
       return;
     }
 
+    if (missingDraftDocs.length) {
+      alert('Primero cargá los documentos del actor: ' + missingDraftDocs.map(r => r.name).join(', '));
+      return;
+    }
     if (editingParticipantId) {
       setParticipants(prev => prev.map(p => {
         if (p.id === editingParticipantId) {
@@ -254,6 +284,7 @@ export default function CasesList({
         comments: `${pType}: ${pComments}`.trim()
       };
       setParticipants([...participants, newPart]);
+      setActorFiles(prev => ({ ...prev, [newPart.id]: prev[draftKey] || {} }));
     }
 
     // Clear inputs
@@ -272,45 +303,55 @@ export default function CasesList({
       setEditingParticipantId(null);
     }
     setParticipants(participants.filter(p => p.id !== id));
+    setActorFiles(prev => { const next = { ...prev }; delete next[id]; return next; });
   };
 
-  const handleCreateSubmit = (e: React.FormEvent) => {
+  const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitAttempted(true);
-
-    const errors = getValidationErrors();
-    if (errors.length > 0) {
-      let msg = 'No se puede crear el legajo debido a los siguientes requisitos pendientes:\n\n' + 
-                errors.join('\n') + 
-                '\n\nPor favor complete todos los datos requeridos e intente nuevamente.';
-      alert(msg);
-      return;
+    const errors = getValidationErrors().filter(error => !error.startsWith('Documentos para cargar en el legajo:'));
+    const assignedFiles = participants.flatMap(actor => Object.entries(actorFiles[actor.id] || {}).map(([requirementId, file]) => ({ requirementId, file, actor })));
+    for (const actor of participants) {
+      for (const req of requiredDocs.filter(r => belongsTo(r.name, actor.role || ''))) {
+        if (!actorFiles[actor.id]?.[req.id]) errors.push('Falta ' + req.name + ' para ' + actor.name + ' ' + actor.lastName + '.');
+      }
     }
-
-    const assignedAdvisorId = currentUser.role === 'ASESOR' ? currentUser.id : (newAdvisorId || users.find(u => u.role === 'ASESOR')?.id || '');
-    const assignedManagerId = currentUser.role === 'ASESOR' ? '' : currentUser.id;
-
-    onCreateCase({
-      title: newTitle,
-      description: newDescription,
-      templateId: newTemplateId,
-      assignedAdvisorId,
-      assignedManagerId,
-      participants,
-      documentContent: customDocumentContent || undefined
-    });
-
-    // Reset forms
-    setNewTitle('');
-    setNewDescription('');
-    setParticipants([]);
-    setExpectedActores(0);
-    setExpectedGarantes(0);
-    setEscribanoADesignar(false);
-    setCustomDocumentContent('');
-    setUploadedFileName('');
-    setSubmitAttempted(false);
-    setShowCreateModal(false);
+    if (errors.length) { alert('Requisitos pendientes:\\n' + errors.join('\\n')); return; }
+    if (savingCase) return;
+    setSavingCase(true);
+    let createdId = '';
+    try {
+      const advisorId = currentUser.role === 'ASESOR' ? currentUser.id : (newAdvisorId || users.find(u => u.role === 'ASESOR')?.id || '');
+      const response = await fetch('/api/cases', {
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: newTitle, description: newDescription, templateId: newTemplateId, assignedAdvisorId: advisorId, assignedManagerId: currentUser.role === 'ASESOR' ? '' : currentUser.id, participants, documentContent: customDocumentContent || undefined })
+      });
+      const created = await response.json();
+      if (!response.ok) throw new Error(created.error || 'No se pudo crear el legajo.');
+      createdId = created.id;
+      if (!createdId) throw new Error('El servidor no devolvió el identificador del legajo.');
+      for (const { requirementId, file, actor } of assignedFiles) {
+        const req = requiredDocs.find(r => r.id === requirementId);
+        if (!req) continue;
+        const data = new FormData();
+        data.append('caseId', createdId);
+        data.append('stageId', req.stageId);
+        data.append('requirementId', requirementId);
+        data.append('name', req.name + ' — ' + actor.name + ' ' + actor.lastName);
+        data.append('file', file);
+        const upload = await fetch('/api/documents/upload', { method: 'POST', credentials: 'include', body: data });
+        if (!upload.ok) { const detail = await upload.json().catch(() => ({})); throw new Error(detail.error || 'Error al almacenar ' + req.name + ' en R2.'); }
+      }
+      await loadState?.();
+      setNewTitle(''); setNewDescription(''); setParticipants([]); setActorFiles({});
+      setExpectedActores(0); setExpectedGarantes(0); setEscribanoADesignar(false);
+      setCustomDocumentContent(''); setUploadedFileName(''); setSubmitAttempted(false);
+      setShowCreateModal(false);
+      onOpenCase(createdId);
+    } catch (error: any) {
+      alert((createdId ? 'El legajo fue creado, pero no se completó la carga de documentos. Abrilo para verificar los archivos pendientes. ' : '') + (error?.message || 'Error al crear el legajo.'));
+      if (createdId) { await loadState?.(); setShowCreateModal(false); onOpenCase(createdId); }
+    } finally { setSavingCase(false); }
   };
 
   // Filter cases based on search and tab selections
@@ -331,6 +372,26 @@ export default function CasesList({
 
   return (
     <div className="space-y-6">
+      {docModalOpen && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/80 p-4" onClick={() => setDocModalOpen(false)}>
+          <div className="w-full max-w-md rounded-2xl border border-slate-600 bg-slate-800 p-6 shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-white">Identificar documento del actor</h3>
+            <p className="text-sm text-slate-200">Seleccioná qué documento vas a subir para {pName || 'el actor'} {pLastName}. Se vinculará con este actor y con el requisito del proceso.</p>
+            <label className="block text-sm font-semibold text-white" htmlFor="legajo-doc-type">Documento que se está subiendo</label>
+            <select id="legajo-doc-type" value={docRequirementId} onChange={e => setDocRequirementId(e.target.value)} className="w-full rounded-lg border border-slate-500 bg-slate-900 p-3 text-white">
+              <option value="">-- Seleccionar documento --</option>
+              {actorRequiredDocs.map(req => <option key={req.id} value={req.id}>{req.name}{actorFiles[draftKey]?.[req.id] ? ' (cargado)' : ''}</option>)}
+            </select>
+            {actorRequiredDocs.length === 0 && <p className="text-sm text-amber-200">No hay documentos asociados a este rol en el proceso seleccionado.</p>}
+            <input ref={filePickerRef} type="file" className="hidden" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp" onChange={e => { onActorFileSelected(e.target.files?.[0]); e.target.value = ''; }} />
+            <div className="flex justify-end gap-3">
+              <button type="button" onClick={() => setDocModalOpen(false)} className="rounded-lg bg-slate-600 px-4 py-2 text-sm font-semibold text-white">Cancelar</button>
+              <button type="button" disabled={!docRequirementId} onClick={() => filePickerRef.current?.click()} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">Buscar archivo</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Upper Panel */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -810,10 +871,15 @@ export default function CasesList({
                         Cancelar Edición
                       </button>
                     )}
+                    <button type="button" onClick={() => { setDocRequirementId(''); setDocModalOpen(true); }} className="px-4 py-1.5 bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs rounded-lg border border-slate-500">
+                      Cargar Doc. {actorRequiredDocs.length ? '(' + (actorRequiredDocs.length - missingDraftDocs.length) + '/' + actorRequiredDocs.length + ')' : ''}
+                    </button>
                     <button
                       type="button"
                       onClick={handleAddParticipant}
-                      className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg transition-colors border border-indigo-700 shadow-xs"
+                      disabled={missingDraftDocs.length > 0}
+                      title={missingDraftDocs.length ? 'Faltan: ' + missingDraftDocs.map(r => r.name).join(', ') : undefined}
+                      className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs rounded-lg transition-colors border border-indigo-700 shadow-xs"
                     >
                       {editingParticipantId ? 'Guardar Cambios' : 'Añadir Actor'}
                     </button>
