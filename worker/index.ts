@@ -1623,6 +1623,9 @@ app.post('/api/cases', async (c) => {
     documentContent,
   } = body;
 
+  if (!templateId || String(templateId).startsWith('doc-')) {
+    return c.json({ error: 'Seleccione un tipo de proceso configurado por un responsable. Los documentos digitalizados no son procesos.' }, 400);
+  }
   let template = templateId ? await findTemplateOrVirtualById(c.env, templateId) : null;
   if (!template) {
     if (!templateId) {
