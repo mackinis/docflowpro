@@ -95,7 +95,7 @@ export default function CasesList({
   React.useEffect(() => {
     const isTemplateRequired = systemSettings?.processTemplateRequired !== false;
     if (showCreateModal && templates.length > 0) {
-      setNewTemplateId(isTemplateRequired ? (templates.find(t => !t.id.startsWith('doc-'))?.id || '') : '');
+      setNewTemplateId(isTemplateRequired ? (templates.find(t => !t.id.startsWith('doc-') && !t.id.startsWith('tmpl-dig-') && !t.originalDocumentContent)?.id || '') : '');
     }
   }, [showCreateModal, templates, systemSettings]);
   
@@ -141,7 +141,7 @@ export default function CasesList({
     }
 
     // Reglas de actores del proceso, definidas por los responsables.
-    const selectedProcess = templates.find(t => t.id === newTemplateId);
+    const selectedProcess = templates.find(t => t.id === newTemplateId && !t.originalDocumentContent);
     const actorRules = selectedProcess?.stages.flatMap(st => st.requirements).filter(req => req.type === 'actor' && req.isRequired) || [];
     for (const rule of actorRules) {
       const count = participants.filter(p => p.role === rule.actorRole && p.name.trim() && p.lastName.trim() && p.dni.trim()).length;
@@ -634,7 +634,7 @@ export default function CasesList({
                   >
                     <option value="">-- Seleccionar Tipo de proceso --</option>
                     {(() => {
-                      const regularTemplates = templates.filter(t => !t.id.startsWith('doc-'));
+                      const regularTemplates = templates.filter(t => !t.id.startsWith('doc-') && !t.id.startsWith('tmpl-dig-') && !t.originalDocumentContent);
                       return (
                         <>
                           {regularTemplates.length > 0 && (
