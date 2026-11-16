@@ -3521,8 +3521,23 @@ app.get('/api/cases/:id/history', async (c) => {
     entry.actions[event.action] = (entry.actions[event.action] || 0) + 1;
     contributors.set(key, entry);
   }
+  // Derive elapsed time per stage from immutable-in-UI server events.
+  // Open stages use the current time; completed stages use their next transition.
+  const transitions = events.filter((event: any) => event.entityType === 'Case' && (event.action.startsWith('Avanzó etapa a "') || event.action === 'Finalizó legajo'));
+  const stageDurations: { stage: string; startedAt: string; endedAt: string; durationMs: number; ongoing: boolean }[] = [];
+  let stageStart = item.createdAt;
+  let stageName = 'Etapa inicial';
+  for (const event of transitions) {
+    const end = Date.parse(event.createdAt);
+    stageDurations.push({ stage: stageName, startedAt: stageStart, endedAt: event.createdAt, durationMs: Math.max(0, end - Date.parse(stageStart)), ongoing: false });
+    if (event.action === 'Finalizó legajo') { stageStart = ''; break; }
+    stageName = event.action.replace(/^Avanzó etapa a "/, '').replace(/"$/, '');
+    stageStart = event.createdAt;
+  }
+  if (stageStart) stageDurations.push({ stage: stageName, startedAt: stageStart, endedAt: new Date().toISOString(), durationMs: Math.max(0, Date.now() - Date.parse(stageStart)), ongoing: true });
   return c.json({
     caseId: id, createdAt: item.createdAt, status: item.status,
+    stageDurations,
     completedAt, durationMs: Math.max(0, endTime - Date.parse(item.createdAt)),
     durationIsFinal: Boolean(completedAt), eventCount: events.length,
     truncated: events.length >= 1000,
