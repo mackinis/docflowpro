@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { User, AppDataState } from '../types';
 import { PRESET_AVATARS } from '../data';
+import RbacPanel from './RbacPanel';
 
 interface UserProfileProps {
   currentUser: User;
@@ -39,7 +40,7 @@ export default function UserProfile({
   loadState
 }: UserProfileProps) {
   // Active inner tab: 'my-profile' or 'user-management'
-  const [innerTab, setInnerTab] = useState<'my-profile' | 'user-management'>('my-profile');
+  const [innerTab, setInnerTab] = useState<'my-profile' | 'user-management' | 'audit' | 'rbac'>('my-profile');
   
   // My Profile Form States
   const [profileName, setProfileName] = useState(currentUser.name);
@@ -391,7 +392,7 @@ export default function UserProfile({
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 pb-5">
         <div>
           <h1 className="font-display font-bold text-2xl text-slate-800 tracking-tight">
-            Perfiles de usuarios
+            Usuarios y Permisos
           </h1>
           <p className="text-sm text-slate-500">
             Administra tus credenciales personales, datos de contacto y cuentas de usuarios en la plataforma.
@@ -425,6 +426,8 @@ export default function UserProfile({
               <Users className="w-3.5 h-3.5" />
               Gestión de Usuarios
             </button>
+            <button type="button" id="tab-user-audit" onClick={() => {setInnerTab('audit');setSuccessMsg(null);setErrorMsg(null);}} className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg ${innerTab === 'audit' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}><History className="w-3.5 h-3.5"/>Auditoría</button>
+            {currentUser.role === 'SUPERADMIN' && <button type="button" id="tab-rbac" onClick={() => {setInnerTab('rbac');setSuccessMsg(null);setErrorMsg(null);}} className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg ${innerTab === 'rbac' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}><ShieldCheck className="w-3.5 h-3.5"/>RBAC</button>}
           </div>
         )}
       </div>
@@ -1130,7 +1133,26 @@ export default function UserProfile({
                   </div>
                 )}
 
-                {currentUser.role === 'SUPERADMIN' && (
+              </div>
+            ) : (
+              <div className="h-full flex flex-col items-center justify-center text-center p-8 text-slate-400 space-y-3 min-h-[350px]">
+                <UserCog className="w-12 h-12 text-slate-300 stroke-[1.5]" />
+                <div>
+                  <p className="font-semibold text-slate-700">Ningún usuario seleccionado</p>
+                  <p className="text-xs max-w-sm mt-1">
+                    Seleccione un usuario de la lista de la izquierda para ver su perfil completo y modificar sus datos de contacto o permisos jerárquicos.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      {innerTab === 'rbac' && currentUser.role === 'SUPERADMIN' && <RbacPanel users={state.users} />}
+      {innerTab === 'audit' && canManageUsers && <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5">
+        <h2 className="text-lg font-bold text-slate-900">Auditoría de usuarios</h2>
+        <label className="block text-sm font-semibold">Usuario a auditar<select className="block mt-2 w-full rounded-lg border border-slate-300 bg-white p-2" value={selectedUser?.id||''} onChange={e=>setSelectedUser(state.users.find(u=>u.id===e.target.value)||null)}><option value="">Seleccione un usuario</option>{state.users.map(u=><option key={u.id} value={u.id}>{u.name} {u.lastName} ({u.role})</option>)}</select></label>
+        {selectedUser ? <div>                {currentUser.role === 'SUPERADMIN' && (
                   <div className="mt-6 border-t border-slate-100 pt-6 space-y-4">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 border border-slate-200/60 p-4 rounded-2xl">
                       <div className="space-y-0.5">
@@ -1233,21 +1255,8 @@ export default function UserProfile({
                     </div>
                   </div>
                 )}
-              </div>
-            ) : (
-              <div className="h-full flex flex-col items-center justify-center text-center p-8 text-slate-400 space-y-3 min-h-[350px]">
-                <UserCog className="w-12 h-12 text-slate-300 stroke-[1.5]" />
-                <div>
-                  <p className="font-semibold text-slate-700">Ningún usuario seleccionado</p>
-                  <p className="text-xs max-w-sm mt-1">
-                    Seleccione un usuario de la lista de la izquierda para ver su perfil completo y modificar sus datos de contacto o permisos jerárquicos.
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+</div> : <p className="text-sm text-slate-500">Seleccione un usuario para consultar o descargar su actividad.</p>}
+      </div>}
     </div>
   );
 }
