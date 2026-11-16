@@ -1539,6 +1539,7 @@ app.get('/api/templates', async (c) => {
 function requirementsFromProcessDescription(description: string): ProcessTemplate['stages'] {
   const lines = description.split(/\r?\n|;/).map(x => x.replace(/^\s*[-*•\d.)]+\s*/, '').trim()).filter(Boolean);
   const requirements: ProcessTemplate['stages'][number]['requirements'] = [];
+  const unrecognized: string[] = [];
   const actorRoles: Record<string, string> = {
     locador: 'Locador', locatario: 'Locatario', garante: 'Garante',
     vendedor: 'Vendedor', comprador: 'Comprador', titular: 'Titular',
@@ -1546,7 +1547,8 @@ function requirementsFromProcessDescription(description: string): ProcessTemplat
   };
   const normalized = (value: string) => value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const add = (name: string, type: 'actor' | 'document' | 'task', role?: string, minimum?: number) => {
-    if (requirements.some(req => req.type === type && normalized(req.name) === normalized(name))) return;
+    const existing = requirements.find(req => req.type === type && normalized(req.name) === normalized(name));
+    if (existing) { if (type === 'actor') existing.minQuantity = Math.max(existing.minQuantity || 1, minimum || 1); return; }
     requirements.push({
       id: `req-${crypto.randomUUID()}`, name, type,
       description: '', isRequired: true,
@@ -1566,11 +1568,17 @@ function requirementsFromProcessDescription(description: string): ProcessTemplat
     const low = normalized(stripped);
     if (!stripped || /^(documentacion requerida|documentos requeridos|documentos|actores|partes):?$/.test(low)) continue;
     if (/(dni|documento de identidad|escritura|boleta|servicio|boleto|certificado|informe|credito|comprobante|constancia|recibo|factura|documentacion|contrato|titulo de propiedad)/.test(low)) {
-      add(stripped, 'document');
+      const subject = actor?.[1];
+      const canonical = /\b(dni|documento de identidad)\b/.test(low) ? (subject ? `DNI del ${subject.toLowerCase()}` : 'DNI') : /\bescritura\b|titulo de propiedad/.test(low) ? 'Copia de escritura' : /\b(boleta|servicios?)\b/.test(low) ? 'Boleta de servicios' : stripped;
+      add(canonical, 'document');
     } else if (/^(tarea|verificar|comprobar|revisar|confirmar)\b/.test(low)) {
       add(stripped, 'task');
+    } else {
+      unrecognized.push(line);
     }
   }
+  if (unrecognized.length) throw new Error(`Requisitos sin interpretar: ${unrecognized.join(' | ')}. Revisá las líneas antes de guardar.`);
+  if (!requirements.length) throw new Error('Debés indicar al menos un requisito válido.');
   return [{ id: `stage-${crypto.randomUUID()}`, name: 'Presentación y revisión de requisitos', description: 'Requisitos establecidos por el responsable del proceso', requirements }];
 }
 
@@ -1580,12 +1588,15 @@ app.post('/api/templates', async (c) => {
     return c.json({ error: 'No tienes permisos suficientes para crear plantillas de procesos.' }, 403);
   }
   const body = await c.req.json();
+  let parsedStages: ProcessTemplate['stages'];
+  try { parsedStages = Array.isArray(body.stages) && body.stages.length ? body.stages : requirementsFromProcessDescription(body.description || ''); }
+  catch (error) { return c.json({ error: error instanceof Error ? error.message : 'No se pudieron interpretar los requisitos.' }, 400); }
   const newTemplate: ProcessTemplate = {
     id: `tmpl-${Date.now()}-${crypto.randomUUID().slice(0, 4)}`,
     name: body.name,
     description: body.description || '',
     industry: body.industry || 'Inmobiliaria',
-    stages: Array.isArray(body.stages) && body.stages.length ? body.stages : requirementsFromProcessDescription(body.description || ''),
+    stages: parsedStages,
     originalDocumentContent: body.originalDocumentContent || '',
     showDocumentToAll: body.showDocumentToAll !== undefined ? body.showDocumentToAll : true,
     sharedViewMode: body.sharedViewMode || 'both',
