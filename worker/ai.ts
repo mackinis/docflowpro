@@ -1,5 +1,6 @@
 import type { ProcessTemplate } from '../src/types';
 import type { Env } from './types';
+import { DEFAULT_SYSTEM_SETTINGS, getSystemConfigValue } from './db';
 import {
   decodeDataUrl,
   encodeBase64,
@@ -67,7 +68,10 @@ async function runWorkersAiText(
   }
 
   let lastError: any = null;
-  for (const model of TEXT_MODELS) {
+  const settings = await getSystemConfigValue(env.DB, 'systemSettings', DEFAULT_SYSTEM_SETTINGS);
+  const chosen = settings.aiModel && TEXT_MODELS.includes(settings.aiModel as typeof TEXT_MODELS[number])
+    ? settings.aiModel : TEXT_MODELS[0];
+  for (const model of [chosen]) {
     try {
       const result = await (env.AI as any).run(model, {
         messages: [
