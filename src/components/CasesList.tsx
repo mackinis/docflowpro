@@ -158,10 +158,10 @@ export default function CasesList({
     }
 
     const actoresActuales = participants.filter(p => p.role !== 'Garante' && p.role !== 'Escribano').length;
-    if (actoresActuales < expectedActores) {
+    if (actorRules.length === 0 && actoresActuales < expectedActores) {
       errors.push(`Faltan ${expectedActores - actoresActuales} actores (cargados: ${actoresActuales} de ${expectedActores}).`);
     }
-    if (garantesActuales < expectedGarantes) {
+    if (actorRules.length === 0 && garantesActuales < expectedGarantes) {
       errors.push(`Falta(n) ${expectedGarantes - garantesActuales} Garante(s) (Cargados: ${garantesActuales} de ${expectedGarantes}).`);
     }
     if (!escribanoADesignar && escribanosActuales < 1 && actorRules.some(r => r.actorRole === 'Escribano')) {
@@ -173,11 +173,7 @@ export default function CasesList({
       const missing: string[] = [];
       if (!p.name?.trim()) missing.push('Nombre');
       if (!p.lastName?.trim()) missing.push('Apellido');
-      if (!p.birthDate?.trim()) missing.push('Fecha de Nacimiento');
       if (!p.dni?.trim()) missing.push('DNI');
-      if (!p.cuitCuil?.trim()) missing.push('CUIT/CUIL');
-      if (!p.email?.trim()) missing.push('Email');
-      if (!p.phone?.trim()) missing.push('Teléfono/Celular');
 
       if (missing.length > 0) {
         const displayName = p.name || p.lastName ? `${p.name || ''} ${p.lastName || ''}`.trim() : `Actor #${idx + 1}`;
@@ -649,6 +645,25 @@ export default function CasesList({
                       );
                     })()}
                   </select>
+                  {(() => {
+                    const selected = templates.find(t => t.id === newTemplateId);
+                    const obligations = selected?.stages.flatMap(stage => stage.requirements) || [];
+                    if (!selected) return null;
+                    return (
+                      <div className="mt-3 p-3 rounded-xl bg-indigo-50 border border-indigo-200 space-y-2">
+                        <p className="text-xs font-bold text-indigo-800">Requisitos establecidos por el responsable</p>
+                        {obligations.length === 0
+                          ? <p className="text-xs text-amber-700">Este proceso no tiene requisitos configurados. Solicitá al responsable que los revise.</p>
+                          : obligations.map(req => (
+                            <p key={req.id} className="text-xs text-slate-700">
+                              {req.type === 'actor' ? `Actor: ${req.actorRole || req.name} — mínimo ${req.minQuantity || 1}` : req.type === 'document' ? `Documento: ${req.name} (se presentará en el legajo)` : `${req.type === 'form' ? 'Formulario' : 'Tarea'}: ${req.name}`}
+                              {!req.isRequired ? ' (opcional)' : ' *'}
+                            </p>
+                          ))
+                        }
+                      </div>
+                    );
+                  })()}
                   {['SUPERADMIN', 'ADMIN', 'MANAGER'].includes(currentUser.role) && (
                     <div className="mt-1 flex items-center gap-1.5 bg-slate-50 p-1.5 rounded-lg border border-slate-200/60">
                       <input
