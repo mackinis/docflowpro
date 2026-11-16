@@ -12,7 +12,6 @@ import {
   Loader2,
   X,
   PlusCircle,
-  Wand2,
   Edit,
   Copy,
   Trash2,
@@ -116,7 +115,6 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
   const canManageTemplates = isSuperAdmin || (['ADMIN', 'MANAGER'].includes(currentUser.role) && allowAdminManager);
 
   // Sub-tabs inside expanded templates to view either flow or 100% digitized document
-  const [templateSubTab, setTemplateSubTab] = useState<Record<string, 'flow' | 'document'>>({});
 
   const renderDocumentWithHighlights = (text: string) => {
     if (!text) {
@@ -168,7 +166,6 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
           fileName: digitizeFileName,
           textProposal: digitizeText,
           industry: digitizeIndustry,
-          generateFlow: false,
           currentUserId: currentUser.id
         })
       });
@@ -546,7 +543,6 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
         {templates.filter(t => !t.id.startsWith('doc-')).map((tpl) => {
           const isExpanded = expandedTemplateId === tpl.id;
           const isDigitalDoc = !!tpl.originalDocumentContent && tpl.originalDocumentContent.trim() !== '';
-          const activeTab = tpl.stages.length === 0 ? 'document' : (templateSubTab[tpl.id] || 'flow');
           return (
             <div key={tpl.id} className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden transition-all duration-200">
               {/* Summary Block */}
