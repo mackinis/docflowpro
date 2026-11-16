@@ -81,10 +81,22 @@ export default function App() {
         return;
       }
 
-      const response = await fetch('/api/state', {
-        credentials: 'include',
-        signal: AbortSignal.timeout(15000)
-      });
+      // D1 initialization and transient Cloudflare errors can briefly return 503.
+      // Retry the state request without showing a misleading connection-error page.
+      let response: Response | null = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          response = await fetch('/api/state', {
+            credentials: 'include',
+            signal: AbortSignal.timeout(25000)
+          });
+          if (response.status !== 503 && response.status !== 502 && response.status !== 504) break;
+        } catch (requestError) {
+          if (attempt === 2) throw requestError;
+        }
+        if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 1200 * (attempt + 1)));
+      }
+      if (!response) throw new Error('No se recibió respuesta del servidor.');
       if (response.status === 401) {
         sessionStorage.removeItem('docflow_user');
         sessionStorage.removeItem('docflow_real_user');
@@ -94,7 +106,8 @@ export default function App() {
         return;
       }
       if (!response.ok) {
-        throw new Error('No se pudo recuperar el estado del servidor.');
+        const detail = await response.json().catch(() => ({}));
+        throw new Error(detail.error || detail.message || 'No se pudo recuperar el estado del servidor.');
       }
       const data: AppDataState = await response.json();
       setState(data);
