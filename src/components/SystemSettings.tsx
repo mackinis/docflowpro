@@ -631,8 +631,8 @@ export default function SystemSettings({
               Determina si los Administradores y Managers tienen permitido crear, editar, duplicar, digitalizar y eliminar plantillas de procesos. El Superadmin siempre tendrá acceso sin restricciones. Los Asesores nunca podrán gestionar plantillas.
             </p>
 
-            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/60 space-y-3">
-              <div className="flex justify-between items-center">
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/60">
+              <div className="flex justify-between items-center gap-3">
                 <span className="text-xs font-bold text-slate-700 uppercase tracking-wider font-mono">
                   Admins & Managers
                 </span>
@@ -669,8 +669,8 @@ export default function SystemSettings({
               Configura si el campo "Plantilla de Proceso" es obligatorio o de carácter opcional al momento de crear nuevos legajos en la plataforma.
             </p>
 
-            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/60 space-y-3">
-              <div className="flex justify-between items-center">
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/60">
+              <div className="flex justify-between items-center gap-3">
                 <span className="text-xs font-bold text-slate-700 uppercase tracking-wider font-mono">
                   Campo Obligatorio
                 </span>
