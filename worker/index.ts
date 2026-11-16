@@ -905,6 +905,25 @@ app.put('/api/users/:id', async (c) => {
     isVerified !== undefined ||
     hasSensitiveEditPermissionOverride !== undefined;
 
+  // Every sensitive field is independently authorized by the persisted RBAC matrix.
+  // Hierarchy and the single-Superadmin invariant below remain additional restrictions.
+  if (isEditingSensitive && auth.realUser.role !== 'SUPERADMIN') {
+    const { hasRbacPermission } = await import('../src/rbac');
+    const matrix = await getSystemConfigValue(c.env.DB, 'rbacMatrix', { roles: {}, users: {} });
+    const checks: Array<[boolean, string]> = [
+      [email !== undefined, 'userEmail.edit'],
+      [role !== undefined, 'userRole.edit'],
+      [password !== undefined, 'userPassword.edit'],
+      [active !== undefined || isVerified !== undefined, 'userStatus.edit'],
+      [hasSensitiveEditPermissionOverride !== undefined, 'userSensitive.edit'],
+    ];
+    for (const [changed, permission] of checks) {
+      if (changed && !hasRbacPermission(matrix, auth.realUser.role, auth.realUser.id, permission as any)) {
+        return c.json({ error: 'Permiso RBAC insuficiente para modificar ' + permission }, 403);
+      }
+    }
+  }
+
   if (isEditingSensitive) {
     const actorRole = currentUser.role;
     const targetRole = targetRow.role;
