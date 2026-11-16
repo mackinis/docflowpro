@@ -774,6 +774,33 @@ export default function SystemSettings({
           </div>
         </div>
 
+        {/* Política global de documentación pendiente: los requisitos siguen definidos por cada proceso. */}
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 col-span-1 xl:col-span-2">
+          <div className="flex items-center gap-2 text-indigo-600">
+            <FolderKanban className="w-5 h-5" />
+            <h2 className="font-bold text-slate-800 text-base">Legajos con documentación pendiente</h2>
+          </div>
+          <p className="text-xs text-slate-500">Si se habilita, los asesores pueden registrar legajos con documentos obligatorios faltantes. El legajo queda automáticamente OBSERVADO para intervención del responsable. Los actores y datos esenciales siguen siendo obligatorios.</p>
+          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/60 flex justify-between items-center gap-3">
+            <span className="text-xs font-bold text-slate-700 uppercase tracking-wider font-mono">Permitir documentación pendiente</span>
+            <button type="button" disabled={loading || !isSuperAdmin} onClick={async () => {
+              setLoading(true); setSuccessMsg(null); setErrorMsg(null);
+              try {
+                const res = await fetch('/api/system-settings', {
+                  method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ settings: { allowIncompleteCaseDocuments: state.systemSettings?.allowIncompleteCaseDocuments !== true }, currentUserId: currentUser.id })
+                });
+                if (!res.ok) throw new Error('No se pudo actualizar la política documental.');
+                await loadState();
+                setSuccessMsg('Política de documentación pendiente actualizada.');
+              } catch (err: any) { setErrorMsg(err.message); }
+              finally { setLoading(false); }
+            }} className={`px-3 py-1 text-xs font-extrabold uppercase rounded-full border ${state.systemSettings?.allowIncompleteCaseDocuments === true ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
+              {state.systemSettings?.allowIncompleteCaseDocuments === true ? 'Habilitado' : 'Deshabilitado'}
+            </button>
+          </div>
+        </div>
+
         {/* Card 7: Herramientas de Mantenimiento (Backup y Autolimpieza) */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 flex flex-col justify-between col-span-1 xl:col-span-2" id="card-admin-tools">
           <div>
