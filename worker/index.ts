@@ -1721,12 +1721,8 @@ app.post('/api/cases', async (c) => {
   const creationSettings = await getSystemConfigValue(c.env.DB, 'systemSettings', DEFAULT_SYSTEM_SETTINGS);
   const incompleteAllowed = creationSettings?.allowIncompleteCaseDocuments === true;
   const requiredDocNames = template.stages.flatMap(stage => stage.requirements).filter(req => req.type === 'document' && req.isRequired).map(req => req.name);
-  // The browser may declare missing documents, but cannot certify that a required file exists.
-  // Creation occurs before R2 uploads, so all mandatory documents are pending at this point.
-  const pendingNames = requiredDocNames;
-  if (Array.isArray(pendingDocumentNames) && pendingDocumentNames.length > 0 && pendingDocumentNames.some((name: unknown) => typeof name !== 'string')) {
-    return c.json({ error: 'Lista de documentos pendientes inválida.' }, 400);
-  }
+  // Client-declared pending documents are advisory until uploads are verified in R2.
+  const pendingNames = Array.isArray(pendingDocumentNames) ? pendingDocumentNames.filter((name: unknown) => typeof name === 'string' && requiredDocNames.some(reqName => (name as string).startsWith(reqName + ' — '))) : [];
   if (pendingNames.length && !incompleteAllowed) return c.json({ error: 'No está permitida la creación de legajos con documentos pendientes.' }, 400);
   const status = pendingNames.length ? 'observed' : (finalManagerId ? 'active' : 'pending_assignment');
   const finalAdvisorId = assignedAdvisorId || auth.user.id;
