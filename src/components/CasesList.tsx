@@ -150,6 +150,14 @@ export default function CasesList({
       if (count < minimum) errors.push(`Faltan ${minimum - count} ${rule.actorRole || rule.name} (mínimo ${minimum}).`);
     }
 
+    // Los documentos exigidos se resumen en una sola línea, sin repetir el listado en otro panel.
+    // Su carga y aprobación se realizan en el legajo, donde se vinculan a cada requisito.
+    const requiredDocuments = selectedProcess?.stages.flatMap(st => st.requirements)
+      .filter(req => req.type === 'document' && req.isRequired) || [];
+    if (requiredDocuments.length > 0) {
+      errors.push(`Documentos para cargar en el legajo: ${requiredDocuments.map(req => req.name).join(' / ')}.`);
+    }
+
     // Actores mínimos requeridos
     const garantesActuales = participants.filter(p => p.role === 'Garante').length;
     const escribanosActuales = participants.filter(p => p.role === 'Escribano').length;
