@@ -222,6 +222,17 @@ app.use('/api/*', async (c, next) => {
   return next();
 });
 
+// Expose only the current user's effective document actions, never the full RBAC matrix.
+app.get('/api/permissions/me', async (c) => {
+  const auth = c.get('auth');
+  if (!auth) return c.json({ error: 'Sesión requerida.' }, 401);
+  const { hasRbacPermission } = await import('../src/rbac');
+  const matrix = await getSystemConfigValue(c.env.DB, 'rbacMatrix', { roles: {}, users: {} });
+  const can = (action: 'view' | 'download' | 'edit' | 'create' | 'delete') =>
+    hasRbacPermission(matrix, auth.realUser.role, auth.realUser.id, `documents.${action}`);
+  return c.json({ documents: { view: can('view'), download: can('download'), edit: can('edit'), create: can('create'), delete: can('delete') } });
+});
+
 // Granular RBAC administration: server-side superadmin-only policy.
 app.get('/api/admin/rbac', async (c) => {
   const auth = c.get('auth');
