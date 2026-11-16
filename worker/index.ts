@@ -1706,14 +1706,35 @@ app.get('/api/statistics/advisors', async (c) => {
      WHERE u.role = 'ASESOR'
      GROUP BY u.id, u.name, u.last_name ORDER BY total DESC, u.name ASC`
   ).all<any>();
+  const advisors = await Promise.all((rows.results || []).map(async (row: any) => {
+    const total = Number(row.total || 0);
+    const completed = Number(row.completed || 0);
+    const observed = Number(row.observed || 0);
+    const resolved = completed + observed;
+    const rejected = await c.env.DB.prepare(
+      `SELECT COUNT(*) AS count FROM documents d JOIN cases cs ON cs.id = d.case_id WHERE cs.assigned_advisor_id = ? AND d.status = 'rejected'`
+    ).bind(row.advisorId).first<{ count: number }>();
+    const rejectedDocuments = Number(rejected?.count || 0);
+    // Transparent descriptive index. Do not present as a definitive personnel assessment.
+    // 60% completed vs observed; 25% avoidance of rejected documents per case;
+    // 15% proportion of cases without an observed status, excluding active work.
+    const completionRate = resolved ? completed / resolved : null;
+    const documentQuality = total ? Math.max(0, 1 - rejectedDocuments / total) : null;
+    const observedAvoidance = resolved ? 1 - observed / resolved : null;
+    const score = completionRate === null || documentQuality === null || observedAvoidance === null
+      ? null : Math.round(100 * (0.6 * completionRate + 0.25 * documentQuality + 0.15 * observedAvoidance));
+    const grade = score === null ? 'Sin datos' : score >= 95 ? 'Excelente' : score >= 85 ? 'Muy bueno' : score >= 70 ? 'Bueno' : score >= 55 ? 'Regular' : score >= 35 ? 'Deficiente' : 'Crítico';
+    return {
+      ...row, total, completed, observed, rejectedDocuments,
+      pendingReview: Number(row.pendingReview || 0), active: Number(row.active || 0),
+      score, grade, sampleSize: resolved,
+      factors: { completionRate: completionRate === null ? null : Math.round(completionRate * 100), documentQuality: documentQuality === null ? null : Math.round(documentQuality * 100), observedAvoidance: observedAvoidance === null ? null : Math.round(observedAvoidance * 100) }
+    };
+  }));
   return c.json({
-    advisors: (rows.results || []).map((row: any) => ({
-      ...row,
-      total: Number(row.total || 0), completed: Number(row.completed || 0),
-      observed: Number(row.observed || 0), pendingReview: Number(row.pendingReview || 0),
-      active: Number(row.active || 0)
-    })),
-    note: 'Estadísticas descriptivas por estado actual. No son una calificación individual ni atribuyen culpabilidad por observaciones.'
+    advisors,
+    methodology: 'Índice descriptivo: 60% finalizados/(finalizados+observados), 25% máximo(0,1-documentos rechazados/legajos), 15% legajos no observados/(finalizados+observados). Sin legajos resueltos no se califica.',
+    note: 'Índice orientativo, no evaluación laboral definitiva: una observación puede depender del cliente o del responsable. No mide demoras atribuibles individualmente ni reemplaza la revisión humana.'
   });
 });
 
