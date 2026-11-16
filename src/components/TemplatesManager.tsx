@@ -768,7 +768,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                                     ))
                                   )}
                                 </div>
-                              </div>
+                              </div>}
                             </div>
                           </div>
                         ))
