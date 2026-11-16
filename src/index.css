@@ -263,3 +263,109 @@ html::-webkit-scrollbar, body::-webkit-scrollbar, *::-webkit-scrollbar {
   cursor: pointer;
 }
 .dark .bg-white.text-slate-900, .dark .bg-white.text-gray-900 { color: #f8fafc !important; }
+
+
+/*
+ * Dark mode contrast audit (all application routes).
+ * Fix translucent Tailwind hover layers that were painting pale gray over dark cards.
+ * Preserve saturated action-button backgrounds and their white labels.
+ */
+.dark .bg-white\/60,
+.dark .bg-white\/40,
+.dark .bg-white\/30,
+.dark .bg-white\/20,
+.dark .bg-white\/10,
+.dark .bg-white\/80,
+.dark .bg-white\/90,
+.dark .bg-slate-50\/30,
+.dark .bg-slate-50\/40,
+.dark .bg-slate-50\/60,
+.dark .bg-slate-50\/80,
+.dark .bg-slate-100\/50,
+.dark .bg-slate-100\/60,
+.dark .bg-slate-100\/80,
+.dark .bg-slate-200\/60,
+.dark .bg-slate-200\/80 {
+  background-color: #1e293b !important;
+}
+.dark .hover\:bg-slate-50\/50:hover,
+.dark .hover\:bg-slate-50\/60:hover,
+.dark .hover\:bg-slate-50\/80:hover,
+.dark .hover\:bg-white\/40:hover,
+.dark .hover\:bg-white\/60:hover,
+.dark .hover\:bg-slate-200:hover,
+.dark .hover\:bg-slate-300:hover,
+.dark .hover\:bg-indigo-50:hover,
+.dark .hover\:bg-indigo-100:hover,
+.dark .hover\:bg-amber-50:hover,
+.dark .hover\:bg-emerald-50:hover,
+.dark .hover\:bg-rose-50:hover,
+.dark .hover\:bg-red-50:hover {
+  background-color: #334155 !important;
+}
+/* Low-opacity badges and informational panels should stay dark, never washed out. */
+.dark .bg-indigo-50\/50,
+.dark .bg-indigo-500\/10,
+.dark .bg-indigo-600\/10,
+.dark .bg-indigo-600\/20 { background-color: #282850 !important; }
+.dark .bg-amber-500\/20 { background-color: #49371d !important; }
+.dark .bg-emerald-500\/20 { background-color: #143e34 !important; }
+.dark .bg-red-500\/10,
+.dark .bg-red-500\/20,
+.dark .bg-rose-500\/10 { background-color: #49242f !important; }
+.dark .bg-blue-500\/20 { background-color: #1b3550 !important; }
+/* Every neutral text variant used by cards, tables, tabs, alerts and forms. */
+.dark .text-slate-200,
+.dark .text-slate-300,
+.dark .text-slate-400,
+.dark .text-slate-500,
+.dark .text-slate-600,
+.dark .text-gray-400,
+.dark .text-gray-500,
+.dark .text-gray-600 { color: #cbd5e1 !important; }
+.dark .text-slate-700,
+.dark .text-slate-800,
+.dark .text-slate-900,
+.dark .text-gray-700,
+.dark .text-gray-800,
+.dark .text-gray-900 { color: #f1f5f9 !important; }
+.dark .text-indigo-400,
+.dark .text-indigo-500,
+.dark .text-indigo-600,
+.dark .text-indigo-700,
+.dark .text-indigo-800,
+.dark .text-indigo-900,
+.dark .text-violet-700 { color: #c7d2fe !important; }
+.dark .text-emerald-700,
+.dark .text-emerald-800,
+.dark .text-emerald-600 { color: #a7f3d0 !important; }
+.dark .text-red-500,
+.dark .text-red-600,
+.dark .text-red-700,
+.dark .text-red-800,
+.dark .text-rose-500,
+.dark .text-rose-600,
+.dark .text-rose-700,
+.dark .text-rose-800 { color: #fecdd3 !important; }
+.dark .text-amber-500,
+.dark .text-amber-600,
+.dark .text-amber-700,
+.dark .text-amber-800,
+.dark .text-amber-900 { color: #fde68a !important; }
+.dark .text-blue-600,
+.dark .text-blue-700,
+.dark .text-blue-800 { color: #bfdbfe !important; }
+/* Focus and disabled controls remain legible. */
+.dark :is(button, input, select, textarea):disabled {
+  opacity: .75;
+}
+.dark :is(button, input, select, textarea)[aria-disabled="true"] {
+  opacity: .75;
+}
+.dark :is(button, a).text-white,
+.dark :is(button, a).text-white:hover { color: #ffffff !important; }
+.dark .hover\:text-slate-700:hover,
+.dark .hover\:text-slate-800:hover { color: #f8fafc !important; }
+.dark .hover\:text-indigo-600:hover,
+.dark .hover\:text-indigo-800:hover { color: #e0e7ff !important; }
+.dark :is(input, select, textarea) { accent-color: #818cf8; }
