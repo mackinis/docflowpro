@@ -21,7 +21,7 @@ export interface User {
   hasSensitiveEditPermissionOverride?: boolean; // Superadmin manual toggle
 }
 
-export type ParticipantType = 'Cliente' | 'Comprador' | 'Vendedor' | 'Titular' | 'Garante' | 'Apoderado' | 'Escribano';
+export type ParticipantType = 'Cliente' | 'Comprador' | 'Vendedor' | 'Locador' | 'Locatario' | 'Titular' | 'Garante' | 'Apoderado' | 'Escribano';
 
 export interface Participant {
   id: string;
