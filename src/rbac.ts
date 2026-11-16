@@ -15,7 +15,7 @@ const ASESOR_ALLOWED: Partial<Record<RbacModule, readonly RbacAction[]>> = {
   documents: ['view'],
   messages: ['view','create'],
   notifications: ['view'],
-  templates: ['view','create','edit','download'],
+
   userEmail: ['view','edit'],
   userRole: ['view'],
   userPassword: ['view','edit'],
@@ -34,7 +34,7 @@ export const RBAC_DEFAULTS: Record<Exclude<RbacRole,'SUPERADMIN'>,Partial<Record
 };
 // Non-delegable boundaries for advisers, even when an old stored override says otherwise.
 export function isForbiddenForAsesor(key: PermissionKey): boolean {
-  return key.endsWith('.manage') || key.startsWith('userSensitive.') || key.startsWith('settings.') ||
+  return key.startsWith('templates.') || key.endsWith('.manage') || key.startsWith('userSensitive.') || key.startsWith('settings.') ||
     key === 'users.create' || key === 'users.edit' || key === 'users.delete';
 }
 export function isRbacKey(key: string): key is PermissionKey {
