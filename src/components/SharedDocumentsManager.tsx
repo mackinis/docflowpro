@@ -123,7 +123,7 @@ export default function SharedDocumentsManager({ currentUser, users, onAddAudit 
       'word/document.xml': strToU8(xml),
     };
     const archive = zipSync(files);
-    saveDocumentBlob(new Blob([new Uint8Array(archive)], {type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}), 'docx');
+    saveDocumentBlob(new Blob([archive as BlobPart], {type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}), 'docx');
   };
 
   const printCompletedPdf = () => {
