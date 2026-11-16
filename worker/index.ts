@@ -1532,6 +1532,49 @@ app.get('/api/templates', async (c) => {
   return c.json(templates);
 });
 
+/**
+ * Process descriptions are authored by responsible users. Convert explicit
+ * line-by-line obligations to persisted stage requirements; never use the
+ * digitization pipeline to determine what an advisor must provide.
+ */
+function requirementsFromProcessDescription(description: string): ProcessTemplate['stages'] {
+  const lines = description.split(/\r?\n|;/).map(x => x.replace(/^\s*[-*•\d.)]+\s*/, '').trim()).filter(Boolean);
+  const requirements: ProcessTemplate['stages'][number]['requirements'] = [];
+  const actorRoles: Record<string, string> = {
+    locador: 'Locador', locatario: 'Locatario', garante: 'Garante',
+    vendedor: 'Vendedor', comprador: 'Comprador', titular: 'Titular',
+    cliente: 'Cliente', apoderado: 'Apoderado', escribano: 'Escribano'
+  };
+  const normalized = (value: string) => value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const add = (name: string, type: 'actor' | 'document' | 'task', role?: string, minimum?: number) => {
+    if (requirements.some(req => req.type === type && normalized(req.name) === normalized(name))) return;
+    requirements.push({
+      id: `req-${crypto.randomUUID()}`, name, type,
+      description: '', isRequired: true,
+      ...(role ? { actorRole: role as any, minQuantity: minimum || 1 } : {})
+    });
+  };
+  for (const line of lines) {
+    const clean = normalized(line);
+    const actor = Object.entries(actorRoles).find(([key]) => new RegExp(`\\b${key}(?:es|s)?\\b`).test(clean));
+    if (actor && !/(dni|document|copia|escritura|boleta|servicio|boleto|certificado|informe|credito|comprobante|constancia|recibo|factura)/.test(clean)) {
+      const number = clean.match(/\b(?:minimo|minima|al menos|cantidad|requiere|exigir)\s*:?\s*(\d+)\b/) || clean.match(/^\s*(\d+)\s+/);
+      const minimum = number ? Math.max(1, Number(number[1])) : /\bdos\b/.test(clean) ? 2 : /\btres\b/.test(clean) ? 3 : 1;
+      add(actor[1], 'actor', actor[1], minimum);
+      continue;
+    }
+    const stripped = line.replace(/^(documentaci[oó]n requerida|documentos requeridos|documentos|adjuntar|presentar|copia de|copia del)\s*:?\s*/i, '').trim();
+    const low = normalized(stripped);
+    if (!stripped || /^(documentacion requerida|documentos requeridos|documentos|actores|partes):?$/.test(low)) continue;
+    if (/(dni|documento de identidad|escritura|boleta|servicio|boleto|certificado|informe|credito|comprobante|constancia|recibo|factura|documentacion|contrato|titulo de propiedad)/.test(low)) {
+      add(stripped, 'document');
+    } else if (/^(tarea|verificar|comprobar|revisar|confirmar)\b/.test(low)) {
+      add(stripped, 'task');
+    }
+  }
+  return [{ id: `stage-${crypto.randomUUID()}`, name: 'Presentación y revisión de requisitos', description: 'Requisitos establecidos por el responsable del proceso', requirements }];
+}
+
 app.post('/api/templates', async (c) => {
   const auth = c.get('auth')!;
   if (!(await canUserManageTemplates(c.env.DB, auth.user.id))) {
@@ -1543,7 +1586,7 @@ app.post('/api/templates', async (c) => {
     name: body.name,
     description: body.description || '',
     industry: body.industry || 'Inmobiliaria',
-    stages: body.stages || [],
+    stages: Array.isArray(body.stages) && body.stages.length ? body.stages : requirementsFromProcessDescription(body.description || ''),
     originalDocumentContent: body.originalDocumentContent || '',
     showDocumentToAll: body.showDocumentToAll !== undefined ? body.showDocumentToAll : true,
     sharedViewMode: body.sharedViewMode || 'both',
