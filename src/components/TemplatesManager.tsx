@@ -1069,6 +1069,13 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                             >
                               + Tarea
                             </button>
+                            <button
+                              type="button"
+                              onClick={() => handleAddRequirement(sIdx, 'actor')}
+                              className="px-2 py-1 bg-white hover:bg-violet-50 text-violet-700 border border-slate-200 rounded text-[9px] font-bold cursor-pointer transition-colors"
+                            >
+                              + Actor
+                            </button>
                           </div>
                         </div>
 
