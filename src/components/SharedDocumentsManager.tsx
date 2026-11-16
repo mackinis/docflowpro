@@ -30,6 +30,16 @@ interface SharedDocumentsProps {
 }
 
 export default function SharedDocumentsManager({ currentUser, users, onAddAudit }: SharedDocumentsProps) {
+  const [documentActions, setDocumentActions] = useState({ view: false, download: false, edit: false, create: false, delete: false });
+  useEffect(() => {
+    let active = true;
+    setDocumentActions({ view: false, download: false, edit: false, create: false, delete: false });
+    fetch('/api/permissions/me', { credentials: 'include' })
+      .then(res => { if (!res.ok) throw new Error('Permisos no disponibles'); return res.json(); })
+      .then(data => { if (active) setDocumentActions(data.documents); })
+      .catch(() => { /* Fail closed until permissions can be verified. */ });
+    return () => { active = false; };
+  }, [currentUser.id, currentUser.role]);
   const [documents, setDocuments] = useState<SharedDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -68,6 +78,7 @@ export default function SharedDocumentsManager({ currentUser, users, onAddAudit 
   const [savingEdit, setSavingEdit] = useState(false);
 
   const handleOpenDocEditor = async (doc: SharedDocument) => {
+    if (!documentActions.edit) return;
     setEditingDoc(doc);
     setEditNameField(doc.name);
     setEditContentField('');
@@ -324,6 +335,7 @@ export default function SharedDocumentsManager({ currentUser, users, onAddAudit 
 
   // Handle real R2 file download
   const handleDownload = async (doc: SharedDocument) => {
+    if (!documentActions.download) return;
     try {
       const downloadEndpoint = doc.downloadUrl || `/api/shared-documents/${doc.id}/download`;
       const res = await fetch(downloadEndpoint, { credentials: 'include' });
@@ -772,23 +784,23 @@ export default function SharedDocumentsManager({ currentUser, users, onAddAudit 
 
                       {/* Document Quick Actions Bar */}
                       <div className="flex items-center gap-1.5 self-end sm:self-center">
-                        <button
+                        {documentActions.download && <button
                           onClick={() => handleDownload(doc)}
                           className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg transition-all border border-indigo-100"
                           title="Descargar archivo"
                         >
                           <Download className="w-3.5 h-3.5" />
                           <span>Descargar</span>
-                        </button>
+                        </button>}
 
-                        <button
+                        {documentActions.edit && <button
                           onClick={() => handleOpenDocEditor(doc)}
                           className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-all border border-slate-200"
                           title={isDigital ? "Editar contenido y nombre del documento" : "Editar nombre del documento"}
                         >
                           <Edit className="w-3.5 h-3.5" />
                           <span>Editar</span>
-                        </button>
+                        </button>}
 
                         {currentUser.role === 'SUPERADMIN' && (
                           <>
