@@ -147,10 +147,10 @@ export default function DashboardAdvisor({
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-red-500" />
+              <AlertTriangle className="w-5 h-5 text-orange-500" />
               <h3 className="text-sm font-bold text-slate-800">Documentos Observados a Resolver</h3>
             </div>
-            <span className="bg-red-50 text-red-700 text-xs px-2.5 py-0.5 rounded-full font-bold">
+            <span className="bg-orange-500/15 text-orange-400 text-xs px-2.5 py-0.5 rounded-full font-bold">
               Bloqueados
             </span>
           </div>
