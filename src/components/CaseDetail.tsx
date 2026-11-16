@@ -1336,13 +1336,6 @@ export default function CaseDetail({
                               </div>
                               <p className="text-[11px] text-slate-400 leading-normal">{req.description}</p>
                               
-                              {/* Extra information for special document types */}
-                              {isDigitalContract && (
-                                <div className="mt-1.5 flex items-center gap-1.5 text-[10px] text-indigo-600 font-semibold bg-indigo-50/50 px-2 py-1 rounded border border-indigo-100 w-fit">
-                                  <Sparkles className="w-3.5 h-3.5 animate-pulse text-indigo-500" />
-                                  <span>✍️ Contrato Digitalizado: Edítalo en la pestaña "Documento 100% Digitalizado"</span>
-                                </div>
-                              )}
                               
                               {isDownloadAsset && linkedSharedDoc && (
                                 <div className="mt-1.5 space-y-1 bg-emerald-50/50 p-2 rounded border border-emerald-100 text-left w-fit max-w-sm">
