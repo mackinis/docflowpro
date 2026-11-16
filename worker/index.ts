@@ -194,7 +194,9 @@ app.use('/api/*', async (c, next) => {
 // Permission overrides are checked for every authenticated API request, before route handlers.
 app.use('/api/*', async (c, next) => {
   const auth = c.get('auth');
-  if (!auth || auth.realUser.role === 'SUPERADMIN') return next();
+  if (!auth) return next();
+  // Impersonation is a real permission boundary: only the selected user may bypass RBAC.
+  if (auth.user.role === 'SUPERADMIN') return next();
   const path = c.req.path;
   if (path.startsWith('/api/admin/rbac')) return c.json({ error: 'Acceso RBAC reservado al Superadmin.' }, 403);
   // Audit ingestion must remain available regardless of audit-report viewing rights.
@@ -216,7 +218,7 @@ app.use('/api/*', async (c, next) => {
   const action = method === 'GET' ? (path.endsWith('/download') ? 'download' : 'view') : method === 'DELETE' ? 'delete' : method === 'POST' && (/\/api\/(?:users|cases|documents|shared-documents|templates)$/.test(path)) ? 'create' : 'edit';
   const { hasRbacPermission } = await import('../src/rbac');
   const matrix = await getSystemConfigValue(c.env.DB, 'rbacMatrix', { roles: {}, users: {} });
-  if (!hasRbacPermission(matrix, auth.realUser.role, auth.realUser.id, `${matched[1]}.${action}` as any)) {
+  if (!hasRbacPermission(matrix, auth.user.role, auth.user.id, `${matched[1]}.${action}` as any)) {
     return c.json({ error: 'Acción denegada por la política RBAC.' }, 403);
   }
   return next();
@@ -229,7 +231,7 @@ app.get('/api/permissions/me', async (c) => {
   const { hasRbacPermission } = await import('../src/rbac');
   const matrix = await getSystemConfigValue(c.env.DB, 'rbacMatrix', { roles: {}, users: {} });
   const can = (action: 'view' | 'download' | 'edit' | 'create' | 'delete') =>
-    hasRbacPermission(matrix, auth.realUser.role, auth.realUser.id, `documents.${action}`);
+    hasRbacPermission(matrix, auth.user.role, auth.user.id, `documents.${action}`);
   return c.json({ documents: { view: can('view'), download: can('download'), edit: can('edit'), create: can('create'), delete: can('delete') } });
 });
 
