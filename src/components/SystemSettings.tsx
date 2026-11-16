@@ -17,6 +17,12 @@ import {
 } from 'lucide-react';
 import { User, AppDataState } from '../types';
 
+function SettingsSwitch({ checked, disabled, onClick, label }: { checked: boolean; disabled?: boolean; onClick: () => void; label: string }) {
+  return <button type="button" role="switch" aria-checked={checked} aria-label={label} disabled={disabled} onClick={onClick}
+    className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 disabled:opacity-40 ${checked ? 'bg-indigo-600' : 'bg-slate-500/50'}`}>
+    <span aria-hidden="true" className={`h-5 w-5 rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-6' : 'translate-x-1'}`} />
+  </button>;
+}
 interface SystemSettingsProps {
   currentUser: User;
   state: AppDataState;
@@ -312,7 +318,7 @@ export default function SystemSettings({
   };
 
   return (
-    <div className="space-y-6 animate-fade-in" id="system-settings-panel">
+    <div className="w-full max-w-none space-y-6 animate-fade-in" id="system-settings-panel">
       {/* Title block */}
       <div className="border-b border-slate-200 pb-5">
         <h1 className="font-display font-bold text-2xl text-slate-800 tracking-tight flex items-center gap-2.5">
@@ -354,7 +360,7 @@ export default function SystemSettings({
         ))}
       </nav>
       {settingsTab === 'ia' && <AiAgentSettings currentUser={currentUser} />}
-      <div className="settings-tab-cards grid grid-cols-1 xl:grid-cols-2 gap-6" data-settings-section={settingsTab}>
+      <div className="settings-tab-cards grid grid-cols-1 lg:grid-cols-2 gap-5" data-settings-section={settingsTab}>
         
         {/* Card 1: Verification Policies (MFA) */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 flex flex-col justify-between" id="card-mfa-policies">
@@ -492,18 +498,9 @@ export default function SystemSettings({
                       <span className="text-xs font-bold text-slate-700 uppercase tracking-wider font-mono">
                         {roleLabels[role] || role}
                       </span>
-                      <button
-                        type="button"
-                        disabled={loading || !isSuperAdmin}
+                      <SettingsSwitch checked={config.allowed} disabled={loading || !isSuperAdmin}
                         onClick={() => handleUpdateRoleConfig(role, 'allowed', !config.allowed)}
-                        className={`px-2 py-0.5 text-[9px] font-extrabold uppercase rounded-full border transition-all cursor-pointer ${
-                          config.allowed
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                            : 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
-                        } disabled:cursor-not-allowed`}
-                      >
-                        {config.allowed ? 'Habilitado' : 'Deshabilitado'}
-                      </button>
+                        label={`Habilitar mensajería para ${roleLabels[role] || role}`} />
                     </div>
 
                     <div className="space-y-1.5">

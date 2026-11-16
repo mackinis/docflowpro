@@ -59,7 +59,8 @@ export default function App() {
     try {
       setError(null);
       const bootstrapRes = await fetch('/api/auth/bootstrap-status', {
-        credentials: 'include'
+        credentials: 'include',
+        signal: AbortSignal.timeout(15000)
       });
       if (!bootstrapRes.ok) {
         throw new Error('No se pudo conectar con el servidor Cloudflare Worker.');
@@ -79,7 +80,8 @@ export default function App() {
       }
 
       const response = await fetch('/api/state', {
-        credentials: 'include'
+        credentials: 'include',
+        signal: AbortSignal.timeout(15000)
       });
       if (response.status === 401) {
         sessionStorage.removeItem('docflow_user');
@@ -103,7 +105,7 @@ export default function App() {
       sessionStorage.setItem('docflow_real_user', JSON.stringify(sessionRealUser));
     } catch (err: any) {
       console.error(err);
-      setError(err.message || 'Error de conexión con el servidor Cloudflare Worker.');
+      setError(err?.name === 'TimeoutError' ? 'El servidor tardó demasiado en responder. Intente nuevamente.' : (err.message || 'Error de conexión con el servidor Cloudflare Worker.'));
     } finally {
       setLoading(false);
     }
@@ -454,10 +456,10 @@ export default function App() {
           <AlertCircle className="w-14 h-14 text-red-500 mx-auto" />
           <h2 className="text-xl font-bold text-slate-800">Error de Conexión</h2>
           <p className="text-sm text-slate-500">
-            No se pudo conectar con el servidor Cloudflare Worker de la plataforma. Asegúrese de que el servicio esté activo.
+            {error || 'No se pudo recuperar la información inicial. Compruebe la conexión e intente nuevamente.'}
           </p>
           <button 
-            onClick={() => loadState()} 
+            onClick={() => { setLoading(true); void loadState(); }} 
             className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-xs"
           >
             Reintentar Conexión
