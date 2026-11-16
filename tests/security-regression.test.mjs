@@ -16,7 +16,8 @@ test('AI model configuration requires server-side authorization', () => {
 });
 
 test('legacy AI endpoints remain protected by RBAC', () => {
-  assert.match(worker, /app\.use\(\['\/api\/ai\/\*', '\/api\/gemini\/\*'\]/);
+  assert.match(worker, /app\.use\('\/api\/ai\/\*', enforceAiRbac\)/);
+  assert.match(worker, /app\.use\('\/api\/gemini\/\*', enforceAiRbac\)/);
   assert.match(worker, /settings\.aiAllowedRoles/);
   assert.match(worker, /Configure Agente IA desde su sección específica/);
 });
