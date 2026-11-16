@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   FileText, 
   CheckCircle, 
@@ -61,8 +61,66 @@ export default function DashboardAdvisor({
     setResponseComment('');
   };
 
+  const [personalStats, setPersonalStats] = useState<{total:number; completed:number; observed:number; pendingReview:number} | null>(null);
+  const [activity, setActivity] = useState<Array<{id:string; caseId:string; userName:string; action:string; createdAt:string}>>([]);
+  const [historyError, setHistoryError] = useState('');
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const loadHistory = async () => {
+    setHistoryLoading(true); setHistoryError('');
+    try {
+      const [statsResponse, activityResponse] = await Promise.all([
+        fetch('/api/cases/advisor-statistics', { credentials: 'include' }),
+        fetch('/api/cases/my-activity', { credentials: 'include' })
+      ]);
+      if (!statsResponse.ok || !activityResponse.ok) throw new Error('No se pudo consultar el historial personal.');
+      setPersonalStats(await statsResponse.json());
+      setActivity(await activityResponse.json());
+    } catch (err: any) { setHistoryError(err.message || 'Error al consultar historial.'); }
+    finally { setHistoryLoading(false); }
+  };
+  useEffect(() => { if (historyOpen) void loadHistory(); }, [historyOpen, currentUser.id]);
+
   return (
     <div className="space-y-6">
+      <section className="rounded-2xl border border-slate-700/40 bg-slate-800/50 p-5 space-y-4">
+        <div className="flex flex-wrap justify-between items-center gap-3">
+          <div>
+            <h3 className="text-base font-bold text-white flex items-center gap-2"><Activity className="w-5 h-5 text-indigo-400" /> Mi Historial y Desempeño</h3>
+            <p className="text-xs text-slate-400 mt-1">Actividad real de tus legajos e indicadores descriptivos.</p>
+          </div>
+          <button type="button" onClick={() => setHistoryOpen(!historyOpen)}
+            className="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white">
+            {historyOpen ? 'Ocultar' : 'Ver mi historial'}
+          </button>
+        </div>
+        {historyOpen && <>
+          {historyError && <p role="alert" className="text-xs text-rose-400">{historyError}</p>}
+          {historyLoading && <p className="text-xs text-slate-300">Consultando historial…</p>}
+          {personalStats && <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {([{label:'Total',value:personalStats.total},{label:'Finalizados',value:personalStats.completed},
+              {label:'Observados',value:personalStats.observed},{label:'En revisión',value:personalStats.pendingReview}] as const).map(item =>
+              <div key={item.label} className="rounded-lg bg-slate-900/40 border border-slate-600/40 p-3">
+                <p className="text-xl font-bold text-white">{item.value}</p><p className="text-xs text-slate-300">{item.label}</p>
+              </div>)}
+          </div>}
+          <div className="flex justify-between items-center">
+            <h4 className="text-sm font-semibold text-slate-200">Últimas intervenciones</h4>
+            <button type="button" onClick={() => void loadHistory()} className="text-xs text-indigo-300 underline">Actualizar</button>
+          </div>
+          {!historyLoading && !historyError && activity.length === 0 && <p className="text-xs text-slate-400">Todavía no hay intervenciones registradas.</p>}
+          <ol className="max-h-80 overflow-y-auto space-y-2">
+            {activity.map(item => <li key={item.id} className="flex justify-between gap-3 rounded-lg border border-slate-700 p-3">
+              <div>
+                <p className="text-xs text-slate-200 font-semibold">{item.action}</p>
+                <p className="text-[11px] text-slate-400">{item.userName} · {new Date(item.createdAt).toLocaleString('es-AR')}</p>
+              </div>
+              {item.caseId && <button type="button" onClick={() => onOpenCase(item.caseId)} className="text-xs text-indigo-300 hover:underline">Abrir legajo</button>}
+            </li>)}
+          </ol>
+        </>}
+      </section>
+
       {/* Upper header */}
       <div className="flex items-center justify-between">
         <div>
