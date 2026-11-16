@@ -2238,8 +2238,7 @@ export default function CaseDetail({
               </div>
 
               <div className="prose prose-sm text-xs text-slate-700 max-w-none">
-                {auditResult.analysis?.split('
-').map((line: string, idx: number) => {
+                {auditResult.analysis?.split('\n').map((line: string, idx: number) => {
                   if (line.startsWith('###')) {
                     return <h4 key={idx} className="font-bold text-slate-800 text-xs pt-1.5 mb-1.5">{line.replace('###', '').trim()}</h4>;
                   }
