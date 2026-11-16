@@ -2104,6 +2104,16 @@ function CaseHistoryPanel({ caseId, createdAt, status }: { caseId: string; creat
         <div className="flex justify-end"><button type="button" onClick={() => void reload()} disabled={loading} className="text-xs font-semibold text-indigo-600 disabled:opacity-50">Actualizar eventos</button></div>
         {historySummary && <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-3 space-y-3">
           <p className="text-xs font-bold text-indigo-900">Resumen de intervenciones · {historySummary.eventCount} eventos registrados</p>
+          {Array.isArray(historySummary.stageDurations) && historySummary.stageDurations.length > 0 && <div className="rounded-lg border border-indigo-100 bg-white p-3">
+            <p className="text-xs font-bold text-indigo-900 mb-2">Tiempos por etapa</p>
+            <div className="space-y-2">
+              {historySummary.stageDurations.map((stage: { stage: string; startedAt: string; endedAt: string; durationMs: number; ongoing: boolean }, index: number) => <div key={index} className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-700">
+                <span className="font-medium">{stage.stage}{stage.ongoing ? ' (en curso)' : ''}</span>
+                <span>{Math.floor(stage.durationMs / 86400000)} d · {Math.floor((stage.durationMs % 86400000) / 3600000)} h · {Math.floor((stage.durationMs % 3600000) / 60000)} min</span>
+              </div>)}
+            </div>
+            <p className="mt-2 text-[11px] text-slate-500">Tiempos transcurridos entre eventos registrados; no equivalen al tiempo de trabajo efectivo de cada persona.</p>
+          </div>}
           <p className="text-xs text-slate-700">Duración: {Math.floor(historySummary.durationMs / 86400000)} días, {Math.floor((historySummary.durationMs % 86400000) / 3600000)} horas · {historySummary.durationIsFinal ? 'Finalizado el ' + new Date(historySummary.completedAt).toLocaleString('es-AR') : 'Legajo en curso (duración provisional)'}</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {(historySummary.contributors || []).map((person: any) => <div key={person.userId || person.userName} className="rounded-lg bg-white border border-indigo-100 p-2">
