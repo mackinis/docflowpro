@@ -100,8 +100,7 @@ export default function CasesList({
   }, [showCreateModal, templates, systemSettings]);
   
   // Participant/Actor quantities and type states
-  const [expectedVendedores, setExpectedVendedores] = useState(0);
-  const [expectedCompradores, setExpectedCompradores] = useState(0);
+  const [expectedActores, setExpectedActores] = useState(0);
   const [expectedGarantes, setExpectedGarantes] = useState(0);
   const [escribanoADesignar, setEscribanoADesignar] = useState(true);
 
@@ -142,8 +141,6 @@ export default function CasesList({
     }
 
     // Actores mínimos requeridos
-    const vendedoresActuales = participants.filter(p => p.role === 'Vendedor').length;
-    const compradoresActuales = participants.filter(p => p.role === 'Comprador').length;
     const garantesActuales = participants.filter(p => p.role === 'Garante').length;
     const escribanosActuales = participants.filter(p => p.role === 'Escribano').length;
 
@@ -151,11 +148,9 @@ export default function CasesList({
       errors.push('Falta agregar actores. El legajo no puede crearse con 0 actores (se requiere al menos 1).');
     }
 
-    if (vendedoresActuales < expectedVendedores) {
-      errors.push(`Falta(n) ${expectedVendedores - vendedoresActuales} Vendedor(es) (Cargados: ${vendedoresActuales} de ${expectedVendedores}).`);
-    }
-    if (compradoresActuales < expectedCompradores) {
-      errors.push(`Falta(n) ${expectedCompradores - compradoresActuales} Comprador(es) (Cargados: ${compradoresActuales} de ${expectedCompradores}).`);
+    const actoresActuales = participants.filter(p => p.role !== 'Garante' && p.role !== 'Escribano').length;
+    if (actoresActuales < expectedActores) {
+      errors.push(`Faltan ${expectedActores - actoresActuales} actores (cargados: ${actoresActuales} de ${expectedActores}).`);
     }
     if (garantesActuales < expectedGarantes) {
       errors.push(`Falta(n) ${expectedGarantes - garantesActuales} Garante(s) (Cargados: ${garantesActuales} de ${expectedGarantes}).`);
@@ -295,8 +290,7 @@ export default function CasesList({
     setNewTitle('');
     setNewDescription('');
     setParticipants([]);
-    setExpectedVendedores(0);
-    setExpectedCompradores(0);
+    setExpectedActores(0);
     setExpectedGarantes(0);
     setEscribanoADesignar(true);
     setCustomDocumentContent('');
@@ -741,53 +735,28 @@ export default function CasesList({
                   Indica la cantidad mínima esperada para cada rol. El sistema validará que los cargues antes de crear el legajo.
                 </p>
                 
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-150 grid grid-cols-1 sm:grid-cols-4 gap-4">
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-150 grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Vendedores</label>
-                    <input
-                      type="number"
-                      min={0}
-                      value={expectedVendedores}
-                      onChange={(e) => setExpectedVendedores(Math.max(0, parseInt(e.target.value) || 0))}
-                      className="w-full text-xs p-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Compradores</label>
-                    <input
-                      type="number"
-                      min={0}
-                      value={expectedCompradores}
-                      onChange={(e) => setExpectedCompradores(Math.max(0, parseInt(e.target.value) || 0))}
-                      className="w-full text-xs p-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold"
-                    />
+                    <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Actores requeridos</label>
+                    <input type="number" min={0} inputMode="numeric" value={expectedActores}
+                      onChange={(e) => setExpectedActores(Math.max(0, parseInt(e.target.value) || 0))}
+                      className="w-full text-xs p-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" />
+                    <p className="text-[10px] text-slate-500">Vendedor, comprador, locador, locatario u otros actores, excepto garantes y escribano.</p>
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Garantes</label>
-                    <input
-                      type="number"
-                      min={0}
-                      value={expectedGarantes}
+                    <input type="number" min={0} inputMode="numeric" value={expectedGarantes}
                       onChange={(e) => setExpectedGarantes(Math.max(0, parseInt(e.target.value) || 0))}
-                      className="w-full text-xs p-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold"
-                    />
+                      className="w-full text-xs p-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" />
                   </div>
-                  <div className="flex flex-col justify-center space-y-1 pt-2 sm:pt-0 sm:pl-2">
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        id="escribano-a-designar"
-                        checked={escribanoADesignar}
-                        onChange={(e) => setEscribanoADesignar(e.target.checked)}
-                        className="w-4 h-4 text-indigo-600 focus:ring-indigo-500 border-slate-300 rounded cursor-pointer"
-                      />
-                      <label htmlFor="escribano-a-designar" className="text-xs font-semibold text-slate-700 cursor-pointer select-none">
-                        Escribano a designar
-                      </label>
-                    </div>
-                    <p className="text-[10px] text-slate-400">
-                      {escribanoADesignar ? 'Queda pendiente de designación.' : 'Debe cargar 1 Escribano.'}
-                    </p>
+                  <div className="flex flex-col justify-center gap-2">
+                    <label className="text-xs font-semibold text-slate-700">Escribano a designar</label>
+                    <button type="button" role="switch" aria-checked={escribanoADesignar}
+                      onClick={() => setEscribanoADesignar(v => !v)}
+                      className={`relative h-7 w-12 rounded-full border transition-colors ${escribanoADesignar ? 'bg-indigo-600 border-indigo-500' : 'bg-slate-400 border-slate-500'}`}>
+                      <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${escribanoADesignar ? 'left-6' : 'left-1'}`} />
+                    </button>
+                    <p className="text-[10px] text-slate-500">{escribanoADesignar ? 'Queda pendiente de designación.' : 'Debe cargar 1 Escribano.'}</p>
                   </div>
                 </div>
               </div>
@@ -802,7 +771,7 @@ export default function CasesList({
                   
                   {/* Status Indicator bubble */}
                   <div className="text-[10px] px-2 py-1 bg-indigo-50 text-indigo-700 rounded-lg font-semibold border border-indigo-100">
-                    Mínimo Requerido: {expectedVendedores + expectedCompradores + expectedGarantes + (escribanoADesignar ? 0 : 1)} | Cargados: {participants.length}
+                    Mínimo Requerido: {expectedActores + expectedGarantes + (escribanoADesignar ? 0 : 1)} | Cargados: {participants.length}
                   </div>
                 </div>
 
@@ -817,6 +786,8 @@ export default function CasesList({
                     >
                       <option value="Vendedor">Vendedor</option>
                       <option value="Comprador">Comprador</option>
+                      <option value="Locador">Locador</option>
+                      <option value="Locatario">Locatario</option>
                       <option value="Garante">Garante</option>
                       <option value="Escribano">Escribano</option>
                       <option value="Cliente">Cliente</option>
