@@ -735,105 +735,60 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                       </div>
                     </div>
                   ) : (
-                    // Display ONLY the stages flow
-                    <div className="flex flex-col gap-5">
-                      <div className="flex items-center justify-between pb-4 border-b border-slate-200">
-                        <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                          <FolderKanban className="w-4 h-4 text-indigo-500" />
-                          Etapas del Proceso ({tpl.stages.length})
-                        </h4>
-                        <span className="text-[10px] text-slate-400 font-mono">
-                          FLUJO DE SEGUIMIENTO OPERATIVO
-                        </span>
-                      </div>
-
-                      {tpl.stages.length === 0 ? (
-                        <div className="text-center py-8 bg-white border border-dashed border-slate-200 rounded-xl">
-                          <Layers className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                          <p className="text-xs font-bold text-slate-600">Este proceso aún no tiene etapas configuradas.</p>
-                          <p className="text-[10px] text-slate-400 mt-1">Haz clic en "Configurar Etapas" arriba para diseñarlas paso a paso.</p>
+                    <div className="space-y-6">
+                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4">
+                        <div>
+                          <h4 className="text-base font-bold text-slate-900">Requisitos del proceso</h4>
+                          <p className="text-sm text-slate-600 mt-1">Consultá todos los actores y documentos, sin listas recortadas.</p>
                         </div>
-                      ) : (
-                        tpl.stages.map((stg, sIdx) => (
-                          <div key={stg.id} className="bg-white rounded-xl border border-slate-150 p-4.5 space-y-3.5 shadow-xs relative">
-                            {/* Stage title */}
-                            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                              <div className="flex items-center gap-2">
-                                <span className="w-5 h-5 rounded-full bg-slate-900 text-white font-mono font-bold text-[10px] flex items-center justify-center">
-                                  {sIdx + 1}
-                                </span>
-                                <h4 className="text-xs font-bold text-slate-800">{stg.name}</h4>
-                              </div>
-                              <p className="text-[10px] text-slate-400 font-mono uppercase tracking-wider font-semibold">Etapa del Trámite</p>
-                            </div>
-
-                            <p className="text-xs text-slate-500 leading-relaxed">{stg.description}</p>
-
-                            {/* Requirements List */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-1.5">
-                              {/* Documents list */}
-                              <div className="space-y-2">
-                                <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider font-mono flex items-center gap-1">
-                                  <FileText className="w-3.5 h-3.5 text-indigo-500" />
-                                  Documentos Exigidos
-                                </p>
-                                <div className="space-y-1.5 max-h-32 overflow-y-auto">
-                                  {stg.requirements.filter(r => r.type === 'document').length === 0 ? (
-                                    <p className="text-[10px] text-slate-400 italic">No exige documentos.</p>
-                                  ) : (
-                                    stg.requirements.filter(r => r.type === 'document').map(req => (
-                                      <div key={req.id} className="p-2 bg-slate-50 rounded border border-slate-150 text-[10px]">
-                                        <span className="font-bold text-slate-700">{req.name}</span>
-                                        <span className="text-[9px] bg-indigo-50 text-indigo-700 px-1.5 ml-2 rounded font-bold uppercase">{req.isRequired ? 'Obligatorio' : 'Opcional'}</span>
-                                      </div>
-                                    ))
-                                  )}
-                                </div>
-                              </div>
-
-                              {/* Forms list */}
-                              {stg.requirements.some(r => r.type === 'form') && <div className="space-y-2">
-                                <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider font-mono flex items-center gap-1">
-                                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-500" />
-                                  Formularios de Registro
-                                </p>
-                                <div className="space-y-1.5 max-h-32 overflow-y-auto">
-                                  {stg.requirements.filter(r => r.type === 'form').length === 0 ? (
-                                    <p className="text-[10px] text-slate-400 italic">No exige formularios.</p>
-                                  ) : (
-                                    stg.requirements.filter(r => r.type === 'form').map(req => (
-                                      <div key={req.id} className="p-2 bg-slate-50 rounded border border-slate-150 text-[10px] space-y-1">
-                                        <span className="font-bold text-slate-700">{req.name}</span>
-                                        <div className="text-[9px] text-slate-400">
-                                          Campos: {req.formFields?.map(f => f.label).join(', ')}
-                                        </div>
-                                      </div>
-                                    ))
-                                  )}
-                                </div>
-                              </div>}
-                              {/* Tasks list */}
-                              {stg.requirements.some(r => r.type === 'task') && <div className="space-y-2">
-                                <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wider font-mono flex items-center gap-1">
-                                  <CheckSquare className="w-3.5 h-3.5 text-amber-500" />
-                                  Checklist Operativo
-                                </p>
-                                <div className="space-y-1.5 max-h-32 overflow-y-auto">
-                                  {stg.requirements.filter(r => r.type === 'task').length === 0 ? (
-                                    <p className="text-[10px] text-slate-400 italic">No exige tareas.</p>
-                                  ) : (
-                                    stg.requirements.filter(r => r.type === 'task').map(req => (
-                                      <div key={req.id} className="p-2 bg-slate-50 rounded border border-slate-150 text-[10px]">
-                                        <span className="font-bold text-slate-700">{req.name}</span>
-                                      </div>
-                                    ))
-                                  )}
-                                </div>
-                              </div>}
+                        <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-700">{tpl.stages.length} {tpl.stages.length === 1 ? 'etapa' : 'etapas'}</span>
+                      </div>
+                      {tpl.stages.length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
+                          <p className="font-semibold text-slate-800">Todavía no hay requisitos configurados.</p>
+                          <p className="mt-2 text-sm text-slate-600">Utilizá «Configurar requisitos» para agregarlos.</p>
+                        </div>
+                      ) : tpl.stages.map((stg, sIdx) => (
+                        <section key={stg.id} className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4 md:p-6 space-y-5">
+                          <div className="flex items-start gap-3 border-b border-slate-200 pb-4">
+                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-600 text-sm font-bold text-white">{sIdx + 1}</span>
+                            <div>
+                              <h5 className="text-base font-bold text-slate-900">{stg.name}</h5>
+                              {stg.description && <p className="mt-1 text-sm leading-relaxed text-slate-600">{stg.description}</p>}
                             </div>
                           </div>
-                        ))
-                      )}
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                            {([
+                              {type: 'actor', label: 'Actores requeridos', icon: 'actor'},
+                              {type: 'document', label: 'Documentación solicitada', icon: 'document'},
+                              {type: 'form', label: 'Formularios de registro', icon: 'form'},
+                              {type: 'task', label: 'Tareas del proceso', icon: 'task'}
+                            ] as const).filter(group => stg.requirements.some(req => req.type === group.type)).map(group => (
+                              <div key={group.type} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                                <h6 className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-900">
+                                  {group.type === 'actor' ? <Users className="h-4 w-4 text-indigo-500" /> : group.type === 'document' ? <FileText className="h-4 w-4 text-indigo-500" /> : group.type === 'form' ? <FileSpreadsheet className="h-4 w-4 text-indigo-500" /> : <CheckSquare className="h-4 w-4 text-indigo-500" />}
+                                  {group.label}
+                                </h6>
+                                <div className="space-y-2">
+                                  {stg.requirements.filter(req => req.type === group.type).map(req => (
+                                    <div key={req.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+                                      <div className="min-w-0 flex-1">
+                                        <p className="break-words text-sm font-semibold text-slate-900">{req.name}</p>
+                                        {req.type === 'actor' && <p className="mt-1 text-xs text-slate-600">Cantidad mínima: {req.minQuantity || 1}</p>}
+                                        {req.type === 'form' && !!req.formFields?.length && <p className="mt-1 text-xs text-slate-600">Campos: {req.formFields.map(f => f.label).join(', ')}</p>}
+                                      </div>
+                                      <span className={req.isRequired ? 'shrink-0 rounded-md bg-indigo-100 px-2.5 py-1 text-xs font-bold text-indigo-800' : 'shrink-0 rounded-md bg-slate-200 px-2.5 py-1 text-xs font-bold text-slate-700'}>
+                                        {req.isRequired ? 'Obligatorio' : 'Opcional'}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          {stg.requirements.length === 0 && <p className="text-sm text-slate-600">Esta etapa no tiene requisitos asignados.</p>}
+                        </section>
+                      ))}
                     </div>
                   )}
                     </div>
