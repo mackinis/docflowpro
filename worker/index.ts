@@ -306,6 +306,7 @@ app.get('/api/auth/bootstrap-status', async (c) => {
   const auth = c.get('auth');
   return c.json({
     needsSetup: (superadminCount?.count ?? 0) === 0,
+    publicRegistrationEnabled: await getSystemConfigValue<boolean>(c.env.DB, 'publicRegistrationEnabled', true),
     turnstileSiteKey: c.env.TURNSTILE_SITE_KEY || '',
     turnstileEnabled: Boolean(c.env.TURNSTILE_SECRET_KEY && c.env.TURNSTILE_SITE_KEY),
     user: auth ? auth.user : null,
