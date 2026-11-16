@@ -1712,9 +1712,24 @@ app.get('/api/cases/advisor-statistics', async (c) => {
      FROM cases WHERE assigned_advisor_id = ? GROUP BY assigned_advisor_id`
   ).bind(requestedAdvisor).first<any>();
   const summary = rows || { advisorId: requestedAdvisor, total: 0, completed: 0, observed: 0, pendingReview: 0, active: 0, pendingAssignment: 0, averageCompletedHours: null, firstCompletedCaseCreatedAt: null, lastCompletedCaseUpdatedAt: null };
+  const completionEvents = await c.env.DB.prepare(
+    `SELECT cs.id AS caseId, cs.created_at AS createdAt, MIN(a.created_at) AS completedAt
+     FROM cases cs JOIN audit_logs a ON a.entity_type = 'Case'
+       AND a.entity_id = cs.id AND a.action = 'Finalizó legajo'
+     WHERE cs.assigned_advisor_id = ? AND cs.status = 'completed'
+     GROUP BY cs.id, cs.created_at`
+  ).bind(requestedAdvisor).all<any>();
+  const durations = (completionEvents.results || [])
+    .map((row: any) => (Date.parse(row.completedAt) - Date.parse(row.createdAt)) / 3600000)
+    .filter((hours: number) => Number.isFinite(hours) && hours >= 0);
+  const averageCompletedHours = durations.length
+    ? Math.round(durations.reduce((sum: number, hours: number) => sum + hours, 0) / durations.length * 10) / 10
+    : null;
   return c.json({
     ...summary,
-    note: 'Indicadores descriptivos por estado actual. La duración estimada usa created_at y updated_at, no un evento de finalización inmutable. No constituye calificación de desempeño ni mide responsabilidad individual.'
+    averageCompletedHours,
+    completedCasesWithAudit: durations.length,
+    note: 'Tiempo desde la creación hasta el primer evento auditado de finalización. Solo incluye legajos con evento registrado; no mide responsabilidad individual ni constituye calificación de desempeño.'
   });
 });
 
