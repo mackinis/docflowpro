@@ -488,6 +488,11 @@ app.post('/api/auth/register', async (c) => {
   const { name, lastName, email, phone, address, city, province, country, password, turnstileToken } =
     body;
 
+  const registrationEnabled = await getSystemConfigValue<boolean>(c.env.DB, 'publicRegistrationEnabled', true);
+  if (!registrationEnabled) {
+    return c.json({ error: 'El registro público está deshabilitado. Solicite su cuenta a un administrador.' }, 403);
+  }
+
   const tsCheck = await verifyTurnstileToken(c.env, turnstileToken, getClientIp(c.req.raw));
   if (!tsCheck.success) {
     return c.json({ error: tsCheck.error }, 403);
@@ -729,6 +734,24 @@ app.get('/api/users', async (c) => {
     .map((r) => mapUserRow(r, false))
     .filter((u) => isSuper || u.role !== 'SUPERADMIN');
   return c.json(users);
+});
+
+// Public registration policy: only the actual Superadmin may change it.
+app.get('/api/admin/registration-policy', async (c) => {
+  const auth = c.get('auth')!;
+  if (auth.realUser.role !== 'SUPERADMIN') return c.json({ error: 'Acceso denegado.' }, 403);
+  const enabled = await getSystemConfigValue<boolean>(c.env.DB, 'publicRegistrationEnabled', true);
+  return c.json({ enabled });
+});
+
+app.put('/api/admin/registration-policy', async (c) => {
+  const auth = c.get('auth')!;
+  if (auth.realUser.role !== 'SUPERADMIN') return c.json({ error: 'Acceso denegado.' }, 403);
+  const body = await c.req.json<{ enabled?: unknown }>();
+  if (typeof body.enabled !== 'boolean') return c.json({ error: 'Valor inválido.' }, 400);
+  await setSystemConfigValue(c.env.DB, 'publicRegistrationEnabled', body.enabled);
+  await createAudit(c.env.DB, auth.realUser.id, body.enabled ? 'Habilitó registro público' : 'Deshabilitó registro público', 'Security', 'publicRegistrationEnabled', 'Registro de usuarios');
+  return c.json({ enabled: body.enabled });
 });
 
 app.put('/api/users/:id', async (c) => {
