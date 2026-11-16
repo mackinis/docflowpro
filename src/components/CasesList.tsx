@@ -140,6 +140,15 @@ export default function CasesList({
       errors.push('Falta seleccionar una Tipo de proceso.');
     }
 
+    // Reglas de actores del proceso, definidas por los responsables.
+    const selectedProcess = templates.find(t => t.id === newTemplateId);
+    const actorRules = selectedProcess?.stages.flatMap(st => st.requirements).filter(req => req.type === 'actor' && req.isRequired) || [];
+    for (const rule of actorRules) {
+      const count = participants.filter(p => p.role === rule.actorRole && p.name.trim() && p.lastName.trim() && p.dni.trim()).length;
+      const minimum = Math.max(1, Number(rule.minQuantity) || 1);
+      if (count < minimum) errors.push(`Faltan ${minimum - count} ${rule.actorRole || rule.name} (mínimo ${minimum}).`);
+    }
+
     // Actores mínimos requeridos
     const garantesActuales = participants.filter(p => p.role === 'Garante').length;
     const escribanosActuales = participants.filter(p => p.role === 'Escribano').length;
