@@ -214,7 +214,7 @@ export default function CaseDetail({
     currentStage.requirements.forEach(req => {
       // El documento digitalizado es material de referencia, no un requisito documental automático.
       if (req.type === 'document' && req.documentSourceType === 'digital_contract') return;
-      if (!req.isRequired) return;
+      if (!req.isRequired || req.documentSourceType === 'digital_contract') return;
       if (req.type === 'actor') {
         const count = caseObj.participants.filter(p => p.role === req.actorRole && p.name?.trim() && p.lastName?.trim() && p.dni?.trim()).length;
         const minimum = Math.max(1, Number(req.minQuantity) || 1);
@@ -1122,7 +1122,6 @@ export default function CaseDetail({
                         const originalDoc = documents.find(d => d.caseId === caseObj.id && d.requirementId === req.id);
                         const isDocVisible = !originalDoc || originalDoc.status !== 'approved' || !originalDoc.allowedRoles || originalDoc.allowedRoles.includes(currentUser.role) || currentUser.role === 'SUPERADMIN' || currentUser.role === 'ADMIN';
                         const doc = isDocVisible ? originalDoc : undefined;
-                        const isDigitalContract = req.documentSourceType === 'digital_contract';
                         const isDownloadAsset = req.documentSourceType === 'download_asset';
                         const linkedSharedDoc = isDownloadAsset ? sharedDocs.find(d => d.id === req.linkedSharedDocumentId) : null;
                         
@@ -1316,17 +1315,6 @@ export default function CaseDetail({
                               {/* Operations for advisors */}
                               {isAsesor && (
                                 <div className="flex flex-col items-end gap-1.5">
-                                  {isDigitalContract && (
-                                    <button
-                                      type="button"
-                                      onClick={() => setCaseViewMode('document')}
-                                      className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-bold rounded-lg shadow-xs flex items-center gap-1 transition-all cursor-pointer mb-1"
-                                    >
-                                      <FileText className="w-3.5 h-3.5 text-indigo-500" />
-                                      <span>Completar Contrato</span>
-                                    </button>
-                                  )}
-                                  
                                   {(() => {
                                     const approvedReq = uploadRequests?.find(
                                       r => r.caseId === caseId && r.requirementId === req.id && r.status === 'approved'
