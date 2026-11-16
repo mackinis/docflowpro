@@ -211,7 +211,7 @@ export default function CaseDetail({
 
     const missing: string[] = [];
 
-    currentStage.requirements.forEach(req => {
+    currentStage.requirements.forEach(req => {\n      // El documento digitalizado es material de referencia, no un requisito documental automático.\n      if (req.type === 'document' && req.documentSourceType === 'digital_contract') return;
       if (!req.isRequired) return;
 
       if (req.type === 'document') {
@@ -1313,7 +1313,7 @@ export default function CaseDetail({
               {/* 1. DOCUMENTS TAB */}
               {activeSubTab === 'docs' && (
                 <div className="space-y-4">
-                  {currentStage?.requirements.filter(r => r.type === 'document').length === 0 ? (
+                  {currentStage?.requirements.filter(r => r.type === 'document' && r.documentSourceType !== 'digital_contract').length === 0 ? (
                     <p className="text-xs text-slate-400 italic text-center py-6">Esta etapa no requiere documentos.</p>
                   ) : (
                     currentStage?.requirements
