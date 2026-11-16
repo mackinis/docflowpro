@@ -18,7 +18,9 @@ import {
   Clock,
   UserX,
   Trash2,
-  ShieldAlert
+  ShieldAlert,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { User, AppDataState } from '../types';
 import { PRESET_AVATARS } from '../data';
@@ -88,6 +90,8 @@ export default function UserProfile({
   const [mgmtRole, setMgmtRole] = useState<'SUPERADMIN' | 'ADMIN' | 'MANAGER' | 'ASESOR'>('ASESOR');
   const [mgmtActive, setMgmtActive] = useState(true);
   const [mgmtPassword, setMgmtPassword] = useState('');
+  const [showMgmtPassword, setShowMgmtPassword] = useState(false);
+  const [showNewAccountPassword, setShowNewAccountPassword] = useState(false);
   const [mgmtSensitiveOverride, setMgmtSensitiveOverride] = useState<boolean | undefined>(undefined);
 
   const [loading, setLoading] = useState(false);
@@ -444,9 +448,13 @@ export default function UserProfile({
             {(['name','lastName','email','password'] as const).map(key => (
               <label key={key} className="text-xs font-semibold text-slate-700">
                 {{ name: 'Nombre', lastName: 'Apellido', email: 'Correo electrónico', password: 'Contraseña inicial' }[key]}
-                <input required type={key === 'password' ? 'password' : key === 'email' ? 'email' : 'text'} minLength={key === 'password' ? 8 : undefined}
-                  autoComplete="off" value={newAccount[key]} onChange={e => setNewAccount(v => ({ ...v, [key]: e.target.value }))}
-                  className="mt-1 block w-full rounded-lg border border-slate-300 bg-white p-2 text-sm text-slate-900" />
+                <span className="relative mt-1 block">
+                  <input required type={key === 'password' ? (showNewAccountPassword ? 'text' : 'password') : key === 'email' ? 'email' : 'text'} minLength={key === 'password' ? 8 : undefined}
+                    autoComplete="off" value={newAccount[key]} onChange={e => setNewAccount(v => ({ ...v, [key]: e.target.value }))}
+                    className={`block w-full rounded-lg border border-slate-300 bg-white p-2 text-sm text-slate-900 ${key === 'password' ? 'pr-11' : ''}`} />
+                  {key === 'password' && <button type="button" aria-label={showNewAccountPassword ? 'Ocultar contraseña inicial' : 'Mostrar contraseña inicial'} aria-pressed={showNewAccountPassword} onClick={() => setShowNewAccountPassword(v => !v)}
+                    className="absolute inset-y-0 right-2 grid w-8 place-items-center text-slate-500 hover:text-indigo-600">{showNewAccountPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button>}
+                </span>
               </label>
             ))}
           </div>
@@ -1012,27 +1020,30 @@ export default function UserProfile({
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
                       <div className="space-y-1.5">
                         <label className="text-xs font-semibold">Forzar Nueva Contraseña</label>
-                        <input
-                          type="password"
-                          disabled={!canEditSensitiveOf(selectedUser.role)}
-                          placeholder="Reescribir contraseña"
-                          value={mgmtPassword}
-                          onChange={(e) => setMgmtPassword(e.target.value)}
-                          className="w-full px-3 py-2 text-sm border border-slate-200 bg-white rounded-xl disabled:bg-slate-100 disabled:cursor-not-allowed"
-                          id="input-mgmt-password"
-                        />
+                        <div className="relative">
+                          <input
+                            type={showMgmtPassword ? 'text' : 'password'}
+                            disabled={!canEditSensitiveOf(selectedUser.role)}
+                            placeholder="Reescribir contraseña"
+                            value={mgmtPassword}
+                            onChange={(e) => setMgmtPassword(e.target.value)}
+                            className="w-full px-3 pr-12 py-2 text-sm border border-slate-200 bg-white rounded-xl disabled:bg-slate-100 disabled:cursor-not-allowed"
+                            id="input-mgmt-password"
+                          />
+                          <button type="button" aria-label={showMgmtPassword ? 'Ocultar nueva contraseña' : 'Mostrar nueva contraseña'} aria-pressed={showMgmtPassword}
+                            onClick={() => setShowMgmtPassword(v => !v)} className="absolute inset-y-0 right-2 grid w-8 place-items-center text-slate-500 hover:text-indigo-600">
+                            {showMgmtPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </button>
+                        </div>
                       </div>
 
                       <div className="flex items-center gap-2 pt-5">
-                        <input
-                          type="checkbox"
-                          disabled={!canEditSensitiveOf(selectedUser.role)}
-                          checked={mgmtActive}
-                          onChange={(e) => setMgmtActive(e.target.checked)}
-                          className="w-4 h-4 text-indigo-600 border-slate-200 rounded focus:ring-indigo-500 disabled:cursor-not-allowed"
-                          id="checkbox-mgmt-active"
-                        />
-                        <label className="text-xs font-semibold">Usuario Activo (Permitir iniciar sesión)</label>
+                        <button type="button" role="switch" aria-checked={mgmtActive} aria-label="Usuario Activo (Permitir iniciar sesión)"
+                          disabled={!canEditSensitiveOf(selectedUser.role)} onClick={() => setMgmtActive(v => !v)}
+                          className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 disabled:opacity-40 ${mgmtActive ? 'bg-indigo-600' : 'bg-slate-500/50'}`}>
+                          <span aria-hidden="true" className={`h-5 w-5 rounded-full bg-white shadow transition-transform ${mgmtActive ? 'translate-x-6' : 'translate-x-1'}`} />
+                        </button>
+                        <span className="text-xs font-semibold">Usuario Activo (Permitir iniciar sesión)</span>
                       </div>
                     </div>
                   </div>
