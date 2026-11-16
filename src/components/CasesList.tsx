@@ -138,8 +138,18 @@ export default function CasesList({
   };
   const draftKey = editingParticipantId || pType + ':' + pDni.replace(/\D/g, '');
   const actorRulesForForm = process?.stages.flatMap(s => s.requirements).filter(r => r.type === 'actor' && r.isRequired) || [];
-  const remainingRoles = actorRulesForForm.filter(rule => participants.filter(p => p.role === rule.actorRole).length < Math.max(1, Number(rule.minQuantity) || 1)).map(rule => rule.actorRole as ParticipantType);
-  const availableRoles = Array.from(new Set([...remainingRoles.filter(r => r !== 'Escribano'), ...(escribanoADesignar && !participants.some(p => p.role === 'Escribano') ? ['Escribano' as ParticipantType] : [])]));
+  // Mostrar únicamente los roles cuya cantidad mínima todavía no se completó.
+  // Si se requieren varios actores del mismo rol, conservarlo hasta alcanzar ese mínimo.
+  const requiredCountByRole = new Map<ParticipantType, number>();
+  for (const rule of actorRulesForForm) {
+    const role = rule.actorRole as ParticipantType | undefined;
+    if (!role || role === 'Escribano') continue;
+    requiredCountByRole.set(role, Math.max(requiredCountByRole.get(role) || 0, Math.max(1, Number(rule.minQuantity) || 1)));
+  }
+  const remainingRoles = [...requiredCountByRole.entries()]
+    .filter(([role, minimum]) => participants.filter(p => p.role === role).length < minimum)
+    .map(([role]) => role);
+  const availableRoles = [...remainingRoles, ...(escribanoADesignar && !participants.some(p => p.role === 'Escribano') ? ['Escribano' as ParticipantType] : [])];
   React.useEffect(() => {
     if (!editingParticipantId && availableRoles.length && !availableRoles.includes(pType)) setPType(availableRoles[0]);
   }, [newTemplateId, participants, escribanoADesignar, editingParticipantId, pType]);
