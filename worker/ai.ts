@@ -199,7 +199,6 @@ export async function digitizeTemplateWithAI(
     fileName?: string;
     textProposal?: string;
     industry: string;
-    generateFlow: boolean;
   }
 ): Promise<Omit<ProcessTemplate, 'id'>> {
   let extractedText = (params.textProposal || '').trim();
