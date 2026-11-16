@@ -510,8 +510,8 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
       {/* Header toolbar */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-display font-bold text-slate-800 tracking-tight">Estructura de Plantillas de Procesos</h2>
-          <p className="text-sm text-slate-500">Define etapas, checklists obligatorios, formularios e indicadores de cumplimiento.</p>
+          <h2 className="text-2xl font-display font-bold text-slate-800 tracking-tight">Plantillas y Procesos</h2>
+          <p className="text-sm text-slate-500">Los responsables establecen los actores, documentos y obligaciones que se exigirán en cada legajo.</p>
         </div>
         {canManageTemplates && (
           <div className="flex items-center gap-2">
@@ -531,7 +531,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
       {canManageTemplates && (
         <div className="bg-gradient-to-r from-indigo-900 via-slate-900 to-indigo-950 text-white p-6 rounded-2xl border border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-5">
           <div className="space-y-1">
-            <h3 className="text-base font-bold">Digitalización de documentos</h3>
+            <h3 className="text-base font-bold">Digitalización de documentos (independiente de procesos)</h3>
             <p className="text-xs text-slate-200">Convertí documentos en plantillas con espacios completables. Se revisan y aprueban antes de publicarse en Documentos; no generan procesos ni requisitos.</p>
           </div>
           <button type="button" onClick={() => setShowAiModal(true)} className="shrink-0 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl flex items-center gap-2"><Upload className="w-4 h-4"/> Digitalizar documento</button>
@@ -1250,7 +1250,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                     <input
                       type="file"
                       id="digitize-file-picker"
-                      accept=".pdf,.png,.jpg,.jpeg,.txt,.doc,.docx"
+                      accept=".pdf,.png,.jpg,.jpeg,.txt,.docx"
                       onChange={(e) => {
                         const file = e.target.files?.[0];
                         if (file) {
@@ -1299,7 +1299,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                       ) : (
                         <div>
                           <p className="text-xs font-semibold text-slate-700">Arrastre y suelte su archivo aquí</p>
-                          <p className="text-[10px] text-slate-400 mt-0.5">O haga clic para examinar su equipo (.pdf, .txt, .docx, .png, .jpg)</p>
+                          <p className="text-[10px] text-slate-400 mt-0.5">O haga clic para examinar su equipo (.pdf con texto, .txt, .docx, .png, .jpg)</p>
                         </div>
                       )}
                     </div>
