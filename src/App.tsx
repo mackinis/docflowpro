@@ -35,6 +35,7 @@ export default function App() {
   const [needsSetup, setNeedsSetup] = useState(false);
   const [turnstileSiteKey, setTurnstileSiteKey] = useState('');
   const [turnstileEnabled, setTurnstileEnabled] = useState(false);
+  const [publicRegistrationEnabled, setPublicRegistrationEnabled] = useState(true);
 
   // Authentication states
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -69,6 +70,7 @@ export default function App() {
       setNeedsSetup(Boolean(bootstrapData.needsSetup));
       setTurnstileSiteKey(bootstrapData.turnstileSiteKey || '');
       setTurnstileEnabled(Boolean(bootstrapData.turnstileEnabled));
+      setPublicRegistrationEnabled(bootstrapData.publicRegistrationEnabled !== false);
 
       if (!bootstrapData.user) {
         sessionStorage.removeItem('docflow_user');
@@ -79,10 +81,22 @@ export default function App() {
         return;
       }
 
-      const response = await fetch('/api/state', {
-        credentials: 'include',
-        signal: AbortSignal.timeout(15000)
-      });
+      // D1 initialization and transient Cloudflare errors can briefly return 503.
+      // Retry the state request without showing a misleading connection-error page.
+      let response: Response | null = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          response = await fetch('/api/state', {
+            credentials: 'include',
+            signal: AbortSignal.timeout(25000)
+          });
+          if (response.status !== 503 && response.status !== 502 && response.status !== 504) break;
+        } catch (requestError) {
+          if (attempt === 2) throw requestError;
+        }
+        if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 1200 * (attempt + 1)));
+      }
+      if (!response) throw new Error('No se recibió respuesta del servidor.');
       if (response.status === 401) {
         sessionStorage.removeItem('docflow_user');
         sessionStorage.removeItem('docflow_real_user');
@@ -92,7 +106,8 @@ export default function App() {
         return;
       }
       if (!response.ok) {
-        throw new Error('No se pudo recuperar el estado del servidor.');
+        const detail = await response.json().catch(() => ({}));
+        throw new Error(detail.error || detail.message || 'No se pudo recuperar el estado del servidor.');
       }
       const data: AppDataState = await response.json();
       setState(data);
@@ -418,11 +433,15 @@ export default function App() {
   // Render Loader
   if (loading) {
     return (
-      <div className="h-screen w-screen flex flex-col items-center justify-center bg-slate-50 space-y-4">
-        <Loader2 className="w-10 h-10 animate-spin text-indigo-600" />
-        <div className="text-center">
-          <p className="font-display font-bold text-slate-800 text-lg">Cargando DocFlow Pro...</p>
-          <p className="text-xs text-slate-400">Estableciendo conexión segura con la base de datos de Gestión Documental...</p>
+      <div className="fixed inset-0 z-50 grid place-items-center overflow-hidden bg-slate-50" role="status" aria-live="polite" aria-label="Cargando DocFlow Pro">
+        <div className="flex w-full max-w-xl flex-col items-center gap-4 px-6 text-center" style={{ minHeight: 124, justifyContent: 'center' }}>
+          <div className="grid h-12 w-12 shrink-0 place-items-center">
+            <Loader2 className="h-10 w-10 animate-spin text-indigo-600" aria-hidden="true" />
+          </div>
+          <div className="flex min-h-14 w-full flex-col items-center justify-center gap-1">
+            <p className="font-display text-lg font-bold leading-7 text-slate-800">Cargando DocFlow Pro...</p>
+            <p className="max-w-lg text-xs leading-5 text-slate-400">Estableciendo conexión segura con la base de datos de Gestión Documental...</p>
+          </div>
         </div>
       </div>
     );
@@ -435,13 +454,14 @@ export default function App() {
         needsSetup={needsSetup}
         turnstileSiteKey={turnstileSiteKey}
         turnstileEnabled={turnstileEnabled}
+        publicRegistrationEnabled={publicRegistrationEnabled}
         onLoginSuccess={async (user) => {
-          setCurrentUser(user);
-          setRealUser(user);
-          sessionStorage.setItem('docflow_user', JSON.stringify(user));
-          sessionStorage.setItem('docflow_real_user', JSON.stringify(user));
+          // Do not render the authenticated application before the full state is loaded.
+          // A transient state-fetch failure must not display a misleading connection error
+          // after a successful login; keep the login form available for retry.
           setActiveTab('dashboard');
           setActiveCaseId(null);
+          setLoading(true);
           await loadState();
         }}
       />

@@ -306,6 +306,7 @@ app.get('/api/auth/bootstrap-status', async (c) => {
   const auth = c.get('auth');
   return c.json({
     needsSetup: (superadminCount?.count ?? 0) === 0,
+    publicRegistrationEnabled: await getSystemConfigValue<boolean>(c.env.DB, 'publicRegistrationEnabled', true),
     turnstileSiteKey: c.env.TURNSTILE_SITE_KEY || '',
     turnstileEnabled: Boolean(c.env.TURNSTILE_SECRET_KEY && c.env.TURNSTILE_SITE_KEY),
     user: auth ? auth.user : null,
@@ -487,6 +488,11 @@ app.post('/api/auth/register', async (c) => {
   const body = await c.req.json();
   const { name, lastName, email, phone, address, city, province, country, password, turnstileToken } =
     body;
+
+  const registrationEnabled = await getSystemConfigValue<boolean>(c.env.DB, 'publicRegistrationEnabled', true);
+  if (!registrationEnabled) {
+    return c.json({ error: 'El registro público está deshabilitado. Solicite su cuenta a un administrador.' }, 403);
+  }
 
   const tsCheck = await verifyTurnstileToken(c.env, turnstileToken, getClientIp(c.req.raw));
   if (!tsCheck.success) {
@@ -731,6 +737,81 @@ app.get('/api/users', async (c) => {
   return c.json(users);
 });
 
+// Public registration policy: only the actual Superadmin may change it.
+app.get('/api/admin/registration-policy', async (c) => {
+  const auth = c.get('auth')!;
+  if (auth.realUser.role !== 'SUPERADMIN') return c.json({ error: 'Acceso denegado.' }, 403);
+  const enabled = await getSystemConfigValue<boolean>(c.env.DB, 'publicRegistrationEnabled', true);
+  return c.json({ enabled });
+});
+
+app.put('/api/admin/registration-policy', async (c) => {
+  const auth = c.get('auth')!;
+  if (auth.realUser.role !== 'SUPERADMIN') return c.json({ error: 'Acceso denegado.' }, 403);
+  const body = await c.req.json<{ enabled?: unknown }>();
+  if (typeof body.enabled !== 'boolean') return c.json({ error: 'Valor inválido.' }, 400);
+  await setSystemConfigValue(c.env.DB, 'publicRegistrationEnabled', body.enabled);
+  await createAudit(c.env.DB, auth.realUser.id, body.enabled ? 'Habilitó registro público' : 'Deshabilitó registro público', 'Security', 'publicRegistrationEnabled', 'Registro de usuarios');
+  return c.json({ enabled: body.enabled });
+});
+
+// Superadmin delegates account creation to individual administrators.
+app.get('/api/admin/user-creators', async (c) => {
+  const auth = c.get('auth')!;
+  if (auth.realUser.role !== 'SUPERADMIN') return c.json({ error: 'No autorizado.' }, 403);
+  return c.json({ ids: await getSystemConfigValue<string[]>(c.env.DB, 'delegatedUserCreators', []) });
+});
+app.put('/api/admin/user-creators', async (c) => {
+  const auth = c.get('auth')!;
+  if (auth.realUser.role !== 'SUPERADMIN') return c.json({ error: 'No autorizado.' }, 403);
+  const body = await c.req.json<{ ids?: unknown }>();
+  if (!Array.isArray(body.ids) || body.ids.length > 1000 || !body.ids.every(id => typeof id === 'string')) return c.json({ error: 'Lista inválida.' }, 400);
+  const ids = [...new Set(body.ids as string[])];
+  if (ids.length) {
+    const admins = await c.env.DB.prepare("SELECT id FROM users WHERE role = 'ADMIN' AND active = 1").all<{ id: string }>();
+    const valid = new Set((admins.results || []).map(a => a.id));
+    if (ids.some(id => !valid.has(id))) return c.json({ error: 'Solo se pueden delegar administradores activos.' }, 400);
+  }
+  await setSystemConfigValue(c.env.DB, 'delegatedUserCreators', ids);
+  await createAudit(c.env.DB, auth.realUser.id, 'Actualizó administradores habilitados para crear usuarios', 'Security', 'delegatedUserCreators', ids.join(', '));
+  return c.json({ ids });
+});
+
+app.get('/api/users/creation-permission', async (c) => {
+  const auth = c.get('auth')!;
+  const delegates = await getSystemConfigValue<string[]>(c.env.DB, 'delegatedUserCreators', []);
+  return c.json({ allowed: auth.user.role === 'SUPERADMIN' || (auth.user.role === 'ADMIN' && delegates.includes(auth.user.id)) });
+});
+
+app.post('/api/users', async (c) => {
+  const auth = c.get('auth')!;
+  const role = auth.user.role;
+  const delegates = await getSystemConfigValue<string[]>(c.env.DB, 'delegatedUserCreators', []);
+  if (role !== 'SUPERADMIN' && !(role === 'ADMIN' && delegates.includes(auth.user.id))) {
+    return c.json({ error: 'No tiene autorización para crear usuarios.' }, 403);
+  }
+  const body = await c.req.json();
+  const { name, lastName, email, password, phone, address, city, province, country } = body;
+  const targetRole = String(body.role || 'ASESOR').toUpperCase();
+  if (!['ADMIN', 'MANAGER', 'ASESOR'].includes(targetRole) || (role !== 'SUPERADMIN' && targetRole === 'ADMIN')) {
+    return c.json({ error: 'Rol no permitido.' }, 403);
+  }
+  if (!String(name || '').trim() || !String(lastName || '').trim() || !String(email || '').includes('@') || typeof password !== 'string' || password.length < 8) {
+    return c.json({ error: 'Nombre, apellido, correo y contraseña de al menos 8 caracteres son obligatorios.' }, 400);
+  }
+  const normalizedEmail = String(email).trim().toLowerCase();
+  const exists = await c.env.DB.prepare('SELECT id FROM users WHERE LOWER(email) = ?').bind(normalizedEmail).first();
+  if (exists) return c.json({ error: 'Ya existe una cuenta con ese correo.' }, 409);
+  const id = 'usr-' + crypto.randomUUID();
+  const now = new Date().toISOString();
+  const pwHash = await hashPassword(password);
+  const avatar = PRESET_AVATARS[0]?.url || '';
+  await c.env.DB.prepare(`INSERT INTO users (id, name, last_name, email, role, avatar, phone, active, address, city, province, country, password_hash, is_verified, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, 1, ?, ?)`)
+    .bind(id, String(name).trim(), String(lastName).trim(), normalizedEmail, targetRole, avatar, phone || '', address || '', city || '', province || '', country || '', pwHash, now, now).run();
+  await createAudit(c.env.DB, auth.user.id, 'Creó usuario habilitado', 'User', id, normalizedEmail);
+  return c.json({ success: true, id }, 201);
+});
+
 app.put('/api/users/:id', async (c) => {
   const auth = c.get('auth')!;
   const currentUser = auth.user;
@@ -791,6 +872,21 @@ app.put('/api/users/:id', async (c) => {
         403
       );
     }
+  }
+
+  // Only the Superadmin may grant or revoke administrator status.
+  if (role !== undefined && String(role).toUpperCase() === 'ADMIN' && targetRow.role !== 'ADMIN' && currentUser.role !== 'SUPERADMIN') {
+    return c.json({ error: 'Solo el Superadmin puede designar administradores.' }, 403);
+  }
+  if (targetRow.role === 'ADMIN' && role !== undefined && String(role).toUpperCase() !== 'ADMIN' && currentUser.role !== 'SUPERADMIN') {
+    return c.json({ error: 'Solo el Superadmin puede modificar el rol de un administrador.' }, 403);
+  }
+  // Exactly one Superadmin: the role cannot be assigned through user management.
+  if (role !== undefined && String(role).toUpperCase() === 'SUPERADMIN' && targetRow.role !== 'SUPERADMIN') {
+    return c.json({ error: 'Solo puede existir un Superadmin. Este rol no puede asignarse a otras cuentas.' }, 403);
+  }
+  if (targetRow.role === 'SUPERADMIN' && role !== undefined && String(role).toUpperCase() !== 'SUPERADMIN') {
+    return c.json({ error: 'No se puede degradar al único Superadmin.' }, 403);
   }
 
   const now = new Date().toISOString();
