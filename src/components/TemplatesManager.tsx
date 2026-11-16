@@ -36,17 +36,14 @@ interface TemplatesManagerProps {
 
 export default function TemplatesManager({ templates, currentUser, systemSettings, onAddTemplate, loadState }: TemplatesManagerProps) {
   const [expandedTemplateId, setExpandedTemplateId] = useState<string | null>(null);
-  const [aiPrompt, setAiPrompt] = useState('');
-  const [isGenerating, setIsGenerating] = useState(false);
   const [showAiModal, setShowAiModal] = useState(false);
+  const [showProcessModal, setShowProcessModal] = useState(false);
 
   // States for Template Digitization
-  const [aiTab, setAiTab] = useState<'generate' | 'digitize' | 'manual'>('generate');
   const [digitizeFileBase64, setDigitizeFileBase64] = useState('');
   const [digitizeFileName, setDigitizeFileName] = useState('');
   const [digitizeText, setDigitizeText] = useState('');
   const [digitizeIndustry, setDigitizeIndustry] = useState<ProcessTemplate['industry']>('Inmobiliaria');
-  const [generateFlowCheck, setGenerateFlowCheck] = useState(true);
   const [isDigitizing, setIsDigitizing] = useState(false);
   const [dragActive, setDragActive] = useState(false);
 
@@ -149,51 +146,6 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
     );
   };
 
-  // AI-Powered Template Generator
-  const handleGenerateTemplateWithAI = async (e?: React.FormEvent | React.MouseEvent) => {
-    if (e && typeof e.preventDefault === 'function') {
-      e.preventDefault();
-    }
-    if (!aiPrompt.trim()) return;
-
-    console.log('Iniciando generación de plantilla con IA para prompt:', aiPrompt);
-    setIsGenerating(true);
-
-    try {
-      const response = await fetch('/api/ai/generate-template', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: aiPrompt,
-          createdBy: currentUser.id
-        })
-      });
-
-      const data = await response.json();
-      console.log('Respuesta recibida de generación por IA:', data);
-
-      if (!response.ok || data.error) {
-        alert(`Error de IA: ${data.error || 'No se pudo generar la plantilla.'}`);
-      } else if (data.template) {
-        alert(`¡Flujo de trabajo "${data.template.name}" generado exitosamente por la Inteligencia Artificial!`);
-        setShowAiModal(false);
-        setAiPrompt('');
-        if (loadState) {
-          await loadState();
-        }
-        setExpandedTemplateId(data.template.id);
-      } else {
-        alert('Ocurrió un error inesperado al procesar la respuesta de la IA.');
-      }
-    } catch (err) {
-      console.error('Error de conexión o de ejecución en generación por IA:', err);
-      alert('Error de conexión al generar la plantilla por IA.');
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
   // AI-Powered Template Digitization (100% Digitalization of existing documents)
   const handleDigitizeTemplate = async (e?: React.FormEvent | React.MouseEvent) => {
     if (e && typeof e.preventDefault === 'function') {
@@ -216,7 +168,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
           fileName: digitizeFileName,
           textProposal: digitizeText,
           industry: digitizeIndustry,
-          generateFlow: generateFlowCheck,
+          generateFlow: false,
           currentUserId: currentUser.id
         })
       });
@@ -232,7 +184,6 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
         setDigitizeFileBase64('');
         setDigitizeFileName('');
         setDigitizeText('');
-        setGenerateFlowCheck(false);
         if (loadState) {
           await loadState();
         }
@@ -251,8 +202,8 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
   // Manual Template Creation
   const handleCreateManualTemplate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!manualName.trim()) {
-      alert('Por favor ingrese el nombre de la plantilla.');
+    if (!manualName.trim() || !manualDescription.trim()) {
+      alert('Ingresá el nombre y la descripción con los requisitos del proceso.');
       return;
     }
     setIsCreatingManual(true);
@@ -265,7 +216,6 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
           name: manualName,
           description: manualDescription,
           industry: manualIndustry,
-          stages: [],
           originalDocumentContent: '',
           showDocumentToAll: true,
           sharedViewMode: 'flow',
@@ -276,7 +226,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
       const data = await response.json();
       if (response.ok && data.id) {
         alert(`¡Plantilla de proceso "${data.name}" creada correctamente!`);
-        setShowAiModal(false);
+        setShowProcessModal(false);
         setManualName('');
         setManualDescription('');
         setManualIndustry('Inmobiliaria');
@@ -570,8 +520,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
           <div className="flex items-center gap-2">
             <button
               onClick={() => {
-                setAiTab('manual');
-                setShowAiModal(true);
+                setShowProcessModal(true);
               }}
               className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs rounded-xl shadow-md shadow-indigo-500/10 hover:shadow-indigo-500/20 transition-all cursor-pointer"
             >
@@ -582,29 +531,13 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
         )}
       </div>
 
-      {/* AI DESIGN BANNER (Prompt Quick-Access) */}
       {canManageTemplates && (
-        <div className="bg-gradient-to-r from-indigo-900 via-slate-900 to-indigo-950 text-white p-6 rounded-2xl border border-slate-800 shadow-xl flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_50%,rgba(99,102,241,0.15),transparent)] pointer-events-none" />
-          <div className="space-y-1.5 relative z-10 max-w-xl">
-            <span className="text-[10px] bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded font-mono font-bold tracking-wider uppercase border border-indigo-500/30">
-              Co-Piloto de Negocios
-            </span>
-            <h3 className="text-base font-display font-bold tracking-tight">¿Deseas digitalizar un nuevo proceso de oficina?</h3>
-            <p className="text-xs text-slate-300 leading-relaxed">
-              Describe el trámite o proceso (ej: "Trámite de Préstamo", "Onboarding de Cliente", "Habilitación Comercial") y Cloudflare Workers AI creará automáticamente las etapas, checklists y documentos requeridos.
-            </p>
+        <div className="bg-gradient-to-r from-indigo-900 via-slate-900 to-indigo-950 text-white p-6 rounded-2xl border border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-5">
+          <div className="space-y-1">
+            <h3 className="text-base font-bold">Digitalización de documentos</h3>
+            <p className="text-xs text-slate-200">Convertí documentos en plantillas con espacios completables. Se revisan y aprueban antes de publicarse en Documentos; no generan procesos ni requisitos.</p>
           </div>
-          <button
-            onClick={() => {
-              setAiTab('generate');
-              setShowAiModal(true);
-            }}
-            className="shrink-0 relative z-10 px-4.5 py-2.5 bg-white text-indigo-950 font-bold text-xs rounded-xl hover:bg-indigo-50 shadow-md shadow-white/5 active:scale-98 transition-all flex items-center gap-2 cursor-pointer"
-          >
-            <Wand2 className="w-4 h-4 text-indigo-600" />
-            <span>Generar Plantilla Inteligente</span>
-          </button>
+          <button type="button" onClick={() => setShowAiModal(true)} className="shrink-0 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl flex items-center gap-2"><Upload className="w-4 h-4"/> Digitalizar documento</button>
         </div>
       )}
 
@@ -1251,90 +1184,17 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
         </div>
       )}
 
-      {/* AI TEMPLATE GENERATION & DIGITIZATION MODAL */}
+      {/* Digitalización documental: independiente de los procesos operativos. */}
       {showAiModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-xl max-h-[90vh] flex flex-col overflow-hidden">
-            {/* Header */}
             <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-indigo-50">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-indigo-600" />
-                <h4 className="text-sm font-bold text-indigo-900">Co-Diseñador de Flujos Inteligentes</h4>
-              </div>
-              <button onClick={() => setShowAiModal(false)} className="p-1 text-indigo-700 hover:text-indigo-950 rounded cursor-pointer">
-                <X className="w-5 h-5" />
-              </button>
+              <h4 className="text-sm font-bold text-indigo-900">Digitalizar documento interactivo</h4>
+              <button type="button" onClick={() => setShowAiModal(false)} className="p-1 text-indigo-700 hover:text-indigo-950 rounded" aria-label="Cerrar"><X className="w-5 h-5" /></button>
             </div>
-
-            {/* Tabs */}
-            <div className="flex border-b border-slate-100 bg-slate-50">
-              <button
-                type="button"
-                onClick={() => setAiTab('generate')}
-                className={`flex-1 py-3 text-xs font-semibold border-b-2 transition-all cursor-pointer ${
-                  aiTab === 'generate'
-                    ? 'border-indigo-600 text-indigo-600 bg-white'
-                    : 'border-transparent text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                Crear desde Cero con IA
-              </button>
-              <button
-                type="button"
-                onClick={() => setAiTab('digitize')}
-                className={`flex-1 py-3 text-xs font-semibold border-b-2 transition-all cursor-pointer ${
-                  aiTab === 'digitize'
-                    ? 'border-indigo-600 text-indigo-600 bg-white'
-                    : 'border-transparent text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                Digitalizar Plantilla / Documento
-              </button>
-              <button
-                type="button"
-                onClick={() => setAiTab('manual')}
-                className={`flex-1 py-3 text-xs font-semibold border-b-2 transition-all cursor-pointer ${
-                  aiTab === 'manual'
-                    ? 'border-indigo-600 text-indigo-600 bg-white'
-                    : 'border-transparent text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                Crear Manualmente
-              </button>
-            </div>
-
-            {aiTab === 'generate' ? (
-              <form onSubmit={handleGenerateTemplateWithAI} className="flex-1 overflow-y-auto p-5 space-y-4">
+            <form onSubmit={handleDigitizeTemplate} className="flex-1 overflow-y-auto p-5 space-y-4">
                 <p className="text-xs text-slate-500 leading-relaxed">
-                  Describe detalladamente el proceso comercial, sus etapas y qué documentación es necesaria. El modelo de Inteligencia Artificial interpretará tu solicitud, diseñará las etapas y cargará el checklist con todos sus esquemas.
-                </p>
-
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-semibold text-slate-600 uppercase">Descripción del Proceso para la IA *</label>
-                  <textarea
-                    required
-                    rows={4}
-                    placeholder="Ej: Proceso de 3 etapas para pre-aprobación hipotecaria. Etapa 1: Análisis crediticio (pide DNI y Declaración Ganancias). Etapa 2: Tasación inmueble (pide Informe Dominio). Etapa 3: Redacción mutuo."
-                    value={aiPrompt}
-                    onChange={(e) => setAiPrompt(e.target.value)}
-                    className="w-full text-xs p-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50/50"
-                  />
-                </div>
-
-                {isGenerating && (
-                  <div className="bg-indigo-50 border border-indigo-150 p-4 rounded-xl flex items-center gap-3">
-                    <Loader2 className="w-5 h-5 animate-spin text-indigo-600 shrink-0" />
-                    <div className="text-xs text-indigo-800">
-                      <p className="font-bold">Estructurando Proceso con Cloudflare Workers AI...</p>
-                      <p className="opacity-80">Creando etapas, requisitos documentales, checklists de tareas y esquemas de campos.</p>
-                    </div>
-                  </div>
-                )}
-              </form>
-            ) : aiTab === 'digitize' ? (
-              <form onSubmit={handleDigitizeTemplate} className="flex-1 overflow-y-auto p-5 space-y-4">
-                <p className="text-xs text-slate-500 leading-relaxed">
-                  Sube un archivo de proceso existente (PDF, foto, documento de texto) o pega su checklist. Cloudflare Workers AI digitalizará al 100% el contenido, transformándolo en un flujo inteligente estructurado y usable inmediatamente.
+                  Subí un documento PDF, Word, texto o imagen. Se conservará su contenido y se identificarán espacios para completar. El responsable revisará el resultado antes de aprobarlo y publicarlo en Documentos.
                 </p>
 
                 {/* Drag and Drop File Upload Area */}
@@ -1452,10 +1312,10 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
 
                 {/* Checklist/Prompt text input */}
                 <div className="space-y-1.5">
-                  <label className="text-[11px] font-semibold text-slate-600 uppercase">Texto de la Plantilla o Comentarios Adicionales</label>
+                  <label className="text-[11px] font-semibold text-slate-600 uppercase">Texto del documento o aclaraciones</label>
                   <textarea
                     rows={3}
-                    placeholder="Escriba o pegue el checklist actual aquí, o agregue indicaciones especiales para la digitalización."
+                    placeholder="Pegá el texto del documento si no cargás un archivo."
                     value={digitizeText}
                     onChange={(e) => setDigitizeText(e.target.value)}
                     className="w-full text-xs p-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50/50"
@@ -1481,155 +1341,52 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                   </div>
                 )}
 
-                {/* Checkbox "Generar Flujo por Etapas" */}
-                <div className="p-3.5 rounded-xl border border-slate-200/80 bg-slate-50/50 flex items-start gap-3">
-                  <div className="flex items-center h-5">
-                    <input
-                      id="generate-flow-checkbox"
-                      type="checkbox"
-                      checked={generateFlowCheck}
-                      onChange={(e) => setGenerateFlowCheck(e.target.checked)}
-                      className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 cursor-pointer"
-                    />
-                  </div>
-                  <div className="space-y-0.5">
-                    <label htmlFor="generate-flow-checkbox" className="text-xs font-bold text-slate-800 cursor-pointer select-none">
-                      Generar Flujo de Seguimiento por Etapas
-                    </label>
-                    <p className="text-[10.5px] text-slate-500 leading-relaxed">
-                      {generateFlowCheck 
-                        ? 'Activado: Se analizará el documento para estructurar un checklist de 2 a 5 etapas lógicas.' 
-                        : 'Desactivado (Recomendado): Solo se digitalizará el documento original de forma continua e íntegra como plantilla para completar.'
-                      }
-                    </p>
-                  </div>
-                </div>
-
                 {isDigitizing && (
                   <div className="bg-indigo-50 border border-indigo-150 p-4 rounded-xl flex items-center gap-3">
                     <Loader2 className="w-5 h-5 animate-spin text-indigo-600 shrink-0" />
                     <div className="text-xs text-indigo-800">
                       <p className="font-bold">Digitalizando al 100% con Cloudflare Workers AI...</p>
-                      <p className="opacity-80">Procesando contenido del documento, extrayendo requisitos y adaptándolo como plantilla interactiva.</p>
+                      <p className="opacity-80">Convirtiendo espacios y puntos suspensivos en campos completables. No se crearán requisitos de proceso.</p>
                     </div>
                   </div>
                 )}
               </form>
-            ) : (
-              <form onSubmit={handleCreateManualTemplate} className="flex-1 overflow-y-auto p-5 space-y-4">
-                <p className="text-xs text-slate-500 leading-relaxed">
-                  Crea una plantilla de proceso desde cero de forma manual. Podrás configurar sus etapas, checklists, formularios y tareas de seguimiento una vez creada.
-                </p>
-
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-semibold text-slate-600 uppercase">Nombre de la Plantilla de Proceso *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ej: Trámite de Habilitación Comercial, Onboarding, etc."
-                    value={manualName}
-                    onChange={(e) => setManualName(e.target.value)}
-                    className="w-full text-xs p-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-slate-50/50"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-semibold text-slate-600 uppercase">Descripción / Objetivo</label>
-                  <textarea
-                    rows={3}
-                    placeholder="Ej: Secuencia de pasos para habilitar nuevos comercios minoristas en la jurisdicción."
-                    value={manualDescription}
-                    onChange={(e) => setManualDescription(e.target.value)}
-                    className="w-full text-xs p-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-slate-50/50"
-                  />
-                </div>
-
-                {currentUser.role !== 'MANAGER' && (
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-semibold text-slate-600 uppercase">Rubro Comercial / Industria *</label>
-                    <select
-                      value={manualIndustry}
-                      onChange={(e) => setManualIndustry(e.target.value as any)}
-                      className="w-full text-xs p-2.5 border border-slate-200 bg-white rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                    >
-                      <option value="Inmobiliaria">Inmobiliaria</option>
-                      <option value="Jurídico">Jurídico</option>
-                      <option value="Seguros">Seguros</option>
-                      <option value="Financiera">Financiera</option>
-                      <option value="Recursos Humanos">Recursos Humanos</option>
-                      <option value="Administrativo">Administrativo</option>
-                    </select>
-                  </div>
-                )}
-              </form>
-            )}
-
-            <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-end gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={() => setShowAiModal(false)}
-                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold rounded-xl cursor-pointer"
-              >
-                Cancelar
+            <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-end gap-2">
+              <button type="button" onClick={() => setShowAiModal(false)} className="px-4 py-2 bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl">Cancelar</button>
+              <button type="button" onClick={handleDigitizeTemplate} disabled={isDigitizing || (!digitizeFileBase64 && !digitizeText.trim())} className="px-5 py-2 bg-indigo-600 text-white text-xs font-semibold rounded-xl disabled:opacity-50">
+                {isDigitizing ? 'Digitalizando...' : 'Digitalizar documento'}
               </button>
-              {aiTab === 'generate' ? (
-                <button
-                  type="button"
-                  onClick={handleGenerateTemplateWithAI}
-                  disabled={isGenerating || !aiPrompt.trim()}
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl shadow-xs disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
-                >
-                  {isGenerating ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
-                      <span>Procesando...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-3.5 h-3.5 text-white" />
-                      <span>Generar Estructura</span>
-                    </>
-                  )}
-                </button>
-              ) : aiTab === 'digitize' ? (
-                <button
-                  type="button"
-                  onClick={handleDigitizeTemplate}
-                  disabled={isDigitizing || (!digitizeFileBase64 && !digitizeText.trim())}
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl shadow-xs disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
-                >
-                  {isDigitizing ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
-                      <span>Digitalizando...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-3.5 h-3.5 text-white" />
-                      <span>Digitalizar Plantilla</span>
-                    </>
-                  )}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleCreateManualTemplate}
-                  disabled={isCreatingManual || !manualName.trim()}
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl shadow-xs disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
-                >
-                  {isCreatingManual ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
-                      <span>Creando...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Layers className="w-3.5 h-3.5 text-white" />
-                      <span>Crear Plantilla</span>
-                    </>
-                  )}
-                </button>
-              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Configuración del proceso: las obligaciones nacen aquí, no en la digitalización. */}
+      {showProcessModal && (
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-xl max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="p-4 border-b border-slate-100 bg-indigo-50 flex items-center justify-between">
+              <h4 className="text-sm font-bold text-indigo-900">Crear proceso operativo</h4>
+              <button type="button" onClick={() => setShowProcessModal(false)} aria-label="Cerrar" className="p-1 text-indigo-700"><X className="w-5 h-5"/></button>
+            </div>
+            <form id="new-process-form" onSubmit={handleCreateManualTemplate} className="overflow-y-auto p-5 space-y-4">
+              <p className="text-xs text-slate-600">Definí qué deberán presentar los asesores al iniciar un legajo. Cada requisito debe ir en una línea. Podrás revisar y modificar las obligaciones y las etapas después de guardar.</p>
+              <label className="block text-xs font-bold text-slate-700">Nombre del Proceso *
+                <input required value={manualName} onChange={e => setManualName(e.target.value)} placeholder="Ej.: Reserva de contrato de locación" className="mt-1 w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg"/>
+              </label>
+              <label className="block text-xs font-bold text-slate-700">Descripción / Objetivo *
+                <textarea required rows={9} value={manualDescription} onChange={e => setManualDescription(e.target.value)} placeholder={"Locador\nLocatario\nGarante mínimo 2\nDNI del locador\nDNI del locatario\nDNI de los garantes\nCopia de escritura\nBoleta de servicios"} className="mt-1 w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg"/>
+                <span className="block mt-1 text-[11px] font-normal text-slate-500">Los actores, sus mínimos y los documentos indicados se convierten en requisitos del proceso. Escribí cada obligación en una línea.</span>
+              </label>
+              <label className="block text-xs font-bold text-slate-700">Rubro Comercial / Industria *
+                <select required value={manualIndustry} onChange={e => setManualIndustry(e.target.value as ProcessTemplate['industry'])} className="mt-1 w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
+                  {['Inmobiliaria','Jurídico','Seguros','Financiera','Recursos Humanos','Administrativo'].map(industry => <option key={industry} value={industry}>{industry}</option>)}
+                </select>
+              </label>
+            </form>
+            <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-end gap-2">
+              <button type="button" onClick={() => setShowProcessModal(false)} className="px-4 py-2 bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl">Cancelar</button>
+              <button type="submit" form="new-process-form" disabled={isCreatingManual || !manualName.trim() || !manualDescription.trim()} className="px-5 py-2 bg-indigo-600 text-white text-xs font-semibold rounded-xl disabled:opacity-50">{isCreatingManual ? 'Guardando...' : 'Crear proceso'}</button>
             </div>
           </div>
         </div>
