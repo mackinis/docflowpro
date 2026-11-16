@@ -46,7 +46,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
   const [digitizeFileName, setDigitizeFileName] = useState('');
   const [digitizeText, setDigitizeText] = useState('');
   const [digitizeIndustry, setDigitizeIndustry] = useState<ProcessTemplate['industry']>('Inmobiliaria');
-  const [generateFlowCheck, setGenerateFlowCheck] = useState(false);
+  const [generateFlowCheck, setGenerateFlowCheck] = useState(true);
   const [isDigitizing, setIsDigitizing] = useState(false);
   const [dragActive, setDragActive] = useState(false);
 
