@@ -137,7 +137,7 @@ export default function CasesList({
       errors.push('Falta ingresar la Descripción General.');
     }
     if (isTemplateRequired && !newTemplateId) {
-      errors.push('Falta seleccionar una Tipo de proceso.');
+      errors.push('Falta seleccionar un tipo de proceso.');
     }
 
     // Reglas de actores del proceso, definidas por los responsables.
@@ -421,7 +421,7 @@ export default function CasesList({
                 <div 
                   key={c.id} 
                   onClick={() => onOpenCase(c.id)}
-                  className="p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 hover:bg-slate-50/50 cursor-pointer transition-colors"
+                  className="p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 hover:bg-slate-50/50 dark:hover:bg-slate-700/60 cursor-pointer transition-colors"
                 >
                   <div className="space-y-1.5 flex-1 min-w-0 pr-4">
                     <div className="flex items-center gap-2.5">
