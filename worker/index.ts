@@ -3676,9 +3676,8 @@ app.all('*', async (c) => {
 export default {
   fetch: app.fetch,
   async scheduled(_event: ScheduledEvent, env: Env): Promise<void> {
-    const cutoff = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
+    // Audit records are retained; automatic deletion would destroy legal traceability.
     await ensureDatabaseReady(env.DB);
-    await env.DB.prepare('DELETE FROM audit_logs WHERE created_at < ?').bind(cutoff).run();
   },
   async queue(batch: MessageBatch<QueueJob>, env: Env): Promise<void> {
     for (const msg of batch.messages) {
