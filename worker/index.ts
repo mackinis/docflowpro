@@ -1665,10 +1665,11 @@ app.post('/api/cases', async (c) => {
     documentContent,
   } = body;
 
-  if (!templateId || String(templateId).startsWith('doc-')) {
+  if (!templateId || String(templateId).startsWith('doc-') || String(templateId).startsWith('tmpl-dig-')) {
     return c.json({ error: 'Seleccione un tipo de proceso configurado por un responsable. Los documentos digitalizados no son procesos.' }, 400);
   }
   let template = templateId ? await findTemplateOrVirtualById(c.env, templateId) : null;
+  if (template?.originalDocumentContent) return c.json({ error: 'Un documento digitalizado no es un proceso operativo.' }, 400);
   if (!template) {
     if (!templateId) {
       const activeIndustry = await getSystemConfigValue<string>(c.env.DB, 'activeIndustry', 'Inmobiliaria');
