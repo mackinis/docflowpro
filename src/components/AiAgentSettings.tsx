@@ -76,7 +76,7 @@ export default function AiAgentSettings({ currentUser }: { currentUser: User }) 
           </div>
           <div className="grid gap-3 lg:grid-cols-3">
             {roles.map(role => (
-              <div key={role} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-5 space-y-5">
+              <div key={role} className="ai-role-card rounded-2xl border border-slate-200 bg-slate-50/70 p-5 space-y-5">
                 <h4 className="font-semibold text-slate-800">{roleNames[role]}</h4>
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-sm text-slate-700">Usar IA</span>
