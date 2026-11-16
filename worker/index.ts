@@ -1778,12 +1778,9 @@ app.post('/api/cases', async (c) => {
   const caseId = `case-${Date.now()}-${crypto.randomUUID().slice(0, 4)}`;
   const code = `EXP-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
   const finalManagerId = assignedManagerId || '';
-  const creationSettings = await getSystemConfigValue(c.env.DB, 'systemSettings', DEFAULT_SYSTEM_SETTINGS);
-  const incompleteAllowed = creationSettings?.allowIncompleteCaseDocuments === true;
   const requiredDocNames = template.stages.flatMap(stage => stage.requirements).filter(req => req.type === 'document' && req.isRequired).map(req => req.name);
   // Client-declared pending documents are advisory until uploads are verified in R2.
   const pendingNames = Array.isArray(pendingDocumentNames) ? pendingDocumentNames.filter((name: unknown) => typeof name === 'string' && requiredDocNames.some(reqName => (name as string).startsWith(reqName + ' — '))) : [];
-  if (pendingNames.length && !incompleteAllowed) return c.json({ error: 'No está permitida la creación de legajos con documentos pendientes.' }, 400);
   const status = pendingNames.length ? 'observed' : (finalManagerId ? 'active' : 'pending_assignment');
   const finalAdvisorId = assignedAdvisorId || auth.user.id;
   const now = new Date().toISOString();
