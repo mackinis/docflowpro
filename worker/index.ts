@@ -191,6 +191,35 @@ app.use('/api/*', async (c, next) => {
   return next();
 });
 
+// Permission overrides are checked for every authenticated API request, before route handlers.
+app.use('/api/*', async (c, next) => {
+  const auth = c.get('auth');
+  if (!auth || auth.realUser.role === 'SUPERADMIN') return next();
+  const path = c.req.path;
+  if (path.startsWith('/api/admin/rbac')) return c.json({ error: 'Acceso RBAC reservado al Superadmin.' }, 403);
+  const routes: Array<[RegExp, string]> = [
+    [/^\/api\/users(?:\/|$)|^\/api\/admin\/user-creators|^\/api\/admin\/registration-policy/, 'users'],
+    [/^\/api\/audit(?:-|\/)|^\/api\/audit-logs/, 'audit'],
+    [/^\/api\/cases(?:\/|$)|^\/api\/tasks(?:\/|$)|^\/api\/observations(?:\/|$)|^\/api\/forms(?:\/|$)/, 'cases'],
+    [/^\/api\/(?:documents|shared-documents|upload-requests)(?:\/|$)/, 'documents'],
+    [/^\/api\/system-messages(?:\/|$)/, 'messages'],
+    [/^\/api\/notifications(?:\/|$)/, 'notifications'],
+    [/^\/api\/templates(?:\/|$)/, 'templates'],
+    [/^\/api\/(?:system-settings|industry|verification-policy|admin\/backup|admin\/cleanup-unverified)(?:\/|$)/, 'settings'],
+    [/^\/api\/(?:ai|gemini)(?:\/|$)/, 'ai'],
+  ];
+  const matched = routes.find(([pattern]) => pattern.test(path));
+  if (!matched) return next();
+  const method = c.req.method;
+  const action = method === 'GET' ? (path.endsWith('/download') ? 'download' : 'view') : method === 'DELETE' ? 'delete' : method === 'POST' && (/\/api\/(?:users|cases|documents|shared-documents|templates)$/.test(path)) ? 'create' : 'edit';
+  const { hasRbacPermission } = await import('../src/rbac');
+  const matrix = await getSystemConfigValue(c.env.DB, 'rbacMatrix', { roles: {}, users: {} });
+  if (!hasRbacPermission(matrix, auth.realUser.role, auth.realUser.id, `${matched[1]}.${action}` as any)) {
+    return c.json({ error: 'Acción denegada por la política RBAC.' }, 403);
+  }
+  return next();
+});
+
 // Granular RBAC administration: server-side superadmin-only policy.
 app.get('/api/admin/rbac', async (c) => {
   const auth = c.get('auth');
