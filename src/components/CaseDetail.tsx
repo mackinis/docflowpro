@@ -211,7 +211,8 @@ export default function CaseDetail({
 
     const missing: string[] = [];
 
-    currentStage.requirements.forEach(req => {\n      // El documento digitalizado es material de referencia, no un requisito documental automático.\n      if (req.type === 'document' && req.documentSourceType === 'digital_contract') return;
+    currentStage.requirements.forEach(req => {\n      // El documento digitalizado es material de referencia, no un requisito documental automático.
+      if (req.type === 'document' && req.documentSourceType === 'digital_contract') return;
       if (!req.isRequired) return;
 
       if (req.type === 'document') {
