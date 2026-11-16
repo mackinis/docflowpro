@@ -3360,6 +3360,36 @@ app.post('/api/notifications/clear-all', async (c) => {
   return c.json({ success: true });
 });
 
+// Per-legajo chronology: read-only and scoped to the assigned advisor or supervising roles.
+app.get('/api/cases/:id/history', async (c) => {
+  const auth = c.get('auth')!;
+  const id = c.req.param('id');
+  const item = await getCaseById(c.env.DB, id);
+  if (!item) return c.json({ error: 'Legajo no encontrado.' }, 404);
+  if (auth.user.role === 'ASESOR' && item.assignedAdvisorId !== auth.user.id) {
+    return c.json({ error: 'No tiene acceso al historial de este legajo.' }, 403);
+  }
+  const rows = await c.env.DB.prepare(
+    `SELECT a.id, a.user_id, a.user_name, a.user_role, a.action,
+            a.entity_type, a.entity_id, a.entity_name, a.created_at
+     FROM audit_logs a
+     WHERE (a.entity_type = 'Case' AND a.entity_id = ?)
+        OR (a.entity_type = 'Document' AND a.entity_id IN (SELECT id FROM documents WHERE case_id = ?))
+        OR (a.entity_type = 'Observation' AND a.entity_id IN (SELECT id FROM observations WHERE case_id = ?))
+        OR (a.entity_type = 'Participant' AND a.entity_id IN (SELECT id FROM case_participants WHERE case_id = ?))
+     ORDER BY a.created_at ASC, a.id ASC LIMIT 1000`
+  ).bind(id, id, id, id).all<any>();
+  return c.json({
+    caseId: id, createdAt: item.createdAt, status: item.status,
+    durationMs: Math.max(0, Date.now() - Date.parse(item.createdAt)),
+    events: (rows.results || []).map((row: any) => ({
+      id: row.id, userId: row.user_id, userName: row.user_name,
+      userRole: row.user_role, action: row.action, entityType: row.entity_type,
+      entityId: row.entity_id, entityName: row.entity_name, createdAt: row.created_at
+    }))
+  });
+});
+
 app.get('/api/audit-logs', async (c) => {
   const auth = c.get('auth')!;
   const isSuper = auth.realUser.role === 'SUPERADMIN';
