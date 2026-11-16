@@ -115,3 +115,15 @@ html::-webkit-scrollbar, body::-webkit-scrollbar, *::-webkit-scrollbar {
 .dark .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
   border-color: #334155 !important;
 }
+
+/* Configuration sections: only show cards belonging to the selected tab. */
+.settings-tab-cards > * { display: none !important; }
+.settings-tab-cards[data-settings-section="general"] > :nth-child(2),
+.settings-tab-cards[data-settings-section="accesos"] > :nth-child(1),
+.settings-tab-cards[data-settings-section="accesos"] > :nth-child(4),
+.settings-tab-cards[data-settings-section="mensajes"] > :nth-child(3),
+.settings-tab-cards[data-settings-section="procesos"] > :nth-child(5),
+.settings-tab-cards[data-settings-section="procesos"] > :nth-child(6),
+.settings-tab-cards[data-settings-section="mantenimiento"] > :nth-child(7) {
+  display: flex !important;
+}
