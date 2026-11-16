@@ -46,7 +46,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
   const [digitizeFileName, setDigitizeFileName] = useState('');
   const [digitizeText, setDigitizeText] = useState('');
   const [digitizeIndustry, setDigitizeIndustry] = useState<ProcessTemplate['industry']>('Inmobiliaria');
-  const [generateFlowCheck, setGenerateFlowCheck] = useState(false);
+  const [generateFlowCheck, setGenerateFlowCheck] = useState(true);
   const [isDigitizing, setIsDigitizing] = useState(false);
   const [dragActive, setDragActive] = useState(false);
 
@@ -413,7 +413,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
   const handleAddRequirement = (stageIdx: number, type: RequirementType) => {
     const newReq: Requirement = {
       id: `req-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      name: type === 'document' ? 'Nuevo Documento' : type === 'form' ? 'Nuevo Formulario' : 'Nueva Tarea',
+      name: type === 'document' ? 'Nuevo Documento' : type === 'form' ? 'Nuevo Formulario' : type === 'actor' ? 'Locador' : 'Nueva Tarea',\n      actorRole: type === 'actor' ? 'Locador' : undefined,\n      minQuantity: type === 'actor' ? 1 : undefined,
       type,
       description: '',
       isRequired: true,
@@ -432,7 +432,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
     } : stg));
   };
 
-  const handleRequirementFieldChange = (stageIdx: number, reqId: string, field: 'name' | 'description' | 'isRequired' | 'documentSourceType' | 'linkedTemplateId' | 'linkedSharedDocumentId', value: any) => {
+  const handleRequirementFieldChange = (stageIdx: number, reqId: string, field: 'name' | 'description' | 'isRequired' | 'documentSourceType' | 'linkedTemplateId' | 'linkedSharedDocumentId' | 'actorRole' | 'minQuantity', value: any) => {
     setEditStages(prev => prev.map((stg, i) => i === stageIdx ? {
       ...stg,
       requirements: stg.requirements.map(r => r.id === reqId ? { ...r, [field]: value } : r)
@@ -1095,7 +1095,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                                     />
                                   </div>
 
-                                  {/* Sub-fields for Form Fields definition */}
+                                  {req.type === 'actor' && (\n                                    <div className="pl-7 flex flex-wrap gap-3 items-end">\n                                      <label className="text-xs text-slate-700">Rol obligatorio\n                                        <select className="block border border-slate-300 rounded p-2 bg-white text-slate-900" value={req.actorRole || 'Locador'} onChange={e => { handleRequirementFieldChange(sIdx, req.id, 'actorRole', e.target.value); handleRequirementFieldChange(sIdx, req.id, 'name', e.target.value); }}>\n                                          {['Locador','Locatario','Garante','Comprador','Vendedor','Titular','Cliente','Apoderado','Escribano'].map(role => <option key={role} value={role}>{role}</option>)}\n                                        </select>\n                                      </label>\n                                      <label className="text-xs text-slate-700">Cantidad mínima\n                                        <input type="number" min="1" max="50" className="block w-24 border border-slate-300 rounded p-2 bg-white text-slate-900" value={req.minQuantity || 1} onChange={e => handleRequirementFieldChange(sIdx, req.id, 'minQuantity', Math.max(1, Number(e.target.value) || 1))} />\n                                      </label>\n                                    </div>\n                                  )}\n                                  {/* Sub-fields for Form Fields definition */}
                                   {req.type === 'form' && (
                                     <div className="pl-7 space-y-1">
                                       <label className="text-[8px] font-bold text-slate-400 uppercase block">Campos del Formulario (separados por coma)</label>
@@ -1121,7 +1121,6 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                                           className="text-[10px] p-1.5 border border-slate-200 rounded bg-slate-50 focus:outline-none focus:ring-1 focus:ring-indigo-500 w-full"
                                         >
                                           <option value="manual_upload">📁 Carga Manual por el Asesor (Subida de Archivo)</option>
-                                          <option value="digital_contract">✍️ Documento 100% Digitalizado Asociado (Plantilla)</option>
                                           <option value="download_asset">📥 Archivo de Descarga Obligatoria (de DOCUMENTOS)</option>
                                         </select>
                                       </div>

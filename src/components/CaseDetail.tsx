@@ -212,9 +212,14 @@ export default function CaseDetail({
     const missing: string[] = [];
 
     currentStage.requirements.forEach(req => {
+      // El documento digitalizado es material de referencia, no un requisito documental automático.
+      if (req.type === 'document' && req.documentSourceType === 'digital_contract') return;
       if (!req.isRequired) return;
-
-      if (req.type === 'document') {
+      if (req.type === 'actor') {
+        const count = caseObj.participants.filter(p => p.role === req.actorRole && p.name?.trim() && p.lastName?.trim() && p.dni?.trim()).length;
+        const minimum = Math.max(1, Number(req.minQuantity) || 1);
+        if (count < minimum) missing.push(`Actores pendientes: ${req.actorRole || req.name} (${count}/${minimum})`);
+      } else if (req.type === 'document') {
         const doc = docs.find(d => d.requirementId === req.id);
         if (!doc || doc.status === 'pending') {
           missing.push(`Documento faltante: "${req.name}"`);
@@ -1313,7 +1318,7 @@ export default function CaseDetail({
               {/* 1. DOCUMENTS TAB */}
               {activeSubTab === 'docs' && (
                 <div className="space-y-4">
-                  {currentStage?.requirements.filter(r => r.type === 'document').length === 0 ? (
+                  {currentStage?.requirements.filter(r => r.type === 'document' && r.documentSourceType !== 'digital_contract').length === 0 ? (
                     <p className="text-xs text-slate-400 italic text-center py-6">Esta etapa no requiere documentos.</p>
                   ) : (
                     currentStage?.requirements
@@ -2233,7 +2238,8 @@ export default function CaseDetail({
               </div>
 
               <div className="prose prose-sm text-xs text-slate-700 max-w-none">
-                {auditResult.analysis?.split('\n').map((line: string, idx: number) => {
+                {auditResult.analysis?.split('
+').map((line: string, idx: number) => {
                   if (line.startsWith('###')) {
                     return <h4 key={idx} className="font-bold text-slate-800 text-xs pt-1.5 mb-1.5">{line.replace('###', '').trim()}</h4>;
                   }

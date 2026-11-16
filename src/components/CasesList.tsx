@@ -95,7 +95,7 @@ export default function CasesList({
   React.useEffect(() => {
     const isTemplateRequired = systemSettings?.processTemplateRequired !== false;
     if (showCreateModal && templates.length > 0) {
-      setNewTemplateId(isTemplateRequired ? templates[0].id : '');
+      setNewTemplateId(isTemplateRequired ? (templates.find(t => !t.id.startsWith('doc-'))?.id || '') : '');
     }
   }, [showCreateModal, templates, systemSettings]);
   
@@ -137,7 +137,16 @@ export default function CasesList({
       errors.push('Falta ingresar la Descripción General.');
     }
     if (isTemplateRequired && !newTemplateId) {
-      errors.push('Falta seleccionar una Plantilla de Proceso.');
+      errors.push('Falta seleccionar una Tipo de proceso.');
+    }
+
+    // Reglas de actores del proceso, definidas por los responsables.
+    const selectedProcess = templates.find(t => t.id === newTemplateId);
+    const actorRules = selectedProcess?.stages.flatMap(st => st.requirements).filter(req => req.type === 'actor' && req.isRequired) || [];
+    for (const rule of actorRules) {
+      const count = participants.filter(p => p.role === rule.actorRole && p.name.trim() && p.lastName.trim() && p.dni.trim()).length;
+      const minimum = Math.max(1, Number(rule.minQuantity) || 1);
+      if (count < minimum) errors.push(`Faltan ${minimum - count} ${rule.actorRole || rule.name} (mínimo ${minimum}).`);
     }
 
     // Actores mínimos requeridos
@@ -155,7 +164,7 @@ export default function CasesList({
     if (garantesActuales < expectedGarantes) {
       errors.push(`Falta(n) ${expectedGarantes - garantesActuales} Garante(s) (Cargados: ${garantesActuales} de ${expectedGarantes}).`);
     }
-    if (!escribanoADesignar && escribanosActuales < 1) {
+    if (!escribanoADesignar && escribanosActuales < 1 && actorRules.some(r => r.actorRole === 'Escribano')) {
       errors.push('Falta agregar el Escribano (o tildar "Escribano a designar").');
     }
 
@@ -615,7 +624,7 @@ export default function CasesList({
                 
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-slate-600">
-                    Plantilla de Proceso {isTemplateRequired ? '*' : '(Opcional)'}
+                    Tipo de proceso {isTemplateRequired ? '*' : '(Opcional)'}
                   </label>
                   <select
                     value={newTemplateId}
@@ -623,37 +632,19 @@ export default function CasesList({
                     required={isTemplateRequired}
                     className="w-full text-xs p-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500"
                   >
-                    <option value="">-- Seleccionar Plantilla de Proceso --</option>
+                    <option value="">-- Seleccionar Tipo de proceso --</option>
                     {(() => {
                       const regularTemplates = templates.filter(t => !t.id.startsWith('doc-'));
-                      const virtualTemplates = templates.filter(t => t.id.startsWith('doc-'));
-                      const allowedVirtualTemplates = virtualTemplates.filter(vt => {
-                        const docId = vt.id.replace('doc-', '');
-                        const docObj = (sharedDocuments || []).find(d => d.id === docId);
-                        if (!docObj) return false;
-                        
-                        if (currentUser.role === 'SUPERADMIN' || currentUser.role === 'ADMIN') return true;
-                        const roleAllowed = docObj.allowedRoles?.includes(currentUser.role);
-                        const userAllowed = docObj.allowedUserIds?.includes(currentUser.id);
-                        return roleAllowed || userAllowed;
-                      });
-
                       return (
                         <>
                           {regularTemplates.length > 0 && (
-                            <optgroup label="Plantillas de Procesos Creadas">
+                            <optgroup label="Procesos configurados por responsables">
                               {regularTemplates.map(t => (
                                 <option key={t.id} value={t.id}>{t.name} ({t.industry})</option>
                               ))}
                             </optgroup>
                           )}
-                          {allowedVirtualTemplates.length > 0 && (
-                            <optgroup label="Documentos Compartidos Disponibles">
-                              {allowedVirtualTemplates.map(t => (
-                                <option key={t.id} value={t.id}>📄 {t.name.replace('Documento: ', '')}</option>
-                              ))}
-                            </optgroup>
-                          )}
+
                         </>
                       );
                     })()}

@@ -36,7 +36,7 @@ export interface Participant {
   comments?: string;
 }
 
-export type RequirementType = 'document' | 'form' | 'task';
+export type RequirementType = 'document' | 'form' | 'task' | 'actor';
 
 export interface FormField {
   id: string;
@@ -52,7 +52,7 @@ export interface Requirement {
   type: RequirementType;
   description: string;
   isRequired: boolean;
-  formFields?: FormField[]; // Only populated for type 'form'
+  actorRole?: ParticipantType;\n  minQuantity?: number;\n  formFields?: FormField[]; // Only populated for type 'form'
   documentSourceType?: 'digital_contract' | 'download_asset' | 'manual_upload';
   linkedTemplateId?: string;
   linkedSharedDocumentId?: string;

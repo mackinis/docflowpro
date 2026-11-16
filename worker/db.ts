@@ -203,7 +203,7 @@ export async function getAllTemplates(db: D1Database): Promise<ProcessTemplate[]
       type: r.type,
       description: r.description || '',
       isRequired: r.is_required === 1,
-      formFields: r.form_fields_json ? JSON.parse(r.form_fields_json) : undefined,
+      formFields: r.type === 'form' && r.form_fields_json ? JSON.parse(r.form_fields_json) : undefined,\n      actorRole: r.type === 'actor' && r.form_fields_json ? JSON.parse(r.form_fields_json).actorRole : undefined,\n      minQuantity: r.type === 'actor' && r.form_fields_json ? JSON.parse(r.form_fields_json).minQuantity : undefined,
       documentSourceType: r.document_source_type || undefined,
       linkedTemplateId: r.linked_template_id || undefined,
       linkedSharedDocumentId: r.linked_shared_document_id || undefined,
@@ -689,7 +689,7 @@ export async function validateStageRequirements(
   const stage = template.stages.find((s) => s.id === stageId);
   if (!stage) return { isValid: false, missing: ['Etapa no válida'] };
 
-  const [docsRes, tasksRes, obsRes, subsRes] = await Promise.all([
+  const [docsRes, tasksRes, obsRes, subsRes, participantsRes] = await Promise.all([
     db
       .prepare('SELECT requirement_id, status FROM documents WHERE case_id = ? AND stage_id = ?')
       .bind(caseId, stageId)
@@ -704,18 +704,18 @@ export async function validateStageRequirements(
       )
       .bind(caseId, stageId)
       .all<any>(),
-    db.prepare('SELECT requirement_id FROM form_submissions').all<any>(),
+    db.prepare('SELECT requirement_id, values_json FROM form_submissions WHERE case_id = ? AND stage_id = ?').bind(caseId, stageId).all<any>(),\n    db.prepare('SELECT role, name, last_name, dni FROM case_participants WHERE case_id = ?').bind(caseId).all<any>(),
   ]);
 
   const docs = docsRes.results || [];
   const tasks = tasksRes.results || [];
   const openObs = obsRes.results || [];
-  const subs = new Set((subsRes.results || []).map((s: any) => s.requirement_id));
+  const subs = new Map((subsRes.results || []).map((s: any) => [s.requirement_id, JSON.parse(s.values_json || '{}')]));\n  const participants = participantsRes.results || [];
 
   const missing: string[] = [];
 
   for (const req of stage.requirements) {
-    if (!req.isRequired) continue;
+    if (!req.isRequired || (req.type === 'document' && req.documentSourceType === 'digital_contract')) continue;\n\n    if (req.type === 'actor') {\n      const count = participants.filter((p: any) => p.role === req.actorRole && p.name?.trim() && p.last_name?.trim() && p.dni?.trim()).length;\n      const minimum = Math.max(1, Number(req.minQuantity) || 1);\n      if (count < minimum) missing.push(`Actores pendientes: ${req.actorRole || req.name} (${count}/${minimum})`);\n      continue;\n    }
 
     if (req.type === 'document') {
       const doc = docs.find((d: any) => d.requirement_id === req.id);

@@ -204,7 +204,7 @@ export async function generateTemplateWithAI(
   const userPrompt = `Genera una plantilla de proceso reutilizable para el rubro "${params.industry}" basada en esta descripción:
 "${params.description}"
 
-Debe tener entre 2 y 4 etapas lógicas, cada una con 2 o 3 requisitos distribuidos entre "document", "form" y "task".
+Debe crear etapas con obligaciones verificables de tipo "actor", "document", "form" o "task". Las instrucciones del proceso NO son documentos a exigir: exigir únicamente documentos reales como DNI, escritura, boleta de servicios o boleto. Si el proceso requiere participantes, crear requisitos de tipo actor con actorRole y minQuantity (ejemplo: Locador 1, Locatario 1, Garante 2). La propuesta requiere revisión del responsable.
 Para los requisitos de tipo "form", incluye "formFields" con al menos 2 campos.
 
 Esquema JSON obligatorio:
@@ -219,7 +219,7 @@ Esquema JSON obligatorio:
       "requirements": [
         {
           "name": "Título del requisito",
-          "type": "document" | "form" | "task",
+          "type": "actor" | "document" | "form" | "task",\n          "actorRole": "Locador" | "Locatario" | "Garante" | "Comprador" | "Vendedor" | "Titular" | "Cliente" | "Apoderado" | "Escribano",\n          "minQuantity": 1,
           "description": "Instrucciones para el asesor",
           "isRequired": true,
           "formFields": [
@@ -247,10 +247,10 @@ Esquema JSON obligatorio:
         (req: any, rIdx: number) => ({
           id: `req-ai-${sIdx}-${rIdx}-${now}`,
           name: req.name || `Requisito ${rIdx + 1}`,
-          type: ['document', 'form', 'task'].includes(req.type) ? req.type : 'document',
+          type: ['actor', 'document', 'form', 'task'].includes(req.type) ? req.type : 'document',
           description: req.description || '',
           isRequired: req.isRequired !== undefined ? Boolean(req.isRequired) : true,
-          formFields: Array.isArray(req.formFields) ? req.formFields : undefined,
+          formFields: Array.isArray(req.formFields) ? req.formFields : undefined,\n          actorRole: req.type === 'actor' ? req.actorRole : undefined,\n          minQuantity: req.type === 'actor' ? Math.max(1, Number(req.minQuantity) || 1) : undefined,
         })
       ),
     })),
@@ -315,7 +315,7 @@ export async function digitizeTemplateWithAI(
     ? `Digitaliza este documento para el rubro "${params.industry}".
 REGLAS:
 1. "originalDocumentContent" debe conservar de forma 100% literal el texto del documento, manteniendo sus líneas de subrayado "_________" sin inventar comentarios.
-2. "stages" debe contener entre 2 y 5 etapas lógicas basadas en el documento, cada una con requisitos de tipo "document", "form" o "task".
+2. "stages" debe contener etapas con obligaciones verificables: actores con rol y cantidad mínima, documentos reales a aportar, formularios y tareas. La hoja guía o el texto original NO se debe exigir como archivo. NO inventes requisitos no presentes en el documento.
 
 Documento fuente:
 """
@@ -333,7 +333,7 @@ Retorna ÚNICAMENTE JSON válido:
       "name": "1. Etapa",
       "description": "Objetivo",
       "requirements": [
-        { "name": "Requisito", "type": "document" | "form" | "task", "description": "Detalle", "isRequired": true }
+        { "name": "Requisito", "type": "actor" | "document" | "form" | "task", "actorRole": "Locador", "minQuantity": 1, "description": "Detalle", "isRequired": true }
       ]
     }
   ]
@@ -375,10 +375,10 @@ Retorna ÚNICAMENTE JSON válido:
             (req: any, rIdx: number) => ({
               id: `req-dig-${sIdx}-${rIdx}-${now}`,
               name: req.name || `Requisito ${rIdx + 1}`,
-              type: ['document', 'form', 'task'].includes(req.type) ? req.type : 'document',
+              type: ['actor', 'document', 'form', 'task'].includes(req.type) ? req.type : 'document',
               description: req.description || '',
               isRequired: req.isRequired !== undefined ? Boolean(req.isRequired) : true,
-              formFields: Array.isArray(req.formFields) ? req.formFields : undefined,
+              formFields: Array.isArray(req.formFields) ? req.formFields : undefined,\n          actorRole: req.type === 'actor' ? req.actorRole : undefined,\n          minQuantity: req.type === 'actor' ? Math.max(1, Number(req.minQuantity) || 1) : undefined,
             })
           ),
         }))
