@@ -2072,6 +2072,7 @@ type CaseHistoryEvent = {
 function CaseHistoryPanel({ caseId, createdAt, status }: { caseId: string; createdAt: string; status: string }) {
   const [expanded, setExpanded] = useState(false);
   const [events, setEvents] = useState<CaseHistoryEvent[]>([]);
+  const [historySummary, setHistorySummary] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const reload = async () => {
@@ -2082,17 +2083,18 @@ function CaseHistoryPanel({ caseId, createdAt, status }: { caseId: string; creat
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'No se pudo obtener el historial.');
       setEvents(result.events || []);
+      setHistorySummary(result);
     } catch (err: any) { setError(err.message || 'Error de consulta.'); }
     finally { setLoading(false); }
   };
-  const elapsed = Math.max(0, Date.now() - new Date(createdAt).getTime());
+  const elapsed = historySummary?.durationMs ?? Math.max(0, Date.now() - new Date(createdAt).getTime());
   const days = Math.floor(elapsed / 86400000);
   return (
     <section className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-3 p-4">
         <div>
           <h3 className="flex items-center gap-2 text-sm font-bold text-slate-800"><History className="w-4 h-4 text-indigo-500" /> Historial y Auditoría del Legajo</h3>
-          <p className="text-xs text-slate-500 mt-1">Creado: {new Date(createdAt).toLocaleString('es-AR')} · {days} días transcurridos · Estado: {status}</p>
+          <p className="text-xs text-slate-500 mt-1">Creado: {new Date(createdAt).toLocaleString('es-AR')} · {days} días {historySummary?.durationIsFinal ? 'hasta su finalización' : 'transcurridos'} · Estado: {status}</p>
         </div>
         <button type="button" className="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white" onClick={() => { setExpanded(!expanded); if (!expanded) void reload(); }}>
           {expanded ? 'Ocultar historial' : 'Ver historial'}
@@ -2100,6 +2102,19 @@ function CaseHistoryPanel({ caseId, createdAt, status }: { caseId: string; creat
       </div>
       {expanded && <div className="border-t border-slate-200 p-4 space-y-3">
         <div className="flex justify-end"><button type="button" onClick={() => void reload()} disabled={loading} className="text-xs font-semibold text-indigo-600 disabled:opacity-50">Actualizar eventos</button></div>
+        {historySummary && <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-3 space-y-3">
+          <p className="text-xs font-bold text-indigo-900">Resumen de intervenciones · {historySummary.eventCount} eventos registrados</p>
+          <p className="text-xs text-slate-700">Duración: {Math.floor(historySummary.durationMs / 86400000)} días, {Math.floor((historySummary.durationMs % 86400000) / 3600000)} horas · {historySummary.durationIsFinal ? 'Finalizado el ' + new Date(historySummary.completedAt).toLocaleString('es-AR') : 'Legajo en curso (duración provisional)'}</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {(historySummary.contributors || []).map((person: any) => <div key={person.userId || person.userName} className="rounded-lg bg-white border border-indigo-100 p-2">
+              <p className="text-xs font-bold text-slate-800">{person.userName || 'Usuario sin identificar'} · {person.userRole}</p>
+              <p className="text-xs text-slate-600">{person.interventions} intervenciones · Primera: {new Date(person.firstAt).toLocaleString('es-AR')}</p>
+              <p className="text-xs text-slate-600">Última: {new Date(person.lastAt).toLocaleString('es-AR')}</p>
+              <p className="text-[11px] text-slate-500">{Object.entries(person.actions || {}).map(([action, count]) => `${action} (${count})`).join(' · ')}</p>
+            </div>)}
+          </div>
+          {historySummary.truncated && <p className="text-xs text-amber-700">Historial parcial: se alcanzó el límite de 1000 eventos.</p>}
+        </div>}
         {loading && <p className="text-xs text-slate-500">Cargando eventos…</p>}
         {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
         {!loading && !error && events.length === 0 && <p className="text-xs text-slate-500">No se encontraron eventos vinculados a este legajo.</p>}
