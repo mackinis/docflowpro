@@ -780,8 +780,8 @@ export default function UserProfile({
                           onClick={() => handleSelectUser(u)}
                           className={`w-full flex items-center gap-3 p-3 rounded-xl border text-left transition-all ${
                             isSelected
-                              ? 'bg-indigo-50/50 border-indigo-200 ring-1 ring-indigo-200'
-                              : 'bg-white hover:bg-slate-50 border-slate-100'
+                              ? 'bg-indigo-100 dark:bg-indigo-500/25 border-indigo-400 dark:border-indigo-400 ring-1 ring-indigo-400 dark:ring-indigo-400'
+                              : 'bg-white dark:bg-slate-900/40 hover:bg-slate-50 dark:hover:bg-slate-700 border-slate-200 dark:border-slate-600'
                           }`}
                         >
                           <img 
@@ -791,15 +791,15 @@ export default function UserProfile({
                             referrerPolicy="no-referrer"
                           />
                           <div className="overflow-hidden flex-1">
-                            <p className="text-xs font-bold text-slate-800 leading-tight truncate">
+                            <p className="text-xs font-bold text-slate-900 dark:text-white leading-tight truncate">
                               {u.name} {u.lastName}
                             </p>
-                            <p className="text-[10px] text-slate-400 font-mono truncate">{u.email}</p>
+                            <p className="text-[10px] text-slate-600 dark:text-slate-300 font-mono truncate">{u.email}</p>
                             
                             <div className="flex items-center gap-1.5 mt-1">
                               <span className={`px-1.5 py-0.5 rounded text-[8px] font-mono font-bold uppercase ${
-                                u.role === 'SUPERADMIN' ? 'bg-red-50 text-red-600 border border-red-200/50' :
-                                u.role === 'ADMIN' ? 'bg-amber-50 text-amber-600 border border-amber-200/50' :
+                                u.role === 'SUPERADMIN' ? 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200 border border-red-400/50' :
+                                u.role === 'ADMIN' ? 'bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200 border border-amber-400/50' :
                                 u.role === 'MANAGER' ? 'bg-emerald-50 text-emerald-600 border border-emerald-200/50' :
                                 'bg-blue-50 text-blue-600 border border-blue-200/50'
                               }`}>
@@ -1097,7 +1097,7 @@ export default function UserProfile({
           </div>
         </div>
       )}
-      {innerTab === 'user-management' && currentUser.role === 'SUPERADMIN' && <RbacPanel users={state.users} />}
+      {innerTab === 'user-management' && currentUser.role === 'SUPERADMIN' && <RbacPanel users={state.users} selectedUserId={selectedUser?.id} />}
       {innerTab === 'audit' && canManageUsers && <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5">
         <h2 className="text-lg font-bold text-slate-900">Auditoría de usuarios</h2>
         <label className="block text-sm font-semibold">Usuario a auditar<select className="block mt-2 w-full rounded-lg border border-slate-300 bg-white p-2" value={selectedUser?.id||''} onChange={e=>setSelectedUser(state.users.find(u=>u.id===e.target.value)||null)}><option value="">Seleccione un usuario</option>{state.users.map(u=><option key={u.id} value={u.id}>{u.name} {u.lastName} ({u.role})</option>)}</select></label>
