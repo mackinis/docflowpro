@@ -1,3 +1,4 @@
+import { ensureDatabaseReady } from './startup-migrations';
 import { Hono, type Context } from 'hono';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import type { ProcessTemplate, User } from '../src/types';
@@ -48,6 +49,17 @@ const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 days
 type AppContext = Context<{ Bindings: Env; Variables: AppVariables }>;
 
 const app = new Hono<{ Bindings: Env; Variables: AppVariables }>();
+// Gate every API call until the bundled D1 schema is ready.
+app.use('/api/*', async (c, next) => {
+  try {
+    await ensureDatabaseReady(c.env.DB);
+  } catch (error) {
+    console.error('Automatic D1 initialization failed:', error);
+    return c.json({ message: 'Estamos trabajando en la base de datos. Aguarde.', error: 'database_initializing' }, 503, { 'Retry-After': '5' });
+  }
+  await next();
+});
+
 
 function getClientIp(req: Request): string {
   return (
