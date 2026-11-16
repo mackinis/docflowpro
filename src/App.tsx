@@ -433,11 +433,15 @@ export default function App() {
   // Render Loader
   if (loading) {
     return (
-      <div className="h-screen w-screen flex flex-col items-center justify-center bg-slate-50 space-y-4">
-        <Loader2 className="w-10 h-10 animate-spin text-indigo-600" />
-        <div className="text-center">
-          <p className="font-display font-bold text-slate-800 text-lg">Cargando DocFlow Pro...</p>
-          <p className="text-xs text-slate-400">Estableciendo conexión segura con la base de datos de Gestión Documental...</p>
+      <div className="fixed inset-0 z-50 grid place-items-center overflow-hidden bg-slate-50" role="status" aria-live="polite" aria-label="Cargando DocFlow Pro">
+        <div className="flex w-full max-w-xl flex-col items-center gap-4 px-6 text-center" style={{ minHeight: 124, justifyContent: 'center' }}>
+          <div className="grid h-12 w-12 shrink-0 place-items-center">
+            <Loader2 className="h-10 w-10 animate-spin text-indigo-600" aria-hidden="true" />
+          </div>
+          <div className="flex min-h-14 w-full flex-col items-center justify-center gap-1">
+            <p className="font-display text-lg font-bold leading-7 text-slate-800">Cargando DocFlow Pro...</p>
+            <p className="max-w-lg text-xs leading-5 text-slate-400">Estableciendo conexión segura con la base de datos de Gestión Documental...</p>
+          </div>
         </div>
       </div>
     );
