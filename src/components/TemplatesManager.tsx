@@ -1121,7 +1121,6 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                                           className="text-[10px] p-1.5 border border-slate-200 rounded bg-slate-50 focus:outline-none focus:ring-1 focus:ring-indigo-500 w-full"
                                         >
                                           <option value="manual_upload">📁 Carga Manual por el Asesor (Subida de Archivo)</option>
-                                          <option value="digital_contract">✍️ Documento 100% Digitalizado Asociado (Plantilla)</option>
                                           <option value="download_asset">📥 Archivo de Descarga Obligatoria (de DOCUMENTOS)</option>
                                         </select>
                                       </div>
