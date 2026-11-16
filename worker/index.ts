@@ -755,6 +755,57 @@ app.put('/api/admin/registration-policy', async (c) => {
   return c.json({ enabled: body.enabled });
 });
 
+// Superadmin delegates account creation to individual administrators.
+app.get('/api/admin/user-creators', async (c) => {
+  const auth = c.get('auth')!;
+  if (auth.realUser.role !== 'SUPERADMIN') return c.json({ error: 'No autorizado.' }, 403);
+  return c.json({ ids: await getSystemConfigValue<string[]>(c.env.DB, 'delegatedUserCreators', []) });
+});
+app.put('/api/admin/user-creators', async (c) => {
+  const auth = c.get('auth')!;
+  if (auth.realUser.role !== 'SUPERADMIN') return c.json({ error: 'No autorizado.' }, 403);
+  const body = await c.req.json<{ ids?: unknown }>();
+  if (!Array.isArray(body.ids) || body.ids.length > 1000 || !body.ids.every(id => typeof id === 'string')) return c.json({ error: 'Lista inválida.' }, 400);
+  const ids = [...new Set(body.ids as string[])];
+  if (ids.length) {
+    const admins = await c.env.DB.prepare("SELECT id FROM users WHERE role = 'ADMIN' AND active = 1").all<{ id: string }>();
+    const valid = new Set((admins.results || []).map(a => a.id));
+    if (ids.some(id => !valid.has(id))) return c.json({ error: 'Solo se pueden delegar administradores activos.' }, 400);
+  }
+  await setSystemConfigValue(c.env.DB, 'delegatedUserCreators', ids);
+  await createAudit(c.env.DB, auth.realUser.id, 'Actualizó administradores habilitados para crear usuarios', 'Security', 'delegatedUserCreators', ids.join(', '));
+  return c.json({ ids });
+});
+
+app.post('/api/users', async (c) => {
+  const auth = c.get('auth')!;
+  const role = auth.user.role;
+  const delegates = await getSystemConfigValue<string[]>(c.env.DB, 'delegatedUserCreators', []);
+  if (role !== 'SUPERADMIN' && !(role === 'ADMIN' && delegates.includes(auth.user.id))) {
+    return c.json({ error: 'No tiene autorización para crear usuarios.' }, 403);
+  }
+  const body = await c.req.json();
+  const { name, lastName, email, password, phone, address, city, province, country } = body;
+  const targetRole = String(body.role || 'ASESOR').toUpperCase();
+  if (!['ADMIN', 'MANAGER', 'ASESOR'].includes(targetRole) || (role !== 'SUPERADMIN' && targetRole === 'ADMIN')) {
+    return c.json({ error: 'Rol no permitido.' }, 403);
+  }
+  if (!String(name || '').trim() || !String(lastName || '').trim() || !String(email || '').includes('@') || typeof password !== 'string' || password.length < 8) {
+    return c.json({ error: 'Nombre, apellido, correo y contraseña de al menos 8 caracteres son obligatorios.' }, 400);
+  }
+  const normalizedEmail = String(email).trim().toLowerCase();
+  const exists = await c.env.DB.prepare('SELECT id FROM users WHERE LOWER(email) = ?').bind(normalizedEmail).first();
+  if (exists) return c.json({ error: 'Ya existe una cuenta con ese correo.' }, 409);
+  const id = 'usr-' + crypto.randomUUID();
+  const now = new Date().toISOString();
+  const pwHash = await hashPassword(password);
+  const avatar = PRESET_AVATARS[0]?.url || '';
+  await c.env.DB.prepare(`INSERT INTO users (id, name, last_name, email, role, avatar, phone, active, address, city, province, country, password_hash, is_verified, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, 1, ?, ?)`)
+    .bind(id, String(name).trim(), String(lastName).trim(), normalizedEmail, targetRole, avatar, phone || '', address || '', city || '', province || '', country || '', pwHash, now, now).run();
+  await createAudit(c.env.DB, auth.user.id, 'Creó usuario habilitado', 'User', id, normalizedEmail);
+  return c.json({ success: true, id }, 201);
+});
+
 app.put('/api/users/:id', async (c) => {
   const auth = c.get('auth')!;
   const currentUser = auth.user;
