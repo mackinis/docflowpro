@@ -742,7 +742,7 @@ export default function SharedDocumentsManager({ currentUser, users, onAddAudit 
                         </div>
                         <div className="space-y-1">
                           <div className="flex flex-wrap items-center gap-2">
-                            <h4 className="text-sm font-semibold text-slate-800 leading-tight">{doc.name}</h4>
+                            <h4 className="text-sm font-semibold text-slate-800 leading-tight">{doc.name.replace(/\s*\(\s*digitalizado\s*\)\s*$/i, '').trim()}</h4>
                             <span className={`inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider ${
                               isDigital 
                                 ? 'bg-amber-100 text-amber-800' 
@@ -763,22 +763,6 @@ export default function SharedDocumentsManager({ currentUser, users, onAddAudit 
                             </span>
                           </div>
 
-                          {/* Visual Access/Permissions Status Indicator */}
-                          <div className="flex flex-wrap gap-1.5 pt-1.5">
-                            {(!doc.allowedRoles || doc.allowedRoles.length === 4) ? (
-                              <span className="inline-flex items-center gap-1 text-[9px] bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded-full font-medium shadow-sm">
-                                <Globe className="w-2.5 h-2.5 text-emerald-500" /> Público: Todos los Roles
-                              </span>
-                            ) : (doc.allowedUserIds && doc.allowedUserIds.length > 0) ? (
-                              <span className="inline-flex items-center gap-1 text-[9px] bg-amber-50 text-amber-800 border border-amber-100 px-2 py-0.5 rounded-full font-medium shadow-sm">
-                                <Lock className="w-2.5 h-2.5 text-amber-500" /> Específico: {doc.allowedUserIds.length} Usuario(s)
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 text-[9px] bg-indigo-50 text-indigo-700 border border-indigo-100 px-2 py-0.5 rounded-full font-medium shadow-sm">
-                                <Users className="w-2.5 h-2.5 text-indigo-500" /> Roles: {doc.allowedRoles?.join(', ')}
-                              </span>
-                            )}
-                          </div>
                         </div>
                       </div>
 
