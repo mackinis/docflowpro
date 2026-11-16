@@ -105,7 +105,6 @@ export default function DashboardAdvisor({
           <div className="space-y-1">
             <span className="text-xs font-medium text-rose-600 uppercase tracking-wider">Legajos Observados</span>
             <p className="text-3xl font-bold text-rose-500">{observedCount}</p>
-            <p className="text-[11px] text-rose-400 font-medium">{observedCount ? 'Requieren atención' : 'Sin pendientes'}</p>
           </div>
           <div className="p-3 bg-rose-500/15 text-rose-500 rounded-xl group-hover:scale-110 transition-transform shrink-0"><AlertTriangle className="w-6 h-6" /></div>
         </div>
