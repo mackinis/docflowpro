@@ -1884,8 +1884,6 @@ export default function CaseDetail({
           </div>
         </div>
       </div>
-    </>
-
       {/* AI COMPLIANCE AUDIT DISPLAY MODAL */}
       {auditResult && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
