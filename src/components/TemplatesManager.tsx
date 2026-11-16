@@ -296,9 +296,11 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
   };
 
   // Duplicate Template
-  const handleDuplicateTemplate = async (tpl: ProcessTemplate) => {
-    const newName = prompt(`Ingrese el nombre para la nueva plantilla duplicada:`, `Copia de ${tpl.name}`);
-    if (!newName) return;
+  const handleDuplicateTemplate = (tpl: ProcessTemplate) => {
+    requestConfirmation('Duplicar plantilla', `¿Crear una copia de «${tpl.name}»?`, () => { void duplicateTemplate(tpl, `Copia de ${tpl.name}`); });
+  };
+
+  const duplicateTemplate = async (tpl: ProcessTemplate, newName: string) => {
 
     try {
       const response = await fetch('/api/templates', {
