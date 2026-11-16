@@ -646,25 +646,6 @@ export default function CasesList({
                       );
                     })()}
                   </select>
-                  {(() => {
-                    const selected = templates.find(t => t.id === newTemplateId);
-                    const obligations = selected?.stages.flatMap(stage => stage.requirements) || [];
-                    if (!selected) return null;
-                    return (
-                      <div className="mt-3 p-3 rounded-xl bg-indigo-50 border border-indigo-200 space-y-2">
-                        <p className="text-xs font-bold text-indigo-800">Requisitos establecidos por el responsable</p>
-                        {obligations.length === 0
-                          ? <p className="text-xs text-amber-700">Este proceso no tiene requisitos configurados. Solicitá al responsable que los revise.</p>
-                          : obligations.map(req => (
-                            <p key={req.id} className="text-xs text-slate-700">
-                              {req.type === 'actor' ? `Actor: ${req.actorRole || req.name} — mínimo ${req.minQuantity || 1}` : req.type === 'document' ? `Documento: ${req.name} (se presentará en el legajo)` : `${req.type === 'form' ? 'Formulario' : 'Tarea'}: ${req.name}`}
-                              {!req.isRequired ? ' (opcional)' : ' *'}
-                            </p>
-                          ))
-                        }
-                      </div>
-                    );
-                  })()}
 
                 </div>
 
