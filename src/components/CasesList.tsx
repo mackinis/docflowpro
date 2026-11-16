@@ -127,7 +127,6 @@ export default function CasesList({
   const [actorFiles, setActorFiles] = useState<Record<string, Record<string, File>>>({});
   const [savingCase, setSavingCase] = useState(false);
   const [missingActorDocsWarning, setMissingActorDocsWarning] = useState(false);
-  const [skipActorDocWarning, setSkipActorDocWarning] = useState(false);
   const filePickerRef = React.useRef<HTMLInputElement>(null);
   const process = templates.find(t => t.id === newTemplateId && !t.originalDocumentContent);
   const requiredDocs = process?.stages.flatMap(stage => stage.requirements.filter(r => r.type === 'document' && r.isRequired).map(r => ({ ...r, stageId: stage.id }))) || [];
@@ -160,7 +159,7 @@ export default function CasesList({
   const actorRequiredDocs = requiredDocs.filter(req => belongsTo(req.name, pType));
   const missingDraftDocs = actorRequiredDocs.filter(req => !actorFiles[draftKey]?.[req.id]);
   const onActorFileSelected = (file?: File) => {
-    setSkipActorDocWarning(false); setMissingActorDocsWarning(false);
+    setMissingActorDocsWarning(false);
     if (!file || !docRequirementId) return;
     if (!file.size || file.size > 20 * 1024 * 1024) { alert('El archivo debe tener contenido y pesar menos de 20 MB.'); return; }
     setActorFiles(prev => ({ ...prev, [draftKey]: { ...prev[draftKey], [docRequirementId]: file } }));
@@ -263,15 +262,14 @@ export default function CasesList({
     }
   };
 
-  const handleAddParticipant = () => {
+  const handleAddParticipant = (confirmedMissingDocuments = false) => {
     if (!editingParticipantId && !availableRoles.includes(pType)) { alert('No quedan roles pendientes de carga para este proceso.'); return; }
     if (!pName || !pLastName || !pDni || !pCuit || !pBirthDate || !pEmail || !pPhone) {
       alert('Favor de completar todos los campos obligatorios del actor (Nombre, Apellido, Fecha de Nacimiento, DNI, CUIT/CUIL, Email, Teléfono/Celular).');
       return;
     }
 
-    if (missingDraftDocs.length && !skipActorDocWarning) { setMissingActorDocsWarning(true); return; }
-    setSkipActorDocWarning(false);
+    if (missingDraftDocs.length && !confirmedMissingDocuments) { setMissingActorDocsWarning(true); return; }
     setMissingActorDocsWarning(false);
     if (editingParticipantId) {
       setParticipants(prev => prev.map(p => {
@@ -871,8 +869,8 @@ export default function CasesList({
                   </div>
                   {missingActorDocsWarning && <div role="alertdialog" aria-label="Documentos pendientes del actor" className="sm:col-span-3 rounded-xl border border-amber-300 bg-amber-50 p-4 space-y-2">
                     <p className="text-sm font-bold text-amber-900">Documentos pendientes</p>
-                    <p className="text-xs text-amber-900">No cargaste: {missingDraftDocs.map(r => r.name).join(', ')}. Podés continuar agregando actores, pero si creás el legajo sin estos documentos quedará OBSERVADO y requerirá revisión del responsable.</p>
-                    <div className="flex justify-end gap-2"><button type="button" onClick={() => setMissingActorDocsWarning(false)} className="rounded-lg border border-amber-400 px-3 py-2 text-xs">Volver a cargar documentos</button><button type="button" onClick={() => { setMissingActorDocsWarning(false); /* confirm bypass is handled below */ setSkipActorDocWarning(true); }} className="rounded-lg bg-amber-700 px-3 py-2 text-xs font-bold text-white">Continuar sin documentos</button></div>
+                    <p className="text-xs text-amber-900">No cargaste: {missingDraftDocs.map(r => r.name).join(', ')}. Podés continuar agregando actores. Si faltan documentos al crear el legajo, el sistema aplicará la política configurada por el administrador: permitirlo como OBSERVADO o impedir su creación.</p>
+                    <div className="flex justify-end gap-2"><button type="button" onClick={() => setMissingActorDocsWarning(false)} className="rounded-lg border border-amber-400 px-3 py-2 text-xs">Volver a cargar documentos</button><button type="button" onClick={() => handleAddParticipant(true)} className="rounded-lg bg-amber-700 px-3 py-2 text-xs font-bold text-white">Continuar sin documentos</button></div>
                   </div>}
                   <div className="sm:col-span-3 flex justify-end gap-2 pt-1.5">
                     {editingParticipantId && (
@@ -899,7 +897,7 @@ export default function CasesList({
                     </button>
                     <button
                       type="button"
-                      onClick={handleAddParticipant}
+                      onClick={() => handleAddParticipant()}
                       className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs rounded-lg transition-colors border border-indigo-700 shadow-xs"
                     >
                       {editingParticipantId ? 'Guardar Cambios' : 'Añadir Actor'}
