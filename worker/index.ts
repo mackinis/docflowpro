@@ -230,7 +230,7 @@ app.post('/api/ai/settings', async (c) => {
   return c.json({ success: true });
 });
 
-app.use('/api/ai/*', async (c, next) => {
+app.use(['/api/ai/*', '/api/gemini/*'], async (c, next) => {
   if (c.req.path === '/api/ai/settings') return next();
   const auth = c.get('auth');
   if (!auth) return c.json({ error: 'No autenticado.' }, 401);
