@@ -3,7 +3,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [feat/consolidacion-ia-rbac-auditoria]
+    branches: [main]
 permissions:
   contents: read
 jobs:

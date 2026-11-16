@@ -34,10 +34,11 @@ test('navigation and API requests are logged without storing request bodies', ()
   assert.doesNotMatch(worker.match(/\/\/ Audit every authenticated API request[\s\S]*?app\.post\('\/api\/audit\/navigation'/)?.[0] || '', /c\.req\.json\(/);
 });
 
-test('audit retention runs hourly and expires after 120 hours', () => {
+test('forensic audit records are retained without scheduled deletion', () => {
   assert.match(wrangler, /"crons": \["0 \* \* \* \*"\]/);
-  assert.match(worker, /5 \* 24 \* 60 \* 60 \* 1000/);
-  assert.match(worker, /DELETE FROM audit_logs WHERE created_at < \?/);
+  assert.match(worker, /async scheduled\(_event: ScheduledEvent, env: Env\)/);
+  assert.match(worker, /await ensureDatabaseReady\(env\.DB\)/);
+  assert.doesNotMatch(worker, /DELETE FROM audit_logs WHERE created_at/);
 });
 
 test('AI configuration has a dedicated tab', () => {
