@@ -817,6 +817,14 @@ app.put('/api/users/:id', async (c) => {
     }
   }
 
+  // Exactly one Superadmin: the role cannot be assigned through user management.
+  if (role !== undefined && String(role).toUpperCase() === 'SUPERADMIN' && targetRow.role !== 'SUPERADMIN') {
+    return c.json({ error: 'Solo puede existir un Superadmin. Este rol no puede asignarse a otras cuentas.' }, 403);
+  }
+  if (targetRow.role === 'SUPERADMIN' && role !== undefined && String(role).toUpperCase() !== 'SUPERADMIN') {
+    return c.json({ error: 'No se puede degradar al único Superadmin.' }, 403);
+  }
+
   const now = new Date().toISOString();
   const newHash = password ? await hashPassword(password) : targetRow.password_hash;
   const overrideVal =
