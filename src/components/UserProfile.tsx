@@ -93,7 +93,6 @@ export default function UserProfile({
   const [mgmtPassword, setMgmtPassword] = useState('');
   const [showMgmtPassword, setShowMgmtPassword] = useState(false);
   const [showNewAccountPassword, setShowNewAccountPassword] = useState(false);
-  const [mgmtSensitiveOverride, setMgmtSensitiveOverride] = useState<boolean | undefined>(undefined);
 
   const [loading, setLoading] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -218,7 +217,6 @@ export default function UserProfile({
     setMgmtRole(user.role);
     setMgmtActive(user.active !== false);
     setMgmtPassword('');
-    setMgmtSensitiveOverride(user.hasSensitiveEditPermissionOverride);
     setSuccessMsg(null);
     setErrorMsg(null);
   };
@@ -252,9 +250,6 @@ export default function UserProfile({
       payload.active = mgmtActive;
       if (mgmtPassword) {
         payload.password = mgmtPassword;
-      }
-      if (currentUser.role === 'SUPERADMIN') {
-        payload.hasSensitiveEditPermissionOverride = mgmtSensitiveOverride;
       }
     }
 
@@ -855,52 +850,7 @@ export default function UserProfile({
                   </span>
                 </div>
 
-                {/* Hierarchy Information Banner */}
-                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-1">
-                  <p className="font-bold text-slate-700 flex items-center gap-1">
-                    <ShieldCheck className="w-4 h-4 text-indigo-600" />
-                    Permisos de Edición de Datos Sensibles
-                  </p>
-                  <p className="text-slate-500 leading-relaxed">
-                    De acuerdo a las reglas vigentes: 
-                    <strong> Superadmin</strong> edita Admins y Superadmins; 
-                    <strong> Admins</strong> editan Managers y Asesores por defecto. Los 
-                    <strong> Managers</strong> y <strong>Asesores</strong> no pueden editar datos sensibles por defecto.
-                  </p>
-                  <div className="pt-1 flex items-center gap-1.5 justify-between flex-wrap">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-slate-400">¿Tienes permiso sensible para este usuario?:</span>
-                      <span className={`font-bold font-mono uppercase ${
-                        canEditSensitiveOf(selectedUser.role) ? 'text-emerald-600' : 'text-amber-600'
-                      }`}>
-                        {canEditSensitiveOf(selectedUser.role) ? 'SÍ (Acceso total)' : 'SÓLO DATOS DE CONTACTO (Lectura en sensibles)'}
-                      </span>
-                    </div>
-
-                    {currentUser.role === 'SUPERADMIN' && (
-                      <div className="flex items-center gap-2 mt-1.5 sm:mt-0 bg-white border border-slate-200 rounded-lg px-2 py-1">
-                        <span className="font-semibold text-slate-600 text-[11px]">Asignar permiso sensible:</span>
-                        <select
-                          value={mgmtSensitiveOverride === undefined ? 'default' : mgmtSensitiveOverride ? 'allow' : 'deny'}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            if (val === 'default') {
-                              setMgmtSensitiveOverride(undefined);
-                            } else {
-                              setMgmtSensitiveOverride(val === 'allow');
-                            }
-                          }}
-                          className="text-[11px] font-medium bg-transparent border-none text-slate-800 focus:outline-none focus:ring-0 p-0 pr-6 cursor-pointer"
-                          id="select-mgmt-sensitive-override"
-                        >
-                          <option value="default">Por defecto (Rol)</option>
-                          <option value="allow">SÍ (Permitir)</option>
-                          <option value="deny">NO (Bloquear)</option>
-                        </select>
-                      </div>
-                    )}
-                  </div>
-                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-300 mb-4">Los permisos de acceso y de edición de datos sensibles se administran en la matriz granular de Gestión de Usuarios.</p>
 
                 <form onSubmit={handleSaveUserMgmt} className="space-y-4">
                   {/* Non-sensitive (Always Editable) */}
