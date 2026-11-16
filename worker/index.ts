@@ -1509,10 +1509,10 @@ async function saveTemplateInDb(db: D1Database, tpl: ProcessTemplate, isUpdate =
             tpl.id,
             rIdx,
             req.name,
-            req.type,
+            req.type === 'actor' ? 'task' : req.type, // Legacy D1 CHECK allows document/form/task only.
             req.description || '',
             req.isRequired !== false ? 1 : 0,
-            req.type === 'actor' ? JSON.stringify({ actorRole: req.actorRole, minQuantity: Math.max(1, Number(req.minQuantity) || 1) }) : (req.formFields ? JSON.stringify(req.formFields) : null),
+            req.type === 'actor' ? JSON.stringify({ requirementKind: 'actor', actorRole: req.actorRole, minQuantity: Math.max(1, Number(req.minQuantity) || 1) }) : (req.formFields ? JSON.stringify(req.formFields) : null),
             req.documentSourceType || null,
             req.linkedTemplateId || null,
             req.linkedSharedDocumentId || null
