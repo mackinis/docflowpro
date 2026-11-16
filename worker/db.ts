@@ -28,6 +28,9 @@ export const DEFAULT_VERIFICATION_POLICIES = {
 };
 
 export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
+  aiModel: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+  aiAllowedRoles: ['ADMIN', 'MANAGER'],
+  aiSettingsRoles: [],
   roleMessagingConfigs: {
     SUPERADMIN: { allowed: true, rule: 'free' },
     ADMIN: { allowed: true, rule: 'free' },
