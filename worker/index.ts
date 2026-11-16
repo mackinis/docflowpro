@@ -232,7 +232,7 @@ app.get('/api/permissions/me', async (c) => {
   const matrix = await getSystemConfigValue(c.env.DB, 'rbacMatrix', { roles: {}, users: {} });
   const can = (action: 'view' | 'download' | 'edit' | 'create' | 'delete') =>
     hasRbacPermission(matrix, auth.user.role, auth.user.id, `documents.${action}`);
-  return c.json({ documents: { view: can('view'), download: can('download'), edit: can('edit'), create: can('create'), delete: can('delete') } });
+  return c.json({ documents: { view: can('view'), download: can('download'), edit: can('edit'), create: can('create'), delete: can('delete') }, statistics: { view: hasRbacPermission(matrix, auth.user.role, auth.user.id, 'statistics.view'), manage: hasRbacPermission(matrix, auth.user.role, auth.user.id, 'statistics.manage') } });
 });
 
 // Granular RBAC administration: server-side superadmin-only policy.
