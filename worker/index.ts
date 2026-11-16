@@ -3113,20 +3113,8 @@ app.get('/api/audit-logs', async (c) => {
   return c.json(logs);
 });
 
-app.post('/api/audit-logs/log', async (c) => {
-  const auth = c.get('auth')!;
-  const { action, entityType, entityId, entityName } = await c.req.json();
-  if (!action) return c.json({ error: 'action es requerido.' }, 400);
-  const logObj = await createAudit(
-    c.env.DB,
-    auth.user.id,
-    action,
-    entityType || 'ClientAction',
-    entityId || '',
-    entityName || ''
-  );
-  return c.json({ success: true, log: logObj });
-});
+// Audit entries are server-generated. Clients cannot fabricate audit actions.
+app.post('/api/audit-logs/log', (c) => c.json({ error: 'Los registros de auditoría se generan exclusivamente en el servidor.' }, 403));
 
 // ============================================================================
 // 11. Cloudflare Workers AI Endpoints (Replaces Gemini 100%)
