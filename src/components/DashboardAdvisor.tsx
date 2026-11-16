@@ -8,7 +8,8 @@ import {
   Activity, 
   ClipboardList,
   Upload,
-  UserCheck
+  UserCheck,
+  ArrowRight
 } from 'lucide-react';
 import { Case, Document, Task, Observation, AppDataState, User } from '../types';
 
