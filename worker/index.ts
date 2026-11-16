@@ -1658,6 +1658,31 @@ app.delete('/api/templates/:id', async (c) => {
 // ============================================================================
 // 7. Cases (Expedientes / Legajos) & Participants
 // ============================================================================
+// Advisor statistics use persisted cases and audit events, never client-supplied scores.
+app.get('/api/cases/advisor-statistics', async (c) => {
+  const auth = c.get('auth')!;
+  const requestedAdvisor = c.req.query('advisorId') || auth.user.id;
+  const isSupervisor = ['SUPERADMIN', 'ADMIN', 'MANAGER'].includes(auth.user.role);
+  if (!isSupervisor && requestedAdvisor !== auth.user.id) {
+    return c.json({ error: 'Solo puede consultar sus propias estadísticas.' }, 403);
+  }
+  const rows = await c.env.DB.prepare(
+    `SELECT assigned_advisor_id AS advisorId,
+       COUNT(*) AS total,
+       SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed,
+       SUM(CASE WHEN status = 'observed' THEN 1 ELSE 0 END) AS observed,
+       SUM(CASE WHEN status = 'pending_review' THEN 1 ELSE 0 END) AS pendingReview,
+       SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active,
+       SUM(CASE WHEN status = 'pending_assignment' THEN 1 ELSE 0 END) AS pendingAssignment
+     FROM cases WHERE assigned_advisor_id = ? GROUP BY assigned_advisor_id`
+  ).bind(requestedAdvisor).first<any>();
+  const summary = rows || { advisorId: requestedAdvisor, total: 0, completed: 0, observed: 0, pendingReview: 0, active: 0, pendingAssignment: 0 };
+  return c.json({
+    ...summary,
+    note: 'Indicadores descriptivos por estado actual. No constituyen calificación de desempeño ni miden responsabilidad individual.'
+  });
+});
+
 app.get('/api/cases', async (c) => {
   const cases = await getAllCases(c.env.DB);
   return c.json(cases);
@@ -3358,31 +3383,6 @@ app.post('/api/notifications/clear-all', async (c) => {
   const auth = c.get('auth')!;
   await c.env.DB.prepare('DELETE FROM notifications WHERE user_id = ?').bind(auth.user.id).run();
   return c.json({ success: true });
-});
-
-// Advisor statistics use persisted cases and audit events, never client-supplied scores.
-app.get('/api/cases/advisor-statistics', async (c) => {
-  const auth = c.get('auth')!;
-  const requestedAdvisor = c.req.query('advisorId') || auth.user.id;
-  const isSupervisor = ['SUPERADMIN', 'ADMIN', 'MANAGER'].includes(auth.user.role);
-  if (!isSupervisor && requestedAdvisor !== auth.user.id) {
-    return c.json({ error: 'Solo puede consultar sus propias estadísticas.' }, 403);
-  }
-  const rows = await c.env.DB.prepare(
-    `SELECT assigned_advisor_id AS advisorId,
-       COUNT(*) AS total,
-       SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed,
-       SUM(CASE WHEN status = 'observed' THEN 1 ELSE 0 END) AS observed,
-       SUM(CASE WHEN status = 'pending_review' THEN 1 ELSE 0 END) AS pendingReview,
-       SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active,
-       SUM(CASE WHEN status = 'pending_assignment' THEN 1 ELSE 0 END) AS pendingAssignment
-     FROM cases WHERE assigned_advisor_id = ? GROUP BY assigned_advisor_id`
-  ).bind(requestedAdvisor).first<any>();
-  const summary = rows || { advisorId: requestedAdvisor, total: 0, completed: 0, observed: 0, pendingReview: 0, active: 0, pendingAssignment: 0 };
-  return c.json({
-    ...summary,
-    note: 'Indicadores descriptivos por estado actual. No constituyen calificación de desempeño ni miden responsabilidad individual.'
-  });
 });
 
 // Per-legajo chronology: read-only and scoped to the assigned advisor or supervising roles.
