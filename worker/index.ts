@@ -3486,8 +3486,10 @@ app.get('/api/cases/:id/history', async (c) => {
     userRole: row.user_role, action: row.action, entityType: row.entity_type,
     entityId: row.entity_id, entityName: row.entity_name, createdAt: row.created_at
   }));
-  const completion = events.find((event: any) => event.entityType === 'Case' && event.action === 'Finalizó legajo');
-  const completedAt = completion?.createdAt || null;
+  const completion = await c.env.DB.prepare(
+    "SELECT MIN(created_at) AS completedAt FROM audit_logs WHERE entity_type = 'Case' AND entity_id = ? AND action = 'Finalizó legajo'"
+  ).bind(id).first<{ completedAt: string | null }>();
+  const completedAt = completion?.completedAt || null;
   const endTime = completedAt ? Date.parse(completedAt) : Date.now();
   const contributors = new Map<string, { userId: string; userName: string; userRole: string; interventions: number; firstAt: string; lastAt: string; actions: Record<string, number> }>();
   for (const event of events) {
