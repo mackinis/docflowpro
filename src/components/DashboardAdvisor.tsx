@@ -102,7 +102,7 @@ export default function DashboardAdvisor({
           </div>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-orange-200 shadow-xs flex items-center justify-between">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
           <div className="space-y-1">
             <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Legajos Observados</span>
             <p className="text-3xl font-bold text-orange-500">{observedCount}</p>
