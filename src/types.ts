@@ -288,5 +288,6 @@ export interface SystemSettings {
   tabOrder?: string[];
   allowAdminManagerTemplates?: boolean;
   processTemplateRequired?: boolean;
+  allowIncompleteCaseDocuments?: boolean;
 }
 
