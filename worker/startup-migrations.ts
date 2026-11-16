@@ -14,7 +14,15 @@ export async function ensureDatabaseReady(db: D1Database): Promise<void> {
         const applied = await db.prepare('SELECT name FROM app_schema_migrations WHERE name = ?').bind(migration.name).first();
         if (applied) continue;
         // The initial schema uses IF NOT EXISTS so retries after partial failure are safe.
-        await db.exec(migration.sql);
+        // D1 manages foreign-key enforcement itself. Execute statements individually
+        // to avoid PRAGMA restrictions and make partial initializations retryable.
+        const statements = migration.sql
+          .split(';')
+          .map((part) => part.split('\\n').filter((line) => !/^\\s*--/.test(line)).join('\\n').trim())
+          .filter((statement) => statement && !/^PRAGMA\\s+foreign_keys\\s*=/i.test(statement));
+        for (const statement of statements) {
+          await db.prepare(statement).run();
+        }
         await db.prepare('INSERT OR IGNORE INTO app_schema_migrations (name, applied_at) VALUES (?, ?)').bind(migration.name, new Date().toISOString()).run();
       }
       // Do not expose the application until the minimum schema exists.
