@@ -50,6 +50,7 @@ export default function CasesList({
 }: CasesListProps) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [caseToDelete, setCaseToDelete] = useState<Case | null>(null);
+  const [pendingCreationDocs, setPendingCreationDocs] = useState<string[] | null>(null);
   const isTemplateRequired = true;
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'pending_review' | 'observed' | 'completed' | 'pending_assignment'>('all');
@@ -326,7 +327,7 @@ export default function CasesList({
     const assignedFiles = participants.flatMap(actor => Object.entries(actorFiles[actor.id] || {}).map(([requirementId, file]) => ({ requirementId, file, actor })));
     if (errors.length) { alert('Requisitos pendientes:\n' + errors.join('\n')); return; }
     const pendingDocs = participants.flatMap(actor => requiredDocs.filter(r => belongsTo(r.name, actor.role || '') && !actorFiles[actor.id]?.[r.id]).map(r => `${r.name} — ${actor.name} ${actor.lastName}`));
-    if (pendingDocs.length && !window.confirm(`Faltan ${pendingDocs.length} documento(s) obligatorio(s). El legajo se creará OBSERVADO, requerirá intervención del responsable y afectará tus indicadores de desempeño. ¿Continuar?`)) return;
+    if (pendingDocs.length && pendingCreationDocs === null) { setPendingCreationDocs(pendingDocs); return; }
     if (savingCase) return;
     setSavingCase(true);
     let createdId = '';
@@ -356,7 +357,7 @@ export default function CasesList({
       setNewTitle(''); setNewDescription(''); setParticipants([]); setActorFiles({});
       setEscribanoADesignar(false);
       setCustomDocumentContent(''); setUploadedFileName(''); setSubmitAttempted(false);
-      setShowCreateModal(false);
+      setShowCreateModal(false); setPendingCreationDocs(null);
       onOpenCase(createdId);
     } catch (error: any) {
       alert((createdId ? 'El legajo fue creado, pero no se completó la carga de documentos. Abrilo para verificar los archivos pendientes. ' : '') + (error?.message || 'Error al crear el legajo.'));
@@ -650,6 +651,27 @@ export default function CasesList({
         )}
       </div>
 
+      {pendingCreationDocs !== null && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/75 backdrop-blur-sm p-4" onMouseDown={e => { if (e.target === e.currentTarget && !savingCase) setPendingCreationDocs(null); }}>
+          <div role="alertdialog" aria-modal="true" aria-labelledby="observed-confirm-title" aria-describedby="observed-confirm-description" className="w-full max-w-lg rounded-2xl border border-slate-600 bg-slate-800 shadow-2xl overflow-hidden">
+            <div className="p-6 space-y-4">
+              <div className="flex gap-3 items-start">
+                <div className="rounded-xl bg-amber-500/15 p-3 text-amber-400 shrink-0"><AlertTriangle className="w-6 h-6" /></div>
+                <div><h3 id="observed-confirm-title" className="text-lg font-bold text-white">Crear legajo con observaciones</h3>
+                <p id="observed-confirm-description" className="mt-2 text-sm leading-relaxed text-slate-300">Faltan <strong className="text-amber-300">{pendingCreationDocs.length} documentos obligatorios</strong>. Podés continuar: el expediente quedará <strong className="text-rose-300">OBSERVADO</strong>, requerirá intervención del responsable y afectará tus indicadores de desempeño.</p></div>
+              </div>
+              <div className="rounded-xl border border-slate-600 bg-slate-900/60 p-3">
+                <p className="text-xs font-bold text-slate-300 mb-2">Documentación pendiente</p>
+                <ul className="max-h-40 overflow-y-auto space-y-1.5 text-xs text-slate-300">{pendingCreationDocs.map((name, index) => <li key={index} className="flex gap-2"><span className="text-amber-400">•</span><span>{name}</span></li>)}</ul>
+              </div>
+            </div>
+            <div className="border-t border-slate-600 px-6 py-4 flex flex-wrap justify-end gap-3 bg-slate-900/40">
+              <button type="button" disabled={savingCase} onClick={() => setPendingCreationDocs(null)} className="rounded-xl border border-slate-500 px-5 py-2.5 text-sm font-semibold text-slate-200 hover:bg-slate-700 disabled:opacity-50">Volver a completar</button>
+              <button type="button" disabled={savingCase} onClick={() => { const form = document.getElementById('create-case-form') as HTMLFormElement | null; form?.requestSubmit(); }} className="rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-indigo-500 disabled:opacity-50">{savingCase ? 'Creando…' : 'Crear legajo observado'}</button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* CREATE CASE MODAL */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
@@ -665,7 +687,7 @@ export default function CasesList({
               </button>
             </div>
 
-            <form onSubmit={handleCreateSubmit} className="flex-1 overflow-y-auto p-6 space-y-6">
+            <form id="create-case-form" onSubmit={handleCreateSubmit} className="flex-1 overflow-y-auto p-6 space-y-6">
               {/* Dynamic validation alert inside form popup */}
               {getValidationErrors().length > 0 && (
                 <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl space-y-2">
