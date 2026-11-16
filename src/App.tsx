@@ -436,12 +436,12 @@ export default function App() {
         turnstileSiteKey={turnstileSiteKey}
         turnstileEnabled={turnstileEnabled}
         onLoginSuccess={async (user) => {
-          setCurrentUser(user);
-          setRealUser(user);
-          sessionStorage.setItem('docflow_user', JSON.stringify(user));
-          sessionStorage.setItem('docflow_real_user', JSON.stringify(user));
+          // Do not render the authenticated application before the full state is loaded.
+          // A transient state-fetch failure must not display a misleading connection error
+          // after a successful login; keep the login form available for retry.
           setActiveTab('dashboard');
           setActiveCaseId(null);
+          setLoading(true);
           await loadState();
         }}
       />
