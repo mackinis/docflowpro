@@ -777,6 +777,12 @@ app.put('/api/admin/user-creators', async (c) => {
   return c.json({ ids });
 });
 
+app.get('/api/users/creation-permission', async (c) => {
+  const auth = c.get('auth')!;
+  const delegates = await getSystemConfigValue<string[]>(c.env.DB, 'delegatedUserCreators', []);
+  return c.json({ allowed: auth.user.role === 'SUPERADMIN' || (auth.user.role === 'ADMIN' && delegates.includes(auth.user.id)) });
+});
+
 app.post('/api/users', async (c) => {
   const auth = c.get('auth')!;
   const role = auth.user.role;
