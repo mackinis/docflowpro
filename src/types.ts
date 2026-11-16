@@ -274,6 +274,9 @@ export interface RoleMessagingConfig {
 }
 
 export interface SystemSettings {
+  aiModel?: string;
+  aiAllowedRoles?: Array<'ADMIN' | 'MANAGER' | 'ASESOR'>;
+  aiSettingsRoles?: Array<'ADMIN' | 'MANAGER' | 'ASESOR'>;
   roleMessagingConfigs?: {
     SUPERADMIN: RoleMessagingConfig;
     ADMIN: RoleMessagingConfig;

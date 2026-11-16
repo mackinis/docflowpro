@@ -160,7 +160,7 @@ export default function NotificationsCenter({
   };
 
   return (
-    <div className="space-y-6 animate-fade-in" id="notifications-center-panel">
+    <div className="w-full min-w-0 space-y-6 animate-fade-in" id="notifications-center-panel">
       {/* Header block */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 pb-5 shrink-0">
         <div>
@@ -247,7 +247,7 @@ export default function NotificationsCenter({
       </div>
 
       {/* List content */}
-      <div className="max-w-4xl space-y-3.5">
+      <div className="max-w-none space-y-3.5">
         {filteredUserNotifications.length === 0 ? (
           <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center text-slate-500 space-y-4" id="empty-notifications">
             <Bell className="w-12 h-12 text-slate-300 mx-auto" />

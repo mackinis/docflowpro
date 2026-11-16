@@ -191,6 +191,81 @@ app.use('/api/*', async (c, next) => {
   return next();
 });
 
+// Workers AI configuration: only server-approved models and roles can be selected.
+const AI_MODELS = [
+  { id: '@cf/meta/llama-3.3-70b-instruct-fp8-fast', name: 'Llama 3.3 70B' },
+  { id: '@cf/meta/llama-3.1-8b-instruct-fast', name: 'Llama 3.1 8B' },
+] as const;
+const AI_DELEGABLE_ROLES = ['ADMIN', 'MANAGER', 'ASESOR'] as const;
+
+app.get('/api/ai/settings', async (c) => {
+  const auth = c.get('auth')!;
+  const settings = await getSystemConfigValue(c.env.DB, 'systemSettings', DEFAULT_SYSTEM_SETTINGS);
+  const canConfigure = auth.user.role === 'SUPERADMIN' || (settings.aiSettingsRoles || []).includes(auth.user.role as any);
+  const canUse = auth.user.role === 'SUPERADMIN' || (settings.aiAllowedRoles || []).includes(auth.user.role as any);
+  if (!canConfigure && !canUse) return c.json({ error: 'Acceso al agente IA no autorizado.' }, 403);
+  return c.json({ models: AI_MODELS, model: settings.aiModel || AI_MODELS[0].id,
+    allowedRoles: settings.aiAllowedRoles || [], settingsRoles: settings.aiSettingsRoles || [],
+    canConfigure, canDelegate: auth.user.role === 'SUPERADMIN' });
+});
+
+app.post('/api/ai/settings', async (c) => {
+  const auth = c.get('auth')!;
+  const current = await getSystemConfigValue(c.env.DB, 'systemSettings', DEFAULT_SYSTEM_SETTINGS);
+  const canConfigure = auth.user.role === 'SUPERADMIN' || (current.aiSettingsRoles || []).includes(auth.user.role as any);
+  if (!canConfigure) return c.json({ error: 'No autorizado para configurar el agente IA.' }, 403);
+  const body = await c.req.json().catch(() => ({}));
+  if (!AI_MODELS.some(model => model.id === body.model)) return c.json({ error: 'Modelo no permitido.' }, 400);
+  const updated = { ...current, aiModel: body.model };
+  if (auth.user.role === 'SUPERADMIN') {
+    if (!Array.isArray(body.allowedRoles) || !Array.isArray(body.settingsRoles) ||
+      ![...body.allowedRoles, ...body.settingsRoles].every((role: string) => AI_DELEGABLE_ROLES.includes(role as any))) {
+      return c.json({ error: 'Permisos de roles inválidos.' }, 400);
+    }
+    updated.aiAllowedRoles = [...new Set(body.allowedRoles)] as any;
+    updated.aiSettingsRoles = [...new Set(body.settingsRoles)] as any;
+  }
+  await setSystemConfigValue(c.env.DB, 'systemSettings', updated);
+  await createAudit(c.env.DB, auth.realUser.id, 'Configuró Agente IA y permisos', 'Config', 'ai', body.model);
+  return c.json({ success: true });
+});
+
+const enforceAiRbac = async (c: AppContext, next: () => Promise<void>) => {
+  if (c.req.path === '/api/ai/settings') return next();
+  const auth = c.get('auth');
+  if (!auth) return c.json({ error: 'No autenticado.' }, 401);
+  const settings = await getSystemConfigValue(c.env.DB, 'systemSettings', DEFAULT_SYSTEM_SETTINGS);
+  if (auth.user.role !== 'SUPERADMIN' && !(settings.aiAllowedRoles || []).includes(auth.user.role as any)) {
+    return c.json({ error: 'El agente IA no está habilitado para su rol.' }, 403);
+  }
+  return next();
+};
+app.use('/api/ai/*', enforceAiRbac);
+app.use('/api/gemini/*', enforceAiRbac);
+
+// Audit every authenticated API request, including failures, without storing bodies, tokens or query strings.
+app.use('/api/*', async (c, next) => {
+  const auth = c.get('auth');
+  const started = Date.now();
+  await next();
+  if (!auth) return;
+  try {
+    await createAudit(c.env.DB, auth.realUser.id,
+      `${c.req.method} ${c.req.path} · HTTP ${c.res.status} · ${Date.now() - started}ms`,
+      'ApiRequest', c.req.path, auth.user.id === auth.realUser.id ? 'Acceso autenticado' : `Actuando como ${auth.user.id}`);
+  } catch (err) { console.error('Failed to record API forensic event:', err); }
+});
+
+app.post('/api/audit/navigation', async (c) => {
+  const auth = c.get('auth')!;
+  const body = await c.req.json().catch(() => ({}));
+  const tab = typeof body.tab === 'string' && /^[a-z-]{1,40}$/.test(body.tab) ? body.tab : 'unknown';
+  const caseId = typeof body.caseId === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(body.caseId) ? body.caseId : '';
+  await createAudit(c.env.DB, auth.realUser.id, 'Navegación: ' + tab,
+    'Navigation', caseId || tab, auth.user.id === auth.realUser.id ? tab : `Impersonación ${auth.user.id}: ${tab}`);
+  return c.json({ success: true });
+});
+
 // ============================================================================
 // 0. Health Check
 // ============================================================================
@@ -856,6 +931,9 @@ app.post('/api/system-settings', async (c) => {
     return c.json({ error: 'Solo el Superadmin o Admin pueden configurar la plataforma.' }, 403);
   }
   const { settings } = await c.req.json();
+  if (settings && ['aiModel', 'aiAllowedRoles', 'aiSettingsRoles'].some(key => Object.prototype.hasOwnProperty.call(settings, key))) {
+    return c.json({ error: 'Configure Agente IA desde su sección específica.' }, 403);
+  }
   if (auth.user.role !== 'SUPERADMIN') {
     if (settings?.roleMessagingConfigs !== undefined) {
       return c.json({ error: 'Solo el Superadmin puede modificar las políticas de mensajería interna.' }, 403);
@@ -3019,8 +3097,12 @@ app.post('/api/notifications/clear-all', async (c) => {
 
 app.get('/api/audit-logs', async (c) => {
   const auth = c.get('auth')!;
-  const isSuper = auth.user.role === 'SUPERADMIN' || auth.realUser.role === 'SUPERADMIN';
-  const rows = await c.env.DB.prepare('SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 500').all<any>();
+  const isSuper = auth.realUser.role === 'SUPERADMIN';
+  if (!isSuper && auth.realUser.role !== 'ADMIN') return c.json({ error: 'Acceso a auditoría no autorizado.' }, 403);
+  const requestedLimit = Number(c.req.query('limit'));
+  const limit = Number.isInteger(requestedLimit) && requestedLimit > 0 ? Math.min(requestedLimit, 1000) : 500;
+  const offset = Math.max(0, Math.min(Number(c.req.query('offset')) || 0, 100000));
+  const rows = await c.env.DB.prepare('SELECT * FROM audit_logs ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?').bind(limit, offset).all<any>();
   const logs = (rows.results || [])
     .map((l) => ({
       id: l.id,
@@ -3037,20 +3119,8 @@ app.get('/api/audit-logs', async (c) => {
   return c.json(logs);
 });
 
-app.post('/api/audit-logs/log', async (c) => {
-  const auth = c.get('auth')!;
-  const { action, entityType, entityId, entityName } = await c.req.json();
-  if (!action) return c.json({ error: 'action es requerido.' }, 400);
-  const logObj = await createAudit(
-    c.env.DB,
-    auth.user.id,
-    action,
-    entityType || 'ClientAction',
-    entityId || '',
-    entityName || ''
-  );
-  return c.json({ success: true, log: logObj });
-});
+// Audit entries are server-generated. Clients cannot fabricate audit actions.
+app.post('/api/audit-logs/log', (c) => c.json({ error: 'Los registros de auditoría se generan exclusivamente en el servidor.' }, 403));
 
 // ============================================================================
 // 11. Cloudflare Workers AI Endpoints (Replaces Gemini 100%)
@@ -3230,6 +3300,11 @@ app.all('*', async (c) => {
 
 export default {
   fetch: app.fetch,
+  async scheduled(_event: ScheduledEvent, env: Env): Promise<void> {
+    const cutoff = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
+    await ensureDatabaseReady(env.DB);
+    await env.DB.prepare('DELETE FROM audit_logs WHERE created_at < ?').bind(cutoff).run();
+  },
   async queue(batch: MessageBatch<QueueJob>, env: Env): Promise<void> {
     for (const msg of batch.messages) {
       try {

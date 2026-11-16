@@ -44,6 +44,16 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [activeCaseId, setActiveCaseId] = useState<string | null>(null);
 
+  // Record navigation without collecting form values or sensitive URL parameters.
+  useEffect(() => {
+    if (!currentUser || !state) return;
+    void fetch('/api/audit/navigation', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tab: activeTab, caseId: activeCaseId })
+    }).catch(() => {});
+  }, [activeTab, activeCaseId, currentUser?.id]);
+
   // Load backend state via Cloudflare Worker session cookie
   const loadState = async () => {
     try {
@@ -522,7 +532,7 @@ export default function App() {
 
         {/* Dynamic Inner views with responsive paddings */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 bg-slate-50/50">
-          <div className="max-w-7xl mx-auto">
+          <div className="w-full min-w-0">
             {activeCaseId ? (
               <CaseDetail
                 caseId={activeCaseId}

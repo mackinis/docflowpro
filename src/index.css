@@ -15,29 +15,15 @@ body {
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 
-/* Smooth custom scrollbars */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+/* Keep native scrolling functional while hiding scrollbar chrome everywhere. */
+html, body, * {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
 }
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
-
-/* Scrollbar none utility */
-.scrollbar-none::-webkit-scrollbar {
+html::-webkit-scrollbar, body::-webkit-scrollbar, *::-webkit-scrollbar {
   display: none !important;
-}
-.scrollbar-none {
-  -ms-overflow-style: none !important;  /* IE and Edge */
-  scrollbar-width: none !important;  /* Firefox */
+  width: 0 !important;
+  height: 0 !important;
 }
 
 /* Dark mode global overrides */
@@ -128,4 +114,16 @@ body {
 
 .dark .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
   border-color: #334155 !important;
+}
+
+/* Configuration sections: only show cards belonging to the selected tab. */
+.settings-tab-cards > * { display: none !important; }
+.settings-tab-cards[data-settings-section="general"] > :nth-child(2),
+.settings-tab-cards[data-settings-section="accesos"] > :nth-child(1),
+.settings-tab-cards[data-settings-section="accesos"] > :nth-child(4),
+.settings-tab-cards[data-settings-section="mensajes"] > :nth-child(3),
+.settings-tab-cards[data-settings-section="procesos"] > :nth-child(5),
+.settings-tab-cards[data-settings-section="procesos"] > :nth-child(6),
+.settings-tab-cards[data-settings-section="mantenimiento"] > :nth-child(7) {
+  display: flex !important;
 }

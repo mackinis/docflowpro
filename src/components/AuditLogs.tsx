@@ -47,7 +47,7 @@ export default function AuditLogs({ logs, users }: AuditLogsProps) {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h2 className="text-2xl font-display font-bold text-slate-800 tracking-tight">Auditoría</h2>
-          <p className="text-sm text-slate-500">Registro inmutable de accesos, aprobaciones documentales, transiciones de etapas y auditoría de IA.</p>
+          <p className="text-sm text-slate-500">Registro de actividad de API, navegación, accesos, operaciones y auditorías de IA. Conservación automática: últimas 120 horas.</p>
         </div>
         <div className="flex items-center gap-2 px-3.5 py-1.5 bg-indigo-50 border border-indigo-100 rounded-lg text-xs font-semibold text-indigo-700 shrink-0">
           <Database className="w-4 h-4" />

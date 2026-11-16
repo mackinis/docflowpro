@@ -50,6 +50,7 @@
       }
     ]
   },
+  "triggers": { "crons": ["0 * * * *"] },
   "vars": {
     "APP_NAME": "DocFlow Pro",
     "TURNSTILE_SITE_KEY": ""
