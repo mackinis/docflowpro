@@ -3451,14 +3451,30 @@ app.get('/api/cases/:id/history', async (c) => {
         OR (a.entity_type = 'Participant' AND a.entity_id IN (SELECT id FROM case_participants WHERE case_id = ?))
      ORDER BY a.created_at ASC, a.id ASC LIMIT 1000`
   ).bind(id, id, id, id).all<any>();
+  const events = (rows.results || []).map((row: any) => ({
+    id: row.id, userId: row.user_id, userName: row.user_name,
+    userRole: row.user_role, action: row.action, entityType: row.entity_type,
+    entityId: row.entity_id, entityName: row.entity_name, createdAt: row.created_at
+  }));
+  const completion = events.find((event: any) => event.entityType === 'Case' && event.action === 'Finalizó legajo');
+  const completedAt = completion?.createdAt || null;
+  const endTime = completedAt ? Date.parse(completedAt) : Date.now();
+  const contributors = new Map<string, { userId: string; userName: string; userRole: string; interventions: number; firstAt: string; lastAt: string; actions: Record<string, number> }>();
+  for (const event of events) {
+    const key = event.userId || event.userName || 'unknown';
+    const entry = contributors.get(key) || { userId: event.userId, userName: event.userName, userRole: event.userRole, interventions: 0, firstAt: event.createdAt, lastAt: event.createdAt, actions: {} };
+    entry.interventions++;
+    entry.lastAt = event.createdAt;
+    entry.actions[event.action] = (entry.actions[event.action] || 0) + 1;
+    contributors.set(key, entry);
+  }
   return c.json({
     caseId: id, createdAt: item.createdAt, status: item.status,
-    durationMs: Math.max(0, Date.now() - Date.parse(item.createdAt)),
-    events: (rows.results || []).map((row: any) => ({
-      id: row.id, userId: row.user_id, userName: row.user_name,
-      userRole: row.user_role, action: row.action, entityType: row.entity_type,
-      entityId: row.entity_id, entityName: row.entity_name, createdAt: row.created_at
-    }))
+    completedAt, durationMs: Math.max(0, endTime - Date.parse(item.createdAt)),
+    durationIsFinal: Boolean(completedAt), eventCount: events.length,
+    truncated: events.length >= 1000,
+    contributors: [...contributors.values()].sort((a, b) => b.interventions - a.interventions),
+    events
   });
 });
 
