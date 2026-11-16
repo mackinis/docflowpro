@@ -100,8 +100,6 @@ export default function CasesList({
   }, [showCreateModal, templates, systemSettings]);
   
   // Participant/Actor quantities and type states
-  const [expectedActores, setExpectedActores] = useState(0);
-  const [expectedGarantes, setExpectedGarantes] = useState(0);
   const [escribanoADesignar, setEscribanoADesignar] = useState(false);
 
   // Participant form states
@@ -149,6 +147,8 @@ export default function CasesList({
     if (!role || role === 'Escribano') continue;
     requiredCountByRole.set(role, Math.max(requiredCountByRole.get(role) || 0, Math.max(1, Number(rule.minQuantity) || 1)));
   }
+  const expectedActores = [...requiredCountByRole.entries()].filter(([role]) => role !== 'Garante').reduce((sum, [, count]) => sum + count, 0);
+  const expectedGarantes = requiredCountByRole.get('Garante') || 0;
   const remainingRoles = [...requiredCountByRole.entries()]
     .filter(([role, minimum]) => participants.filter(p => p.role === role).length < minimum)
     .map(([role]) => role);
@@ -213,12 +213,6 @@ export default function CasesList({
 
 
     const actoresActuales = participants.filter(p => p.role !== 'Garante' && p.role !== 'Escribano').length;
-    if (actorRules.length === 0 && actoresActuales < expectedActores) {
-      errors.push(`Faltan ${expectedActores - actoresActuales} actores (cargados: ${actoresActuales} de ${expectedActores}).`);
-    }
-    if (actorRules.length === 0 && garantesActuales < expectedGarantes) {
-      errors.push(`Falta(n) ${expectedGarantes - garantesActuales} Garante(s) (Cargados: ${garantesActuales} de ${expectedGarantes}).`);
-    }
     if (escribanoADesignar && escribanosActuales < 1) {
       errors.push('Activaste Escribano: debés agregar al menos un actor con rol Escribano.');
     }
@@ -332,14 +326,9 @@ export default function CasesList({
     setSubmitAttempted(true);
     const errors = getValidationErrors().filter(error => !error.startsWith('Documentos para cargar en el legajo:'));
     const assignedFiles = participants.flatMap(actor => Object.entries(actorFiles[actor.id] || {}).map(([requirementId, file]) => ({ requirementId, file, actor })));
-    for (const actor of participants) {
-      for (const req of requiredDocs.filter(r => belongsTo(r.name, actor.role || ''))) {
-        if (!actorFiles[actor.id]?.[req.id] && systemSettings?.allowIncompleteCaseDocuments !== true) errors.push('Falta ' + req.name + ' para ' + actor.name + ' ' + actor.lastName + '.');
-      }
-    }
     if (errors.length) { alert('Requisitos pendientes:\n' + errors.join('\n')); return; }
     const pendingDocs = participants.flatMap(actor => requiredDocs.filter(r => belongsTo(r.name, actor.role || '') && !actorFiles[actor.id]?.[r.id]).map(r => `${r.name} — ${actor.name} ${actor.lastName}`));
-    if (pendingDocs.length && systemSettings?.allowIncompleteCaseDocuments === true && !window.confirm(`El legajo tiene ${pendingDocs.length} documento(s) pendiente(s). Se registrará como OBSERVADO y requerirá intervención del responsable. ¿Continuar?`)) return;
+    if (pendingDocs.length && !window.confirm(`Faltan ${pendingDocs.length} documento(s) obligatorio(s). El legajo se creará OBSERVADO, requerirá intervención del responsable y afectará tus indicadores de desempeño. ¿Continuar?`)) return;
     if (savingCase) return;
     setSavingCase(true);
     let createdId = '';
@@ -367,7 +356,7 @@ export default function CasesList({
       }
       await loadState?.();
       setNewTitle(''); setNewDescription(''); setParticipants([]); setActorFiles({});
-      setExpectedActores(0); setExpectedGarantes(0); setEscribanoADesignar(false);
+      setEscribanoADesignar(false);
       setCustomDocumentContent(''); setUploadedFileName(''); setSubmitAttempted(false);
       setShowCreateModal(false);
       onOpenCase(createdId);
@@ -785,15 +774,13 @@ export default function CasesList({
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-150 grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Actores requeridos</label>
-                    <input type="number" min={0} inputMode="numeric" value={expectedActores}
-                      onChange={(e) => setExpectedActores(Math.max(0, parseInt(e.target.value) || 0))}
-                      className="w-full text-xs p-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" />
+                    <input type="number" readOnly aria-readonly="true" value={expectedActores}
+                      className="w-full text-xs p-2 bg-slate-100 border border-slate-200 rounded-lg font-semibold cursor-default [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" />
                     <p className="text-[10px] text-slate-500">Vendedor, comprador, locador, locatario u otros actores, excepto garantes y escribano.</p>
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Garantes</label>
-                    <input type="number" min={0} inputMode="numeric" value={expectedGarantes}
-                      onChange={(e) => setExpectedGarantes(Math.max(0, parseInt(e.target.value) || 0))}
+                    <input type="number" readOnly aria-readonly="true" value={expectedGarantes}
                       className="w-full text-xs p-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" />
                   </div>
                   <div className="flex flex-col justify-center gap-2">
