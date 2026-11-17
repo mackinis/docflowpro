@@ -53,7 +53,7 @@ interface CaseDetailProps {
   loadState?: () => Promise<void>;
   onBack: () => void;
   onUploadDoc: (stageId: string, reqId: string, reqName: string, fileName: string, fileSize: number, file?: File, onProgress?: (percent: number, loadedBytes?: number, totalBytes?: number) => void) => void | Promise<void>;
-  onReviewDoc: (docId: string, status: 'approved' | 'rejected', observationText?: string, allowedRoles?: string[]) => void;
+  onReviewDoc: (docId: string, status: 'approved' | 'rejected' | 'uploaded', observationText?: string, allowedRoles?: string[]) => Promise<void>;
   onToggleTask: (taskId: string, status: 'pending' | 'completed') => void;
   onSubmitForm: (reqId: string, values: Record<string, string | number | boolean>) => void;
   onAddObservation: (stageId: string, reqId: string | undefined, text: string) => void;
@@ -145,6 +145,25 @@ export default function CaseDetail({
   // Visibility role for approved documents
   const [approvingDoc, setApprovingDoc] = useState<{ id: string; name: string } | null>(null);
   const [selectedAllowedRole, setSelectedAllowedRole] = useState<string>('Privado');
+  const [reviewBusyDocId, setReviewBusyDocId] = useState<string | null>(null);
+  const [rejectingDoc, setRejectingDoc] = useState<{ id: string; name: string } | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const [reviewError, setReviewError] = useState('');
+  const submitDocumentReview = async (id: string, status: 'approved' | 'rejected' | 'uploaded', reason?: string, roles?: string[]) => {
+    if (reviewBusyDocId) return;
+    setReviewError('');
+    setReviewBusyDocId(id);
+    try {
+      await onReviewDoc(id, status, reason, roles);
+      setApprovingDoc(null);
+      setRejectingDoc(null);
+      setRejectReason('');
+    } catch (error) {
+      setReviewError(error instanceof Error ? error.message : 'No se pudo guardar el cambio.');
+    } finally {
+      setReviewBusyDocId(null);
+    }
+  };
 
   // Advisor upload requests state
   const [requestingForReqId, setRequestingForReqId] = useState<string | null>(null);
@@ -1278,33 +1297,28 @@ export default function CaseDetail({
                               {/* Operations for Managers/Admins */}
                               {isManagerOrAdmin && doc && (
                                 <div className="flex items-center gap-1.5">
-                                  {doc.status !== 'approved' && (
-                                    <button
-                                      disabled={caseObj.isCurrentStageApproved}
-                                      onClick={() => {
+                                  <button
+                                    disabled={caseObj.isCurrentStageApproved || !!reviewBusyDocId}
+                                    onClick={() => {
+                                      if (doc.status === 'approved') {
+                                        void submitDocumentReview(doc.id, 'uploaded');
+                                      } else {
                                         setApprovingDoc({ id: doc.id, name: req.name });
                                         setSelectedAllowedRole('Privado');
-                                      }}
-                                      className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-[10px] font-bold rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                      Aprobar
-                                    </button>
-                                  )}
-                                  {doc.status !== 'rejected' && (
-                                    <button
-                                      disabled={caseObj.isCurrentStageApproved}
-                                      onClick={() => {
-                                        const obs = prompt('Escribe una observación para notificar el rechazo:');
-                                        if (obs !== null && obs.trim() !== '') {
-                                          onReviewDoc(doc.id, 'rejected', obs);
-                                        }
-                                      }}
-                                      className="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-[10px] font-bold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                      title={caseObj.isCurrentStageApproved ? "La etapa ya está aprobada" : undefined}
-                                    >
-                                      Rechazar
-                                    </button>
-                                  )}
+                                        setReviewError('');
+                                      }
+                                    }}
+                                    className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-[10px] font-bold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                  >
+                                    {reviewBusyDocId === doc.id ? 'Guardando...' : doc.status === 'approved' ? 'Revertir aprobación' : 'Aprobar'}
+                                  </button>
+                                  <button
+                                    disabled={caseObj.isCurrentStageApproved || doc.status === 'approved' || doc.status === 'rejected' || !!reviewBusyDocId}
+                                    onClick={() => { setRejectingDoc({ id: doc.id, name: req.name }); setRejectReason(''); setReviewError(''); }}
+                                    className="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-[10px] font-bold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                  >
+                                    Rechazar
+                                  </button>
 
                                   <button onClick={() => handlePreviewCaseDoc(doc.id, doc.fileName || req.name)} disabled={previewLoading}
                                     className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-bold rounded-lg flex items-center gap-1 transition-all disabled:opacity-50 shrink-0"
@@ -1787,7 +1801,7 @@ export default function CaseDetail({
                 <FileCheck2 className="w-5 h-5 text-indigo-600" />
                 <h4 className="text-sm font-bold">Definir Rol de Visibilidad</h4>
               </div>
-              <button onClick={() => setApprovingDoc(null)} className="p-1 text-indigo-700 hover:text-indigo-950 rounded">
+              <button onClick={() => { if (!reviewBusyDocId) setApprovingDoc(null); }} className="p-1 text-indigo-700 hover:text-indigo-950 rounded">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -1815,6 +1829,7 @@ export default function CaseDetail({
                 </select>
               </div>
 
+              {reviewError && <p role="alert" className="text-xs text-red-600">{reviewError}</p>}
               <div className="bg-slate-50 p-3 rounded-lg border border-slate-200/50 text-[11px] text-slate-600 space-y-1">
                 <p className="font-bold text-slate-700">Resumen de Permisos:</p>
                 <p className="leading-normal">
@@ -1852,18 +1867,38 @@ export default function CaseDetail({
                     roles = ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR'];
                   }
                   
-                  onReviewDoc(approvingDoc.id, 'approved', undefined, roles);
-                  setApprovingDoc(null);
+                  void submitDocumentReview(approvingDoc.id, 'approved', undefined, roles);
                 }}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl"
+                disabled={!!reviewBusyDocId}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl disabled:opacity-60"
               >
-                Aprobar y Guardar Permiso
+                {reviewBusyDocId === approvingDoc.id ? 'Guardando...' : 'Aprobar y Guardar Permiso'}
               </button>
             </div>
           </div>
         </div>
       )}
 
+      {rejectingDoc && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-slate-800 border border-slate-600 rounded-2xl shadow-xl w-full max-w-md overflow-hidden text-left">
+            <div className="p-4 border-b border-slate-600 flex items-center justify-between">
+              <h4 className="text-sm font-bold text-white">Rechazar documento: {rejectingDoc.name}</h4>
+              <button disabled={!!reviewBusyDocId} onClick={() => setRejectingDoc(null)} className="text-slate-300"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-4 space-y-3">
+              <label className="text-xs font-semibold text-slate-200 block">Observación para notificar el rechazo</label>
+              <textarea value={rejectReason} onChange={e => setRejectReason(e.target.value)} rows={4} className="w-full rounded-lg bg-slate-900 border border-slate-600 p-3 text-sm text-white focus:outline-none focus:border-indigo-500" />
+              {reviewError && <p className="text-xs text-red-400">{reviewError}</p>}
+            </div>
+            <div className="p-4 flex justify-end gap-2 border-t border-slate-600">
+              <button disabled={!!reviewBusyDocId} onClick={() => setRejectingDoc(null)} className="px-4 py-2 text-xs text-slate-200">Cancelar</button>
+              <button disabled={!!reviewBusyDocId || !rejectReason.trim()} onClick={() => void submitDocumentReview(rejectingDoc.id, 'rejected', rejectReason.trim())} className="px-4 py-2 bg-red-700 text-white text-xs font-semibold rounded-xl disabled:opacity-50">{reviewBusyDocId === rejectingDoc.id ? 'Guardando...' : 'Confirmar rechazo'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {reviewError && !rejectingDoc && !approvingDoc && <div role="alert" className="fixed bottom-5 right-5 z-[80] bg-red-950 border border-red-500 text-white rounded-xl p-4 shadow-xl text-sm">{reviewError}<button onClick={() => setReviewError('')} className="ml-3 underline">Cerrar</button></div>}
       {/* Modal de Solicitud de Revisión de Etapa */}
       {resolvingObservationId && (
         <div className="fixed inset-0 z-[60] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) setResolvingObservationId(null); }}>
