@@ -35,7 +35,7 @@ function textToPdf(value:string, title:string):Blob {
   const titleHex='FEFF'+Array.from(title).map(ch=>ch.charCodeAt(0).toString(16).padStart(4,'0')).join('').toUpperCase();
   const infoId=objects.length+1;
   offsets.push(pdf.length);
-  pdf+=infoId+' 0 obj\\n<< /Title <'+titleHex+'> >>\\nendobj\\n';
+  pdf+=infoId+' 0 obj\n<< /Title <'+titleHex+'> >>\nendobj\n';
   const xref=pdf.length;
   pdf+='xref\n0 '+(objects.length+2)+'\n0000000000 65535 f \n'+offsets.slice(1).map(o=>String(o).padStart(10,'0')+' 00000 n \n').join('');
   pdf+='trailer\n<< /Size '+(objects.length+2)+' /Root 1 0 R /Info '+infoId+' 0 R >>\nstartxref\n'+xref+'\n%%EOF';
