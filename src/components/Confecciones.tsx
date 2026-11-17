@@ -168,7 +168,7 @@ export default function Confecciones({cases,templates,currentUser}:Props) {
         <section className="min-w-0 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden shadow-sm">
           <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700 flex gap-2 items-center text-slate-800 dark:text-white font-bold"><FileText size={18}/> Plantilla interactiva <span className="ml-auto text-xs font-normal text-slate-500">Edición directa · Guardado automático</span></div>
           <div className="relative min-h-[68vh] bg-white dark:bg-slate-900">
-            <div ref={highlightRef} aria-hidden="true" className="absolute inset-0 overflow-hidden pointer-events-none">
+            <div ref={highlightRef} aria-hidden="true" className="absolute inset-0 z-20 overflow-hidden pointer-events-none">
               <div className="p-6 md:p-9 text-sm leading-7 font-serif whitespace-pre-wrap text-slate-900 dark:text-slate-100" style={{overflowWrap:'anywhere'}}>
                 {content.split(/(\[CAMPO_\d+\*?\])/g).map((part,i)=>/^\[CAMPO_\d+\*?\]$/.test(part)
                   ? <mark key={i} className="rounded-sm bg-yellow-400 text-slate-950 font-bold" style={{boxDecorationBreak:'clone',WebkitBoxDecorationBreak:'clone'}}>{part}</mark>
