@@ -188,6 +188,9 @@ export async function canUserManageTemplates(db: D1Database, userId: string): Pr
 }
 
 export async function getAllTemplates(db: D1Database): Promise<ProcessTemplate[]> {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS template_field_maps (template_id TEXT PRIMARY KEY, fields_json TEXT NOT NULL DEFAULT '[]', notes_json TEXT NOT NULL DEFAULT '[]')`).run();
+  const mapRows = await db.prepare('SELECT * FROM template_field_maps').all<any>();
+  const mapById = new Map((mapRows.results || []).map((row:any)=>[row.template_id,row]));
   const [tplRows, stageRows, reqRows] = await Promise.all([
     db.prepare('SELECT * FROM process_templates ORDER BY created_at ASC').all<any>(),
     db.prepare('SELECT * FROM template_stages ORDER BY stage_order ASC').all<any>(),
@@ -234,6 +237,8 @@ export async function getAllTemplates(db: D1Database): Promise<ProcessTemplate[]
     industry: t.industry as ProcessTemplate['industry'],
     stages: stagesByTpl.get(t.id) || [],
     originalDocumentContent: t.original_document_content || '',
+    fieldMap: mapById.has(t.id) ? JSON.parse((mapById.get(t.id) as any).fields_json) : [],
+    digitizationReviewNotes: mapById.has(t.id) ? JSON.parse((mapById.get(t.id) as any).notes_json) : [],
     showDocumentToAll: t.show_document_to_all === 1,
     sharedViewMode: (t.shared_view_mode || 'both') as ProcessTemplate['sharedViewMode'],
   }));

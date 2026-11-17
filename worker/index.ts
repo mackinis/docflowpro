@@ -1524,6 +1524,19 @@ async function saveTemplateInDb(db: D1Database, tpl: ProcessTemplate, isUpdate =
       .run();
   }
 
+  // Keep the semantic map synchronized with the exact markers present in the text.
+  await db.prepare(`CREATE TABLE IF NOT EXISTS template_field_maps
+    (template_id TEXT PRIMARY KEY, fields_json TEXT NOT NULL DEFAULT '[]', notes_json TEXT NOT NULL DEFAULT '[]')`).run();
+  const markers = [...(tpl.originalDocumentContent || '').matchAll(/\[CAMPO_\d+\*?\]/g)].map(m => m[0]);
+  const unique = [...new Set(markers)];
+  const fieldMap = unique.map(id => {
+    const prior = (tpl.fieldMap || []).find(f => f.id === id);
+    return prior || { id, label: 'Pendiente de identificar', actor: 'No determinado', source: 'manual', confidence: 'low', review: true };
+  });
+  await db.prepare(`INSERT INTO template_field_maps (template_id, fields_json, notes_json) VALUES (?, ?, ?)
+    ON CONFLICT(template_id) DO UPDATE SET fields_json = excluded.fields_json, notes_json = excluded.notes_json`)
+    .bind(tpl.id, JSON.stringify(fieldMap), JSON.stringify(tpl.digitizationReviewNotes || [])).run();
+
   const stmts: D1PreparedStatement[] = [];
   (tpl.stages || []).forEach((stg, sIdx) => {
     const stageId = stg.id || `stg-${sIdx}-${Date.now()}`;
@@ -1639,6 +1652,8 @@ app.post('/api/templates', async (c) => {
     industry: body.industry || 'Inmobiliaria',
     stages: parsedStages,
     originalDocumentContent: body.originalDocumentContent || '',
+    fieldMap: Array.isArray(body.fieldMap) ? body.fieldMap : [],
+    digitizationReviewNotes: [],
     showDocumentToAll: body.showDocumentToAll !== undefined ? body.showDocumentToAll : true,
     sharedViewMode: body.sharedViewMode || 'both',
   };
@@ -1669,6 +1684,8 @@ app.put('/api/templates/:id', async (c) => {
       body.originalDocumentContent !== undefined
         ? body.originalDocumentContent
         : existing.originalDocumentContent,
+    fieldMap: Array.isArray(body.fieldMap) ? body.fieldMap : existing.fieldMap,
+    digitizationReviewNotes: Array.isArray(body.digitizationReviewNotes) ? body.digitizationReviewNotes : existing.digitizationReviewNotes,
     showDocumentToAll:
       body.showDocumentToAll !== undefined ? body.showDocumentToAll : existing.showDocumentToAll ?? true,
     sharedViewMode: body.sharedViewMode !== undefined ? body.sharedViewMode : existing.sharedViewMode ?? 'both',
@@ -2476,11 +2493,14 @@ app.post('/api/confecciones/:id/agent', async (c) => {
   if (current?.content !== content) return c.json({ error: 'Guardá los cambios del documento antes de consultar al agente.' }, 409);
   const docs = (await getAllDocuments(c.env.DB)).filter(d => d.caseId === caseObj.id)
     .map(d => ({ name: d.name, fileName: d.fileName, status: d.status }));
+  const template = await findTemplateOrVirtualById(c.env, row.template_id);
+  const fieldMap = (template?.fieldMap || []).filter(f => content.includes(f.id));
   const prompt = `Sos un asistente de confección documental. Trabajá SOLO con datos aportados, sin inventar.
 Respondé EXCLUSIVAMENTE JSON válido: {"reply":"respuesta breve en español","replacements":[{"field":"[CAMPO_1]","value":"texto"}]}.
 No reescribas el documento. Solo proponé reemplazos de marcadores que existan en el documento.
 Si falta información, preguntá en reply y omití el reemplazo. No modifiques texto escrito manualmente.
 Legajo: ${JSON.stringify({ code:caseObj.code,title:caseObj.title,description:caseObj.description,participants:caseObj.participants,documents:docs })}
+Mapa de campos validado (identificador, significado y actor): ${JSON.stringify(fieldMap).slice(0,16000)}
 Documento actual: ${content.slice(0,24000)}
 Instrucción del usuario: ${instruction}`;
   try {

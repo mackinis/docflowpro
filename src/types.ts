@@ -67,12 +67,23 @@ export interface Stage {
   requirements: Requirement[];
 }
 
+export interface TemplateFieldMapping {
+  id: string;
+  label: string;
+  actor: string;
+  source: 'explicit' | 'semantic' | 'manual';
+  confidence: 'high' | 'medium' | 'low';
+  review: boolean;
+}
+
 export interface ProcessTemplate {
   id: string;
   name: string;
   description: string;
   industry: 'Inmobiliaria' | 'Jurídico' | 'Seguros' | 'Financiera' | 'Recursos Humanos' | 'Administrativo';
   stages: Stage[];
+  fieldMap?: TemplateFieldMapping[];
+  digitizationReviewNotes?: string[];
   originalDocumentContent?: string; // 100% recognized continuous document text
   showDocumentToAll?: boolean; // Toggle to decide if other roles can see the digital document
   sharedViewMode?: 'both' | 'flow' | 'document'; // Shared view mode for normal users (chosen by superadmin)
