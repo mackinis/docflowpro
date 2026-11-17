@@ -92,7 +92,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
   const [selectedDigitalTemplateId,setSelectedDigitalTemplateId] = useState('');
   const [importedFieldMap,setImportedFieldMap] = useState<NonNullable<ProcessTemplate['fieldMap']>>([]);
   const [importingFields,setImportingFields] = useState(false);
-  const digitalTemplates=templates.filter(t=>!!t.originalDocumentContent?.trim() && /\\[CAMPO_\\d+\\*?\\]/.test(t.originalDocumentContent||''));
+  const digitalTemplates=templates.filter(t=>!!t.originalDocumentContent?.trim() && /\[CAMPO_\d+\*?\]/.test(t.originalDocumentContent||''));
   const importDigitalFields = async (templateId:string) => {
     setSelectedDigitalTemplateId(templateId);
     setImportedFieldMap([]);
@@ -109,8 +109,8 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
       if(!response.ok)throw new Error(data.error||'No se pudo interpretar la plantilla');
       const fields=data.fields as NonNullable<ProcessTemplate['fieldMap']>;
       setImportedFieldMap(fields);
-      setManualDescription(fields.map(f=>f.actor+' — '+f.label+' ('+f.id+')'+(f.review?' [REVISAR]':'')).join('\\n'));
-      if(!manualName.trim())setManualName(selected.name.replace(/\\s*\\(Digitalizado\\)\\s*$/i,''));
+      setManualDescription(fields.map(f=>f.actor+' — '+f.label+' ('+f.id+')'+(f.review?' [REVISAR]':'')).join('\n'));
+      if(!manualName.trim())setManualName(selected.name.replace(/\s*\(Digitalizado\)\s*$/i,''));
     }catch(error){alert(error instanceof Error?error.message:'Error al analizar campos');}
     finally{setImportingFields(false);}
   };
