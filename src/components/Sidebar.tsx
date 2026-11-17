@@ -110,6 +110,7 @@ export default function Sidebar({
     { id: 'statistics', label: 'Estadísticas', icon: BarChart3, roles: ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR'] },
     { id: 'audit', label: 'Auditoría', icon: ShieldAlert, roles: ['SUPERADMIN', 'ADMIN'] },
     { id: 'cases', label: 'Legajos', icon: FileText, roles: ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR'] },
+    { id: 'confecciones', label: 'Confecciones', icon: FileText, roles: ['SUPERADMIN', 'ADMIN', 'MANAGER'] },
     { id: 'documents', label: 'Documentos', icon: FolderDown, roles: ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR'] },
     { id: 'messages', label: 'Mensajes', icon: Mail, roles: ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR'] },
     { id: 'notifications', label: 'Notificaciones', icon: Bell, roles: ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR'] },
