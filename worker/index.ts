@@ -2441,6 +2441,19 @@ app.post('/api/confecciones', async (c) => {
   await createAudit(c.env.DB, auth.user.id, 'Inició confección', 'Case', caseObj.id, template.name);
   return c.json({ success: true, id }, 201);
 });
+app.delete('/api/confecciones/:id', async (c) => {
+  const auth = c.get('auth')!;
+  if (!confeccionesRoles.includes(auth.user.role)) return c.json({ error: 'No autorizado.' }, 403);
+  await ensureConfecciones(c.env.DB);
+  const { id } = c.req.param();
+  const row = await c.env.DB.prepare('SELECT * FROM confecciones WHERE id = ?').bind(id).first<any>();
+  if (!row) return c.json({ error: 'Confección no encontrada.' }, 404);
+  const caseObj = await getCaseById(c.env.DB, row.case_id);
+  if (auth.user.role === 'MANAGER' && caseObj?.assignedManagerId !== auth.user.id) return c.json({ error: 'No autorizado.' }, 403);
+  await c.env.DB.prepare('DELETE FROM confecciones WHERE id = ?').bind(id).run();
+  await createAudit(c.env.DB, auth.user.id, 'Eliminó definitivamente confección', 'Case', row.case_id, row.title);
+  return c.json({ success: true });
+});
 app.put('/api/confecciones/:id', async (c) => {
   const auth = c.get('auth')!;
   if (!confeccionesRoles.includes(auth.user.role)) return c.json({ error: 'No autorizado.' }, 403);
