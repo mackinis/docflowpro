@@ -13,6 +13,7 @@ import DashboardAdvisor from './components/DashboardAdvisor';
 import CasesList from './components/CasesList';
 import CaseDetail from './components/CaseDetail';
 import TemplatesManager from './components/TemplatesManager';
+import Confecciones from './components/Confecciones';
 import AuditLogs from './components/AuditLogs';
 import AdvisorStatistics from './components/AdvisorStatistics';
 import AuthScreen from './components/AuthScreen';
@@ -665,6 +666,8 @@ export default function App() {
                     loadState={loadState}
                   />
                 )}
+
+                {activeTab === 'confecciones' && <Confecciones cases={state.cases} templates={state.templates} currentUser={currentUser} />}
 
                 {activeTab === 'templates' && (
                   <TemplatesManager
