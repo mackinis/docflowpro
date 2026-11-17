@@ -17,6 +17,8 @@ import {
 import {
   decodeDataUrl,
   guessMimeType,
+  extractTextFromDocx,
+  extractTextFromPdf,
   sanitizeFileName,
 } from './document-parser';
 import {
@@ -2500,12 +2502,39 @@ app.post('/api/confecciones/:id/agent', async (c) => {
   const caseObj = await getCaseById(c.env.DB, row.case_id);
   if (!caseObj) return c.json({ error: 'Legajo inexistente.' }, 404);
   if (auth.user.role === 'MANAGER' && caseObj.assignedManagerId !== auth.user.id) return c.json({ error: 'No autorizado.' }, 403);
-  const { instruction, content } = await c.req.json();
+  const { instruction, content, conversation } = await c.req.json();
   if (typeof instruction !== 'string' || !instruction.trim() || instruction.length > 2500 || typeof content !== 'string' || content.length > 500000) return c.json({ error: 'Instrucción o documento inválido.' }, 400);
   const current = await c.env.DB.prepare('SELECT content FROM confecciones WHERE id = ?').bind(id).first<{content: string}>();
   if (current?.content !== content) return c.json({ error: 'Guardá los cambios del documento antes de consultar al agente.' }, 409);
   const docs = (await getAllDocuments(c.env.DB)).filter(d => d.caseId === caseObj.id)
     .map(d => ({ name: d.name, fileName: d.fileName, status: d.status }));
+  // Read actual R2 contents where a safe text extractor is available. Never claim
+  // scanned images or unsupported formats were read successfully.
+  const documentEvidence: Array<{name:string;status:string;text?:string;note?:string}> = [];
+  for (const doc of (await getAllDocuments(c.env.DB)).filter(d=>d.caseId===caseObj.id).slice(0,60)) {
+    const entry:{name:string;status:string;text?:string;note?:string} = {name:doc.name,status:doc.status};
+    const key=doc.r2Key || doc.versions?.[doc.versions.length-1]?.r2Key;
+    const mime=guessMimeType(doc.fileName || doc.name,doc.mimeType);
+    if (!key) entry.note='Sin archivo disponible en almacenamiento';
+    else if (!/^(text\/plain|application\/json|application\/pdf|application\/vnd.openxmlformats-officedocument.wordprocessingml.document)/.test(mime)) entry.note='Formato pendiente de lectura visual o conversión';
+    else {
+      try {
+        const obj=await c.env.R2_BUCKET.get(key);
+        if (!obj) entry.note='Archivo no encontrado';
+        else if (obj.size>8_000_000) entry.note='Archivo demasiado grande para extracción directa';
+        else {
+          const bytes=new Uint8Array(await obj.arrayBuffer());
+          const value=mime.includes('wordprocessingml')?extractTextFromDocx(bytes):mime.includes('pdf')?extractTextFromPdf(bytes):new TextDecoder().decode(bytes);
+          if(value.trim()) entry.text=value.slice(0,30000);
+          else entry.note='No se pudo extraer texto; requiere OCR o revisión manual';
+        }
+      } catch (e) {
+        console.warn('Confecciones attachment extraction failed', {documentId:doc.id,error:e});
+        entry.note='Extracción fallida; requiere revisión';
+      }
+    }
+    documentEvidence.push(entry);
+  }
   const template = await findTemplateOrVirtualById(c.env, row.template_id);
   const fieldMap = (template?.fieldMap || []).filter(f => content.includes(f.id));
   const markers = [...new Set(Array.from(content.matchAll(/\[CAMPO_\d+\*?\]/g), m => m[0]))];
@@ -2526,13 +2555,33 @@ app.post('/api/confecciones/:id/agent', async (c) => {
     return 'Hay ' + markers.length + ' campos pendientes. Para completarlos sin inventar información, revisá los datos del legajo y facilitame los valores que falten. Empecemos por: ' + labels.join(', ') + (markers.length > 8 ? ', entre otros.' : '.');
   };
   if (!markers.length) return c.json({ reply: 'La plantilla no tiene campos pendientes para completar.', replacements: [], pendingFields: 0, coverage:coverage([]) });
-  const prompt = `Sos un asistente de confección documental inmobiliaria argentina. La instrucción "completá los datos en los campos" significa: revisá TODOS los marcadores pendientes y proponé valores SOLO cuando sean verificables en los datos suministrados. No inventes, no supongas y no reemplaces marcadores por textos genéricos.
-Devolvé exclusivamente un objeto JSON con las claves "reply" (español breve) y "replacements" (array de objetos con "field", "value", "source"). Si no hay valores seguros, devolvé replacements vacío y pedí los datos concretos faltantes en reply. No modifiques el texto que rodea los campos. No afirmes haber leído el contenido de archivos adjuntos: solo recibís sus nombres.
-Datos del legajo: ${JSON.stringify({code:caseObj.code,title:caseObj.title,description:caseObj.description,participants:caseObj.participants,documents:docs}).slice(0,12000)}
-Mapa de campos: ${JSON.stringify(fieldMap).slice(0,9000)}
-Marcadores pendientes: ${JSON.stringify(markers)}
-Contexto completo de cada campo pendiente (hasta 140 caracteres antes y después): ${JSON.stringify(markers.map(field => { const position=content.indexOf(field); return {field, context:content.slice(Math.max(0,position-140),Math.min(content.length,position+field.length+140))}; })).slice(0,20000)}
-Pedido del operador: ${instruction}`;
+  // Conversation is supplied by the editor, bounded and treated as untrusted task data.
+  const history = Array.isArray(conversation) ? conversation.slice(-24)
+    .filter((m:any) => (m?.from === 'user' || m?.from === 'agent') && typeof m.text === 'string')
+    .map((m:any) => ({role:m.from, text:m.text.slice(0,2000)})) : [];
+  const evidence = JSON.stringify({
+    code:caseObj.code, title:caseObj.title, description:caseObj.description,
+    participants:caseObj.participants,
+    caseDocumentContent:caseObj.documentContent || '',
+    documents:documentEvidence
+  });
+  // Process every marker in bounded batches instead of truncating the marker list.
+  const batches: string[][] = [];
+  for (let i=0;i<markers.length;i+=12) batches.push(markers.slice(i,i+12));
+  const promptFor = (batch:string[], index:number) => `Sos un copiloto de confección documental inmobiliaria argentina.
+Tu tarea es completar todos los campos que tengan evidencia verificable y continuar preguntando al operador hasta terminar. No te detengas por datos faltantes: resolvé los que sí tengan datos.
+Respondé exclusivamente JSON {"reply":"mensaje breve o pregunta concreta","replacements":[{"field":"[CAMPO_1]","value":"valor","source":"origen concreto"}]}.
+Cada reemplazo debe tener evidencia en los datos suministrados o en una respuesta explícita del operador. Nunca inventes DNI, fechas, personas, montos ni condiciones. No confundas locador, locatario ni cónyuges. No modifiques texto fuera de marcadores. Si hay contradicciones, preguntá antes de proponer.
+Si faltan datos, hacé una pregunta específica y útil al operador, no una negativa genérica. Algunos documentos incluyen texto extraído y otros solo metadatos o notas de extracción. Usá únicamente el texto realmente presente; no afirmes haber leído archivos sin texto.
+Lote ${index+1}/${batches.length}. Marcadores: ${JSON.stringify(batch)}
+Campos y contexto: ${JSON.stringify(batch.map(field => {
+ const entry=fieldMap.find(f=>f.id===field);
+ const positions=[...content.matchAll(/\[CAMPO_\d+\*?\]/g)].filter(m=>m[0]===field).slice(0,4).map(m=>content.slice(Math.max(0,(m.index||0)-220),Math.min(content.length,(m.index||0)+field.length+220)));
+ return {field,label:entry?.label,actor:entry?.actor,contexts:positions};
+}))}
+Datos disponibles del legajo (pueden incluir contenido digitalizado): ${evidence.slice(0,50000)}
+Conversación reciente: ${JSON.stringify(history)}
+Instrucción actual: ${instruction}`;
   const extractJson = (raw: string): any => {
     const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
     try { return JSON.parse(cleaned); } catch {}
@@ -2554,27 +2603,39 @@ Pedido del operador: ${instruction}`;
     return null;
   };
   try {
-    const response = await (c.env.AI as any).run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', {
-      messages: [{role:'system',content:'Devolvé exclusivamente JSON válido, sin markdown. Nunca inventes información.'},{role:'user',content:prompt}],
-      temperature:0,max_tokens:3200
-    });
-    const raw = typeof response?.response === 'string' ? response.response : typeof response === 'string' ? response : '';
-    const parsed = extractJson(raw);
-    if (!parsed || typeof parsed !== 'object') {
-      console.warn('Confecciones AI: respuesta sin JSON completo', {length:raw.length, markers:markers.length});
-      return c.json({reply: missingSummary(), replacements: [], pendingFields: markers.length, coverage:coverage([]), fallback: true});
-    }
     const seen = new Set<string>();
-    const valid = Array.isArray(parsed.replacements) ? parsed.replacements.filter((x:any) => {
-      if (typeof x?.field !== 'string' || !/^\[CAMPO_\d+\*?\]$/.test(x.field) ||
-          !markers.includes(x.field) || seen.has(x.field) || typeof x.value !== 'string' ||
-          !x.value.trim() || x.value.length > 2000 || /\[CAMPO_\d+\*?\]/.test(x.value) ||
-          typeof x.source !== 'string' || !x.source.trim()) return false;
-      seen.add(x.field);
-      return true;
-    }) : [];
-    const reply = typeof parsed.reply === 'string' && parsed.reply.trim() ? parsed.reply.slice(0,2000) : missingSummary();
-    return c.json({reply, replacements:valid, pendingFields:markers.length, coverage:coverage(valid)});
+    const valid: Array<{field:string;value:string;source:string}> = [];
+    const replies: string[] = [];
+    let failures = 0;
+    for (let i=0;i<batches.length;i++) {
+      try {
+        const response = await (c.env.AI as any).run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', {
+          messages: [{role:'system',content:'Devolvé exclusivamente JSON válido. No inventes información. Respondé como copiloto colaborativo.'},{role:'user',content:promptFor(batches[i],i)}],
+          temperature:0,max_tokens:2400
+        });
+        const raw = typeof response?.response === 'string' ? response.response : typeof response === 'string' ? response : '';
+        const parsed = extractJson(raw);
+        if (!parsed || typeof parsed !== 'object') {failures++;continue;}
+        if (typeof parsed.reply === 'string' && parsed.reply.trim()) replies.push(parsed.reply.trim().slice(0,500));
+        if (!Array.isArray(parsed.replacements)) continue;
+        for (const x of parsed.replacements) {
+          if (typeof x?.field !== 'string' || !batches[i].includes(x.field) || seen.has(x.field) ||
+              typeof x.value !== 'string' || !x.value.trim() || x.value.length > 2000 ||
+              /\[CAMPO_\d+\*?\]/.test(x.value) ||
+              typeof x.source !== 'string' || !x.source.trim()) continue;
+          seen.add(x.field);
+          valid.push({field:x.field,value:x.value.trim(),source:x.source.trim()});
+        }
+      } catch (batchError) {
+        failures++;
+        console.error('Confecciones AI batch error', {batch:i,error:batchError});
+      }
+    }
+    const unresolved = markers.filter(field=>!seen.has(field));
+    const reply = valid.length
+      ? 'Encontré '+valid.length+' propuestas verificables de '+markers.length+' campos. '+(unresolved.length ? 'Quedan '+unresolved.length+' pendientes. ' : 'No quedan marcadores pendientes de propuesta. ')+(replies[0]||'Revisá las propuestas y confirmá antes de aplicarlas.')
+      : (replies[0] || missingSummary());
+    return c.json({reply, replacements:valid, pendingFields:markers.length, coverage:coverage(valid), partialFailure:failures>0, batches:batches.length});
   } catch (error) {
     console.error('Confecciones AI service error:', error);
     return c.json({reply:'El servicio de IA no respondió en este momento. No modifiqué la plantilla. ' + missingSummary(), replacements:[], pendingFields:markers.length, coverage:coverage([]), fallback:true});
