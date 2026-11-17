@@ -303,28 +303,16 @@ export default function CaseDetail({
 
     if (uploadingRef.current.has(ctx.reqId)) return;
     uploadingRef.current.add(ctx.reqId);
-    // Separate actual network progress from visual progress: small files may upload
-    // in one event, otherwise the browser paints only the final green state.
-    let targetPercent = 0;
-    let displayedPercent = 0;
-    let interval: ReturnType<typeof setInterval> | undefined;
+    // Progreso real de bytes transferidos, sin interpolación ni temporizadores ficticios.
     setUploadProgress(prev => ({ ...prev, [ctx.reqId]: { percent: 0, status: 'uploading' } }));
-    const animation = new Promise<void>(resolve => {
-      interval = setInterval(() => {
-        if (displayedPercent < targetPercent) {
-          displayedPercent = Math.min(targetPercent, displayedPercent + Math.max(1, Math.ceil((targetPercent - displayedPercent) * 0.15)));
-          setUploadProgress(prev => ({ ...prev, [ctx.reqId]: { percent: displayedPercent, status: 'uploading' } }));
-        }
-        if (displayedPercent >= 100) resolve();
-      }, 35);
-    });
     try {
       await onUploadDoc(currentStage.id, ctx.reqId, ctx.reqName, file.name, file.size, file, percent => {
-        targetPercent = Math.max(targetPercent, Math.min(95, percent));
+        setUploadProgress(prev => ({
+          ...prev,
+          [ctx.reqId]: { percent: Math.min(100, Math.max(0, percent)), status: percent >= 100 ? 'confirming' : 'uploading' }
+        }));
       });
-      // Only reach 100% after the server has confirmed the file was saved.
-      targetPercent = 100;
-      await animation;
+      // onUploadDoc awaits loadState(), which refreshes the checklist from the server.
       setUploadProgress(prev => ({ ...prev, [ctx.reqId]: { percent: 100, status: 'success' } }));
     } catch (error) {
       setUploadProgress(prev => {
@@ -334,7 +322,6 @@ export default function CaseDetail({
       });
       alert(error instanceof Error ? error.message : 'No se pudo cargar el archivo.');
     } finally {
-      if (interval) clearInterval(interval);
       uploadingRef.current.delete(ctx.reqId);
     }
   };
@@ -1237,7 +1224,7 @@ export default function CaseDetail({
                                     )}
                                     <span className="relative z-10 flex items-center gap-1.5">
                                       {(uploadProgress[req.id]?.status === 'success' || (doc && !uploadProgress[req.id])) ? <Check className="w-3.5 h-3.5" /> : <Upload className="w-3.5 h-3.5" />}
-                                      <span>{(uploadProgress[req.id]?.status === 'success' || (doc && !uploadProgress[req.id])) ? 'Archivo cargado ✓' : uploadProgress[req.id]?.status === 'confirming' ? 'Confirmando...' : uploadProgress[req.id]?.status === 'uploading' ? `Subiendo ${uploadProgress[req.id].percent}%` : doc ? 'Reemplazar archivo' : 'Cargar Archivo'}</span>
+                                      <span>{(uploadProgress[req.id]?.status === 'success' || (doc && !uploadProgress[req.id])) ? 'Archivo cargado ✓' : uploadProgress[req.id]?.status === 'confirming' ? 'Guardando...' : uploadProgress[req.id]?.status === 'uploading' ? `Subiendo ${uploadProgress[req.id].percent}%` : doc ? 'Reemplazar archivo' : 'Cargar Archivo'}</span>
                                     </span>
                                   </button>
                                 </div>
