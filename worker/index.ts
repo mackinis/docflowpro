@@ -2509,30 +2509,67 @@ app.post('/api/confecciones/:id/agent', async (c) => {
   const template = await findTemplateOrVirtualById(c.env, row.template_id);
   const fieldMap = (template?.fieldMap || []).filter(f => content.includes(f.id));
   const markers = [...new Set(Array.from(content.matchAll(/\[CAMPO_\d+\*?\]/g), m => m[0]))];
-  const prompt = `Sos un asistente de confección documental. Trabajá SOLO con datos aportados, sin inventar.
-Respondé EXCLUSIVAMENTE JSON válido: {"reply":"respuesta breve en español","replacements":[{"field":"[CAMPO_1]","value":"texto","source":"dato exacto del legajo o aportado por operador"}]}.
-No reescribas el documento. Solo proponé reemplazos de marcadores que existan en el documento.
-Si falta información, preguntá de forma concreta en reply y omití el reemplazo. No modifiques texto escrito manualmente. Nunca deduzcas fechas, importes, DNI, domicilios o identidades. La lista de documentos solo contiene nombres y estados, NO su contenido: nunca afirmes haber leído sus archivos. Cuando la instrucción sea completar toda la plantilla, proponé únicamente valores comprobables y enumerá los datos faltantes. El operador debe revisar todas las propuestas antes de aplicarlas.
-Legajo: ${JSON.stringify({ code:caseObj.code,title:caseObj.title,description:caseObj.description,participants:caseObj.participants,documents:docs })}
-Mapa de campos validado (identificador, significado y actor): ${JSON.stringify(fieldMap).slice(0,16000)}
-Campos pendientes: ${JSON.stringify(markers).slice(0,10000)}
-Documento actual: ${content.slice(0,24000)}
-Instrucción del usuario: ${instruction}`;
+  const missingSummary = () => {
+    const labels = markers.slice(0, 8).map(id => {
+      const entry = fieldMap.find(f => f.id === id);
+      return entry && entry.label && entry.label !== 'Pendiente de identificar'
+        ? id + ' (' + entry.label + ')' : id;
+    });
+    return 'Hay ' + markers.length + ' campos pendientes. Para completarlos sin inventar información, revisá los datos del legajo y facilitame los valores que falten. Empecemos por: ' + labels.join(', ') + (markers.length > 8 ? ', entre otros.' : '.');
+  };
+  if (!markers.length) return c.json({ reply: 'La plantilla no tiene campos pendientes para completar.', replacements: [], pendingFields: 0 });
+  const prompt = `Sos un asistente de confección documental inmobiliaria argentina. La instrucción "completá los datos en los campos" significa: revisá TODOS los marcadores pendientes y proponé valores SOLO cuando sean verificables en los datos suministrados. No inventes, no supongas y no reemplaces marcadores por textos genéricos.
+Devolvé exclusivamente un objeto JSON con las claves "reply" (español breve) y "replacements" (array de objetos con "field", "value", "source"). Si no hay valores seguros, devolvé replacements vacío y pedí los datos concretos faltantes en reply. No modifiques el texto que rodea los campos. No afirmes haber leído el contenido de archivos adjuntos: solo recibís sus nombres.
+Datos del legajo: ${JSON.stringify({code:caseObj.code,title:caseObj.title,description:caseObj.description,participants:caseObj.participants,documents:docs}).slice(0,12000)}
+Mapa de campos: ${JSON.stringify(fieldMap).slice(0,9000)}
+Marcadores pendientes: ${JSON.stringify(markers)}
+Fragmento de la plantilla: ${content.slice(0,9000)}
+Pedido del operador: ${instruction}`;
+  const extractJson = (raw: string): any => {
+    const cleaned = raw.trim().replace(/^\`\`\`(?:json)?\\s*/i, '').replace(/\\s*\`\`\`$/, '');
+    try { return JSON.parse(cleaned); } catch {}
+    const start = cleaned.indexOf('{');
+    if (start < 0) return null;
+    let depth = 0, inString = false, escaped = false;
+    for (let i = start; i < cleaned.length; i++) {
+      const ch = cleaned[i];
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (ch === '\\\\') escaped = true;
+        else if (ch === '"') inString = false;
+      } else if (ch === '"') inString = true;
+      else if (ch === '{') depth++;
+      else if (ch === '}' && --depth === 0) {
+        try { return JSON.parse(cleaned.slice(start, i + 1)); } catch { return null; }
+      }
+    }
+    return null;
+  };
   try {
     const response = await (c.env.AI as any).run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', {
-      messages: [{role:'system',content:'Respondé solamente JSON válido. No inventes datos.'},{role:'user',content:prompt}],
-      temperature:0.1,max_tokens:1600
+      messages: [{role:'system',content:'Devolvé exclusivamente JSON válido, sin markdown. Nunca inventes información.'},{role:'user',content:prompt}],
+      temperature:0,max_tokens:3200
     });
-    const raw = String(response?.response || '');
-    const parsed = JSON.parse(raw.replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,''));
-    const valid = Array.isArray(parsed.replacements) ? parsed.replacements.filter((x:any) =>
-      typeof x.field === 'string' && /^\[CAMPO_\d+\*?\]$/.test(x.field) &&
-      markers.includes(x.field) && typeof x.value === 'string' && x.value.trim().length > 0 && x.value.length <= 2000 && !/\[CAMPO_\d+\*?\]/.test(x.value)
-    ) : [];
-    return c.json({ reply: String(parsed.reply || 'Revisá los datos propuestos.').slice(0,2000), replacements:valid, pendingFields: markers.length });
+    const raw = typeof response?.response === 'string' ? response.response : typeof response === 'string' ? response : '';
+    const parsed = extractJson(raw);
+    if (!parsed || typeof parsed !== 'object') {
+      console.warn('Confecciones AI: respuesta sin JSON completo', {length:raw.length, markers:markers.length});
+      return c.json({reply: missingSummary(), replacements: [], pendingFields: markers.length, fallback: true});
+    }
+    const seen = new Set<string>();
+    const valid = Array.isArray(parsed.replacements) ? parsed.replacements.filter((x:any) => {
+      if (typeof x?.field !== 'string' || !/^\\[CAMPO_\\d+\\*?\\]$/.test(x.field) ||
+          !markers.includes(x.field) || seen.has(x.field) || typeof x.value !== 'string' ||
+          !x.value.trim() || x.value.length > 2000 || /\\[CAMPO_\\d+\\*?\\]/.test(x.value) ||
+          typeof x.source !== 'string' || !x.source.trim()) return false;
+      seen.add(x.field);
+      return true;
+    }) : [];
+    const reply = typeof parsed.reply === 'string' && parsed.reply.trim() ? parsed.reply.slice(0,2000) : missingSummary();
+    return c.json({reply, replacements:valid, pendingFields:markers.length});
   } catch (error) {
-    console.error('Confecciones AI error:', error);
-    return c.json({ error: 'El agente no pudo procesar esta solicitud. Intentá nuevamente.' }, 502);
+    console.error('Confecciones AI service error:', error);
+    return c.json({reply:'El servicio de IA no respondió en este momento. No modifiqué la plantilla. ' + missingSummary(), replacements:[], pendingFields:markers.length, fallback:true});
   }
 });
 
