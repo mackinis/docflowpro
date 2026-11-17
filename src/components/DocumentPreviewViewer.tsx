@@ -11,8 +11,8 @@ export default function DocumentPreviewViewer({document:doc,onClose}:{document:P
         <button onClick={onClose} className="rounded-lg p-2 hover:bg-slate-700" aria-label="Cerrar visor"><X className="w-5 h-5"/></button>
       </div>
       <div className="flex-1 min-h-0 bg-slate-800 flex items-center justify-center relative overflow-hidden">
-        {doc.mime.includes('pdf') || doc.name.toLowerCase().endsWith('.pdf') ?
-          <><iframe src={doc.url} title={doc.name} className="w-full h-full border-0 bg-white"/><div aria-hidden="true" className="pointer-events-none absolute right-0 top-[57px] bottom-0 w-[13px] bg-[#292929]" /></> :
+        {doc.mime.includes('pdf') || doc.name.toLowerCase().endsWith('.pdf') || doc.mime.startsWith('text/') || /\.txt$/i.test(doc.name) ?
+          <><iframe src={doc.url} title={doc.name} className="w-full h-full border-0 bg-white"/>{(doc.mime.includes("pdf") || doc.name.toLowerCase().endsWith(".pdf")) && <div aria-hidden="true" className="pointer-events-none absolute right-0 top-[57px] bottom-0 w-[13px] bg-[#292929]" />}</> :
           doc.mime.startsWith('image/') ? <img src={doc.url} alt={doc.name} className="max-w-full max-h-full object-contain"/> :
           <p className="text-slate-200 text-sm p-6">Este formato no admite vista previa en el navegador. Podés usar el botón Descargar.</p>}
       </div>
