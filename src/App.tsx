@@ -211,7 +211,7 @@ export default function App() {
   };
 
   // Upload Document (real file to Cloudflare R2 or digital contract registration)
-  const handleUploadDoc = async (stageId: string, reqId: string, reqName: string, fileName: string, fileSize: number, file?: File, onProgress?: (percent: number) => void) => {
+  const handleUploadDoc = async (stageId: string, reqId: string, reqName: string, fileName: string, fileSize: number, file?: File, onProgress?: (percent: number, loadedBytes?: number, totalBytes?: number) => void) => {
     if (!activeCaseId || !currentUser) throw new Error('No hay un legajo o usuario activo.');
     if (file) {
       const formData = new FormData();
@@ -227,7 +227,7 @@ export default function App() {
         xhr.withCredentials = true;
         xhr.upload.onprogress = (event) => {
           if (event.lengthComputable && event.total > 0) {
-            onProgress?.(Math.min(100, Math.floor((event.loaded / event.total) * 100)));
+            onProgress?.(Math.min(100, Math.floor((event.loaded / event.total) * 100)), event.loaded, event.total);
           }
         };
         xhr.onload = () => {
