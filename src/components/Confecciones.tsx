@@ -34,6 +34,7 @@ export default function Confecciones({cases,templates,currentUser}:Props) {
   const [caseId,setCaseId] = useState('');
   const [templateId,setTemplateId] = useState('');
   const [showCreate,setShowCreate] = useState(false);
+  const [confirmation,setConfirmation] = useState<{kind:'delete'|'finalize';item:Confeccion}|null>(null);
   const [instruction,setInstruction] = useState('');
   const [proposals,setProposals] = useState<Proposal[]>([]);
   const [coverage,setCoverage] = useState<Coverage|null>(null);
@@ -99,7 +100,6 @@ export default function Confecciones({cases,templates,currentUser}:Props) {
     }catch(e:any){setNotice(e.message);}finally{setBusy(false);}
   };
   const remove = async (item:Confeccion) => {
-    if (!window.confirm('¿Eliminar definitivamente esta confección? Se borrará todo el documento, incluso si está finalizado. Esta acción no se puede deshacer.')) return;
     setBusy(true);setNotice('');
     try {
       await request('/api/confecciones/'+encodeURIComponent(item.id),{method:'DELETE'});
@@ -137,7 +137,7 @@ export default function Confecciones({cases,templates,currentUser}:Props) {
     if(count) {changeContent(updated);setChat(c=>[...c,{from:'agent',text:count+' campo(s) completados en todas sus apariciones. Revisá el documento y guardalo.'}]);}
   };
   const close = async () => {
-    if(!selected || !window.confirm('¿Finalizar esta confección? El documento quedará bloqueado para edición.'))return;
+    if(!selected)return;
     setBusy(true);try {await save();await request('/api/confecciones/'+selected.id+'/close',{method:'POST'});setSelected(null);await refresh();}
     catch(e:any){setNotice(e.message);}finally{setBusy(false);}
   };
@@ -151,17 +151,34 @@ export default function Confecciones({cases,templates,currentUser}:Props) {
   };
   if(selected) return (
     <div className="space-y-5 min-w-0">
+      {confirmation&&<div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/75 backdrop-blur-sm p-4" onMouseDown={e=>{if(e.target===e.currentTarget&&!busy)setConfirmation(null);}}>
+        <div role="alertdialog" aria-modal="true" aria-labelledby="confeccion-confirm-title" aria-describedby="confeccion-confirm-description" className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 text-white shadow-2xl overflow-hidden">
+          <div className="flex items-start gap-3 px-6 pt-6">
+            <div className={confirmation.kind==='delete'?'rounded-xl bg-red-500/15 p-3 text-red-400':'rounded-xl bg-emerald-500/15 p-3 text-emerald-400'}>{confirmation.kind==='delete'?<Trash2 size={22}/>:<CheckCircle2 size={22}/>}</div>
+            <div className="min-w-0 flex-1">
+              <h2 id="confeccion-confirm-title" className="text-lg font-bold">{confirmation.kind==='delete'?'Eliminar confección':'Finalizar confección'}</h2>
+              <p className="mt-1 text-sm text-slate-300 break-words">{confirmation.item.title}</p>
+            </div>
+            <button type="button" aria-label="Cerrar" disabled={busy} onClick={()=>setConfirmation(null)} className="rounded-lg p-1 text-slate-400 hover:text-white disabled:opacity-50"><X size={20}/></button>
+          </div>
+          <p id="confeccion-confirm-description" className="px-6 py-5 text-sm leading-relaxed text-slate-300">{confirmation.kind==='delete'?'Se eliminará definitivamente este documento, incluso si está finalizado. Esta acción no se puede deshacer.':'El documento quedará finalizado y bloqueado para edición.'}</p>
+          <div className="flex flex-wrap justify-end gap-3 border-t border-slate-700 bg-slate-800/70 px-6 py-4">
+            <button type="button" autoFocus disabled={busy} onClick={()=>setConfirmation(null)} className="rounded-lg border border-slate-600 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-700 disabled:opacity-50">Cancelar</button>
+            <button type="button" disabled={busy} onClick={async()=>{const action=confirmation;setConfirmation(null);if(action.kind==='delete')await remove(action.item);else await close();}} className={confirmation.kind==='delete'?'rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-50':'rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50'}>{confirmation.kind==='delete'?'Sí, eliminar':'Finalizar documento'}</button>
+          </div>
+        </div>
+      </div>}
       <div className="flex flex-wrap justify-between items-start gap-3">
         <div><button onClick={()=>void goBack()} className="flex items-center gap-2 text-sm text-indigo-500 font-semibold mb-3"><ArrowLeft size={16}/> Archivo de Confecciones</button>
           <h1 className="text-2xl font-black text-slate-900 dark:text-white">{selected.title}</h1>
           <p className="text-sm text-slate-500 mt-1">{selected.case_code} · {selected.status==='closed'?'Finalizada':'En confección'} · {saving?'Guardando...':dirty?'Cambios pendientes':'Guardado'}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button onClick={()=>void remove(selected)} disabled={busy} className="px-3 py-2 rounded-lg border border-red-400 text-red-500 flex gap-2 items-center text-sm disabled:opacity-50"><Trash2 size={16}/> Eliminar</button>
+          <button onClick={()=>setConfirmation({kind:'delete',item:selected})} disabled={busy} className="px-3 py-2 rounded-lg border border-red-400 text-red-500 flex gap-2 items-center text-sm disabled:opacity-50"><Trash2 size={16}/> Eliminar</button>
           <button onClick={print} className="px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 flex gap-2 items-center text-sm dark:text-white"><Printer size={16}/> Imprimir / PDF</button>
           <button onClick={()=>exportText(selected.title,content)} className="px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 flex gap-2 items-center text-sm dark:text-white"><Download size={16}/> Exportar TXT</button>
           {selected.status==='draft'&&<><button onClick={()=>void save().catch((e:any)=>setNotice(e.message))} className="px-3 py-2 rounded-lg bg-indigo-600 text-white flex gap-2 items-center text-sm"><Save size={16}/> Guardar</button>
-          <button onClick={()=>void close()} disabled={busy} className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm flex gap-2 items-center"><CheckCircle2 size={16}/> Finalizar</button></>}
+          <button onClick={()=>setConfirmation({kind:'finalize',item:selected})} disabled={busy} className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm flex gap-2 items-center"><CheckCircle2 size={16}/> Finalizar</button></>}
         </div>
       </div>
       {notice&&<p role="alert" className="text-amber-500 text-sm">{notice}</p>}
