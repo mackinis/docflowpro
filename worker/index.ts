@@ -2414,7 +2414,7 @@ app.post('/api/confecciones', async (c) => {
   const template = await findTemplateOrVirtualById(c.env, String(templateId || ''));
   if (!template?.originalDocumentContent?.trim()) return c.json({ error: 'La plantilla no tiene contenido digitalizado.' }, 400);
   const content = template.originalDocumentContent;
-  const lastField = Math.max(0, ...Array.from(content.matchAll(/\\[CAMPO_(\\d+)\\*?\\]/g), m => Number(m[1])));
+  const lastField = Math.max(0, ...Array.from(content.matchAll(/\[CAMPO_(\d+)\*?\]/g), m => Number(m[1])));
   await ensureConfecciones(c.env.DB);
   const id = crypto.randomUUID(), now = new Date().toISOString();
   await c.env.DB.prepare(`INSERT INTO confecciones
@@ -2436,7 +2436,7 @@ app.put('/api/confecciones/:id', async (c) => {
   if (existing.status !== 'draft') return c.json({ error: 'La confección está cerrada.' }, 409);
   const body = await c.req.json();
   if (typeof body.content !== 'string' || body.content.length > 500000) return c.json({ error: 'Contenido inválido.' }, 400);
-  const maxInText = Math.max(0, ...Array.from(body.content.matchAll(/\\[CAMPO_(\\d+)\\*?\\]/g), (m: RegExpMatchArray) => Number(m[1])));
+  const maxInText = Math.max(0, ...Array.from(body.content.matchAll(/\[CAMPO_(\d+)\*?\]/g), (m: RegExpMatchArray) => Number(m[1])));
   const lastField = Math.max(existing.last_field_number, maxInText);
   const now = new Date().toISOString();
   await c.env.DB.prepare('UPDATE confecciones SET content = ?, last_field_number = ?, updated_at = ? WHERE id = ?')
@@ -2453,7 +2453,7 @@ app.post('/api/confecciones/:id/close', async (c) => {
   const caseObj = await getCaseById(c.env.DB, row.case_id);
   if (auth.user.role === 'MANAGER' && caseObj?.assignedManagerId !== auth.user.id) return c.json({ error: 'No autorizado.' }, 403);
   if (row.status !== 'draft') return c.json({ error: 'Ya está cerrada.' }, 409);
-  if (/\\[CAMPO_\\d+\\*?\\]/.test(row.content)) return c.json({ error: 'Quedan campos sin completar. Revisalos antes de cerrar.' }, 409);
+  if (/\[CAMPO_\d+\*?\]/.test(row.content)) return c.json({ error: 'Quedan campos sin completar. Revisalos antes de cerrar.' }, 409);
   const now = new Date().toISOString();
   await c.env.DB.prepare("UPDATE confecciones SET status = 'closed', closed_at = ?, updated_at = ? WHERE id = ?")
     .bind(now, now, id).run();
@@ -2489,9 +2489,9 @@ Instrucción del usuario: ${instruction}`;
       temperature:0.1,max_tokens:1600
     });
     const raw = String(response?.response || '');
-    const parsed = JSON.parse(raw.replace(/^```(?:json)?\\s*/,'').replace(/\\s*```$/,''));
+    const parsed = JSON.parse(raw.replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,''));
     const valid = Array.isArray(parsed.replacements) ? parsed.replacements.filter((x:any) =>
-      typeof x.field === 'string' && /^\\[CAMPO_\\d+\\*?\\]$/.test(x.field) &&
+      typeof x.field === 'string' && /^\[CAMPO_\d+\*?\]$/.test(x.field) &&
       content.includes(x.field) && typeof x.value === 'string' && x.value.length <= 2000
     ) : [];
     return c.json({ reply: String(parsed.reply || 'Revisá los datos propuestos.').slice(0,2000), replacements:valid });
