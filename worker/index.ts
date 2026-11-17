@@ -1656,7 +1656,10 @@ app.post('/api/templates/analyze-fields', async (c) => {
   if(!object)return c.json({error:'El archivo del documento no está disponible en R2.'},404);
   const source=await object.text();
   const matches=[...source.matchAll(/\[CAMPO_\d+\*?\]/g)];
-  const unique=[...new Set(matches.map(m=>m[0]))];
+  // The document preserves its physical marker positions; the process
+  // requirements are presented in stable numeric CAMPO order.
+  const unique=[...new Set(matches.map(m=>m[0]))].sort((a,b)=>
+    Number(a.match(/\d+/)?.[0]||0)-Number(b.match(/\d+/)?.[0]||0));
   if(!unique.length)return c.json({error:'La plantilla no tiene campos amarillos.'},400);
   const normalize=(s:string)=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
   const roles=/\b(LOCADOR(?:ES|\/S)?|LOCATARIO(?:S|\/S)?|FIADOR(?:ES|\/S)?|GARANTE(?:S|\/S)?)\s*:/gi;
@@ -1666,9 +1669,16 @@ app.post('/api/templates/analyze-fields', async (c) => {
     const roleMatches=[...before.matchAll(roles)];
     const lastRole=roleMatches[roleMatches.length-1];
     let actor=lastRole?normalize(lastRole[1]).includes('locatario')?'Locatario':normalize(lastRole[1]).includes('locador')?'Locador':'Garante':'Operación';
-    const section=lastRole?before.slice((lastRole.index||0)+lastRole[0].length):before;
+    // Section headings override the last named person. Rental terms are
+    // properties of the operation, never of the tenant or their spouse.
+    const operationHeading=[...before.matchAll(/(?:CONDICIONES\s+DE\s+ALQUILER|DURACI[ÓO]N\s+CONTRATO|DATOS\s+DE\s+LA\s+PROPIEDAD)\s*[:;]/gi)].pop();
+    const operationStart=operationHeading?.index??-1;
+    const roleStart=lastRole?.index??-1;
+    const isOperation=operationStart>roleStart;
+    if(isOperation)actor='Condiciones de la operación';
+    const section=isOperation?before.slice(operationStart):lastRole?before.slice((lastRole.index||0)+lastRole[0].length):before;
     const spouseHeading=[...section.matchAll(/NOMBRE\s+Y\s+APELLIDO\s+(?:DEL?\s+)?C[ÓO]NYUGE\s*:/gi)].pop();
-    if(spouseHeading){
+    if(spouseHeading && !isOperation){
       const spouseTail=section.slice((spouseHeading.index||0)+spouseHeading[0].length);
       const spouseCount=(spouseTail.match(/\[CAMPO_\d+\*?\]/g)||[]).length;
       if(spouseCount<3)actor='Cónyuge del '+actor.toLowerCase();
