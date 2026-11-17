@@ -1524,6 +1524,19 @@ async function saveTemplateInDb(db: D1Database, tpl: ProcessTemplate, isUpdate =
       .run();
   }
 
+  // Keep the semantic map synchronized with the exact markers present in the text.
+  await db.prepare(`CREATE TABLE IF NOT EXISTS template_field_maps
+    (template_id TEXT PRIMARY KEY, fields_json TEXT NOT NULL DEFAULT '[]', notes_json TEXT NOT NULL DEFAULT '[]')`).run();
+  const markers = [...(tpl.originalDocumentContent || '').matchAll(/\[CAMPO_\d+\*?\]/g)].map(m => m[0]);
+  const unique = [...new Set(markers)];
+  const fieldMap = unique.map(id => {
+    const prior = (tpl.fieldMap || []).find(f => f.id === id);
+    return prior || { id, label: 'Pendiente de identificar', actor: 'No determinado', source: 'manual', confidence: 'low', review: true };
+  });
+  await db.prepare(`INSERT INTO template_field_maps (template_id, fields_json, notes_json) VALUES (?, ?, ?)
+    ON CONFLICT(template_id) DO UPDATE SET fields_json = excluded.fields_json, notes_json = excluded.notes_json`)
+    .bind(tpl.id, JSON.stringify(fieldMap), JSON.stringify(tpl.digitizationReviewNotes || [])).run();
+
   const stmts: D1PreparedStatement[] = [];
   (tpl.stages || []).forEach((stg, sIdx) => {
     const stageId = stg.id || `stg-${sIdx}-${Date.now()}`;
@@ -1639,6 +1652,8 @@ app.post('/api/templates', async (c) => {
     industry: body.industry || 'Inmobiliaria',
     stages: parsedStages,
     originalDocumentContent: body.originalDocumentContent || '',
+    fieldMap: Array.isArray(body.fieldMap) ? body.fieldMap : [],
+    digitizationReviewNotes: [],
     showDocumentToAll: body.showDocumentToAll !== undefined ? body.showDocumentToAll : true,
     sharedViewMode: body.sharedViewMode || 'both',
   };
@@ -1669,6 +1684,8 @@ app.put('/api/templates/:id', async (c) => {
       body.originalDocumentContent !== undefined
         ? body.originalDocumentContent
         : existing.originalDocumentContent,
+    fieldMap: Array.isArray(body.fieldMap) ? body.fieldMap : existing.fieldMap,
+    digitizationReviewNotes: Array.isArray(body.digitizationReviewNotes) ? body.digitizationReviewNotes : existing.digitizationReviewNotes,
     showDocumentToAll:
       body.showDocumentToAll !== undefined ? body.showDocumentToAll : existing.showDocumentToAll ?? true,
     sharedViewMode: body.sharedViewMode !== undefined ? body.sharedViewMode : existing.sharedViewMode ?? 'both',
