@@ -2518,22 +2518,47 @@ Mapa de campos validado (identificador, significado y actor): ${JSON.stringify(f
 Campos pendientes: ${JSON.stringify(markers).slice(0,10000)}
 Documento actual: ${content.slice(0,24000)}
 Instrucción del usuario: ${instruction}`;
-  try {
-    const response = await (c.env.AI as any).run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', {
-      messages: [{role:'system',content:'Respondé solamente JSON válido. No inventes datos.'},{role:'user',content:prompt}],
-      temperature:0.1,max_tokens:1600
-    });
-    const raw = String(response?.response || '');
-    const parsed = JSON.parse(raw.replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,''));
-    const valid = Array.isArray(parsed.replacements) ? parsed.replacements.filter((x:any) =>
-      typeof x.field === 'string' && /^\[CAMPO_\d+\*?\]$/.test(x.field) &&
-      markers.includes(x.field) && typeof x.value === 'string' && x.value.trim().length > 0 && x.value.length <= 2000 && !/\[CAMPO_\d+\*?\]/.test(x.value)
-    ) : [];
-    return c.json({ reply: String(parsed.reply || 'Revisá los datos propuestos.').slice(0,2000), replacements:valid, pendingFields: markers.length });
-  } catch (error) {
-    console.error('Confecciones AI error:', error);
-    return c.json({ error: 'El agente no pudo procesar esta solicitud. Intentá nuevamente.' }, 502);
+  if (!c.env.AI) return c.json({ error: 'El servicio de inteligencia artificial no está configurado en este entorno.' }, 503);
+  const settings = await getSystemConfigValue(c.env.DB, 'systemSettings', DEFAULT_SYSTEM_SETTINGS);
+  const preferredModel = AI_MODELS.some(m => m.id === settings.aiModel) ? settings.aiModel : AI_MODELS[0].id;
+  const models = [preferredModel, ...AI_MODELS.map(m => m.id).filter(m => m !== preferredModel)];
+  const parseAgentResponse = (response: any) => {
+    const raw = typeof response === 'string' ? response : String(response?.response || response?.result?.response || '');
+    const cleaned = raw.trim().replace(/^\x60\x60\x60(?:json)?\s*/i, '').replace(/\s*\x60\x60\x60$/, '');
+    try { return JSON.parse(cleaned); } catch {
+      const first = cleaned.indexOf('{'), last = cleaned.lastIndexOf('}');
+      if (first < 0 || last <= first) throw new Error('La IA no devolvió una respuesta JSON utilizable.');
+      return JSON.parse(cleaned.slice(first,last+1));
+    }
+  };
+  let lastError: unknown;
+  for (const model of models) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        // Retry with a smaller document if the model rejects context size or produces malformed JSON.
+        const limitedPrompt = attempt === 0 ? prompt : prompt.replace(
+          /Documento actual: [\s\S]*?\nInstrucción del usuario:/,
+          'Documento actual: (solo marcadores y mapa de campos provistos arriba)\nInstrucción del usuario:'
+        );
+        const response = await (c.env.AI as any).run(model, {
+          messages: [{role:'system',content:'Devolvé un único objeto JSON válido con reply y replacements. Si faltan datos, preguntá; nunca inventes.'},{role:'user',content:limitedPrompt}],
+          temperature:0.1,max_tokens:2400
+        });
+        const parsed = parseAgentResponse(response);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Formato de respuesta de IA inválido.');
+        const valid = Array.isArray(parsed.replacements) ? parsed.replacements.filter((x:any) =>
+          typeof x.field === 'string' && /^\[CAMPO_\d+\*?\]$/.test(x.field) &&
+          markers.includes(x.field) && typeof x.value === 'string' && x.value.trim().length > 0 && x.value.length <= 2000 && !/\[CAMPO_\d+\*?\]/.test(x.value)
+        ) : [];
+        return c.json({ reply: String(parsed.reply || (valid.length ? 'Revisá los datos propuestos.' : 'No encontré datos suficientes para completar campos. Indicame los datos que faltan.')).slice(0,2000), replacements:valid, pendingFields:markers.length });
+      } catch (error) {
+        lastError=error;
+        console.error('Confecciones AI attempt failed:', model, attempt+1, error);
+      }
+    }
   }
+  console.error('Confecciones AI exhausted models:', lastError);
+  return c.json({ error: 'El servicio de IA no respondió correctamente después de varios intentos. Revisá su disponibilidad y configuración.' }, 502);
 });
 
 app.post('/api/cases/:id/advance', async (c) => {
