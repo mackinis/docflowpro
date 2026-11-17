@@ -390,6 +390,21 @@ export default function App() {
     }, '¡Etapa aprobada correctamente!');
   };
 
+  const handleReopenCase = async (password: string): Promise<void> => {
+    if (!activeCaseId) throw new Error('No hay un legajo activo.');
+    const response = await fetch(`/api/cases/${activeCaseId}/reopen`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password })
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.error || 'No se pudo reabrir el legajo.');
+    }
+    await loadState();
+  };
+
   // Add Participant dynamically to active case
   const handleAddParticipant = async (participant: Participant) => {
     if (!activeCaseId) return;
@@ -610,6 +625,7 @@ export default function App() {
                 onReopenObservation={handleReopenObservation}
                 onAdvanceStage={handleAdvanceStage}
                 onApproveStage={handleApproveStage}
+                onReopenCase={handleReopenCase}
                 onAddParticipant={handleAddParticipant}
                 onRemoveParticipant={handleRemoveParticipant}
                 onUpdateParticipant={handleUpdateParticipant}

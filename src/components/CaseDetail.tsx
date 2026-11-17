@@ -62,6 +62,7 @@ interface CaseDetailProps {
   onReopenObservation: (obsId: string) => void | Promise<void>;
   onAdvanceStage: () => void;
   onApproveStage: () => void;
+  onReopenCase: (password: string) => Promise<void>;
   onAddParticipant: (participant: Participant) => void;
   onRemoveParticipant?: (participantId: string) => void;
   onUpdateParticipant?: (participant: Participant) => void;
@@ -90,6 +91,7 @@ export default function CaseDetail({
   onReopenObservation,
   onAdvanceStage,
   onApproveStage,
+  onReopenCase,
   onAddParticipant,
   onRemoveParticipant,
   onUpdateParticipant
@@ -123,6 +125,10 @@ export default function CaseDetail({
 
   // Participant adding in detail page
   const [showAddPart, setShowAddPart] = useState(false);
+  const [reopenModal, setReopenModal] = useState(false);
+  const [reopenPassword, setReopenPassword] = useState('');
+  const [reopenBusy, setReopenBusy] = useState(false);
+  const [reopenError, setReopenError] = useState('');
   const [editingParticipantId, setEditingParticipantId] = useState<string | null>(null);
   const [pType, setPType] = useState<ParticipantType>('Vendedor');
   const [pName, setPName] = useState('');
@@ -820,6 +826,27 @@ export default function CaseDetail({
         </div>
       </div>
 
+      {reopenModal && (
+        <div className="fixed inset-0 z-[100] bg-slate-950/70 flex items-center justify-center p-4">
+          <form onSubmit={async (event) => {
+            event.preventDefault();
+            if (reopenBusy) return;
+            setReopenBusy(true); setReopenError('');
+            try { await onReopenCase(reopenPassword); setReopenModal(false); setReopenPassword(''); }
+            catch (error: any) { setReopenError(error?.message || 'No se pudo reabrir el legajo.'); }
+            finally { setReopenBusy(false); }
+          }} className="w-full max-w-sm rounded-2xl bg-slate-800 border border-slate-600 p-5 shadow-xl space-y-4">
+            <h3 className="font-bold text-white text-base">Reabrir legajo</h3>
+            <p className="text-xs text-slate-300">Ingresá tu contraseña para validar la reapertura.</p>
+            <input autoFocus required type="password" autoComplete="current-password" value={reopenPassword} onChange={e => setReopenPassword(e.target.value)} disabled={reopenBusy} placeholder="Contraseña" className="w-full p-3 rounded-lg bg-slate-900 text-white border border-slate-500" />
+            {reopenError && <p role="alert" className="text-red-300 text-xs">{reopenError}</p>}
+            <div className="flex justify-end gap-2">
+              <button type="button" disabled={reopenBusy} onClick={() => { setReopenModal(false); setReopenPassword(''); }} className="px-4 py-2 text-slate-200">Cancelar</button>
+              <button type="submit" disabled={reopenBusy || !reopenPassword} className="px-4 py-2 rounded-lg bg-indigo-600 text-white disabled:opacity-50 flex items-center gap-2">{reopenBusy && <Loader2 className="w-4 h-4 animate-spin" />}{reopenBusy ? 'Validando...' : 'Reabrir'}</button>
+            </div>
+          </form>
+        </div>
+      )}
       {/* CORE DETAILS ROW (ACTORES & STAGE REQUIREMENTS) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left Side: Actors directory - 4 cols */}
@@ -830,17 +857,17 @@ export default function CaseDetail({
                 <Users className="w-5 h-5 text-indigo-600" />
                 <h3 className="text-sm font-bold text-slate-800">Actores del Caso</h3>
               </div>
-              <button 
+              {caseObj.status !== 'completed' && <button 
                 onClick={() => setShowAddPart(!showAddPart)}
                 className="p-1 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded transition-colors"
                 title="Añadir Actor"
               >
                 <Plus className="w-4 h-4" />
-              </button>
+              </button>}
             </div>
 
             {/* Quick adding/editing actor form inside detail panel */}
-            {showAddPart && (
+            {showAddPart && caseObj.status !== 'completed' && (
               <form onSubmit={handleAddParticipantSubmit} className="p-3 bg-slate-50 rounded-xl border border-slate-150 space-y-2.5 text-xs">
                 <p className="font-bold text-slate-700">{editingParticipantId ? 'Editar Actor' : 'Agregar Actor'}</p>
                 <div className="space-y-1">
@@ -908,15 +935,15 @@ export default function CaseDetail({
                         <span className="bg-indigo-50 text-indigo-700 border border-indigo-100 px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase">
                           {p.role || p.comments?.split(':')[0] || 'Actor'}
                         </span>
-                        <button
+                        {caseObj.status !== "completed" && <button
                           type="button"
                           onClick={() => handleStartEditParticipant(p)}
                           className="text-slate-400 hover:text-indigo-600 p-0.5 rounded transition-colors cursor-pointer"
                           title="Editar Actor"
                         >
                           <Pencil className="w-3.5 h-3.5" />
-                        </button>
-                        <button
+                        </button>}
+                        {caseObj.status !== "completed" && <button
                           type="button"
                           onClick={() => {
                             setParticipantToDelete(p.id);
@@ -925,7 +952,7 @@ export default function CaseDetail({
                           title="Eliminar Actor"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        </button>}
                       </div>
                     </div>
                     <div className="space-y-0.5 text-[10px] text-slate-500 font-mono">
@@ -1667,7 +1694,11 @@ export default function CaseDetail({
             </div>
 
             <div className="shrink-0 flex flex-col items-center gap-1.5 w-full md:w-auto">
-              {currentUser.role === 'ASESOR' ? (
+              {caseObj.status === 'completed' ? (
+                ['MANAGER', 'ADMIN', 'SUPERADMIN'].includes(currentUser.role) ? (
+                  <button type="button" onClick={() => { setReopenError(''); setReopenPassword(''); setReopenModal(true); }} className="px-5 py-3 rounded-xl bg-indigo-600 text-white font-bold text-sm">Reabrir</button>
+                ) : <span className="text-emerald-400 text-sm font-semibold">Legajo finalizado</span>
+              ) : currentUser.role === 'ASESOR' ? (
                 <>
                   {caseObj.isCurrentStageApproved ? (
                     <div className="text-center space-y-1">
