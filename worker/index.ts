@@ -2607,7 +2607,7 @@ app.post('/api/confecciones/:id/agent', async (c) => {
     // Reserve space for every attachment's status, even when its text is unreadable.
     const docs= documentEvidence.map((d,i)=>({
       name:d.name,status:d.status,note:d.note,
-      excerpt:d.text?snippets(d.text,Math.min(2500,Math.max(900,Math.floor(18000/Math.max(1,documentEvidence.length))))):undefined,
+      excerpt:d.text?snippets(d.text,Math.min(2500,Math.max(180,Math.floor(18000/Math.max(1,documentEvidence.length))))):undefined,
       index:i+1
     }));
     return JSON.stringify({
