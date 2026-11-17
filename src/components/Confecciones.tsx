@@ -112,7 +112,7 @@ export default function Confecciones({cases,templates,currentUser}:Props) {
     try {
       await save();
       const snapshot=contentRef.current;
-      const data=await request('/api/confecciones/'+selected.id+'/agent',{method:'POST',body:JSON.stringify({instruction:message,content:snapshot})});
+      const data=await request('/api/confecciones/'+selected.id+'/agent',{method:'POST',body:JSON.stringify({instruction:message,content:snapshot,conversation:chat.slice(-24)})});
       if (contentRef.current!==snapshot) {setChat(c=>[...c,{from:'agent',text:'El documento cambió mientras analizaba. No apliqué reemplazos para proteger tus modificaciones. Volvé a pedírmelo.'}]);return;}
       const pending:Proposal[] = Array.isArray(data.replacements) ? data.replacements.filter((p:Proposal)=>typeof p.field==='string' && typeof p.value==='string' && snapshot.includes(p.field)) : [];
       setCoverage(data.coverage || null);
