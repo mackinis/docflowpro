@@ -2546,14 +2546,14 @@ app.post('/api/confecciones/:id/agent', async (c) => {
     });
     return {total:markers.length, proposed:matched.size, unresolved:unresolved.length, fields:unresolved};
   };
-  const missingSummary = () => {
-    const labels = markers.slice(0, 8).map(id => {
-      const entry = fieldMap.find(f => f.id === id);
-      return entry && entry.label && entry.label !== 'Pendiente de identificar'
-        ? id + ' (' + entry.label + ')' : id;
-    });
-    return 'Hay ' + markers.length + ' campos pendientes. Para completarlos sin inventar información, revisá los datos del legajo y facilitame los valores que falten. Empecemos por: ' + labels.join(', ') + (markers.length > 8 ? ', entre otros.' : '.');
+  const questionFor = (field:string):string => {
+    const entry=fieldMap.find(f=>f.id===field);
+    const i=content.indexOf(field);
+    const before=(i>=0?content.slice(Math.max(0,i-190),i):'').replace(/\\s+/g,' ').trim();
+    const label=entry?.label && entry.label!=='Pendiente de identificar' ? entry.label : before.split(/[.;\\n]/).pop()?.trim().slice(-110);
+    return label ? '¿Cuál es el dato correspondiente a '+field+' ('+label+')?' : '¿Qué valor corresponde a '+field+'?';
   };
+  const missingSummary = () => 'No encontré datos verificables para completar los campos todavía. '+questionFor(markers[0])+' Podés responder acá y continuaré con los siguientes campos.';
   if (!markers.length) return c.json({ reply: 'La plantilla no tiene campos pendientes para completar.', replacements: [], pendingFields: 0, coverage:coverage([]) });
   // Conversation is supplied by the editor, bounded and treated as untrusted task data.
   const history = Array.isArray(conversation) ? conversation.slice(-24)
@@ -2634,8 +2634,8 @@ Instrucción actual: ${instruction}`;
     const unresolved = markers.filter(field=>!seen.has(field));
     const reply = valid.length
       ? 'Encontré '+valid.length+' propuestas verificables de '+markers.length+' campos. '+(unresolved.length ? 'Quedan '+unresolved.length+' pendientes. ' : 'No quedan marcadores pendientes de propuesta. ')+(replies[0]||'Revisá las propuestas y confirmá antes de aplicarlas.')
-      : (replies[0] || missingSummary());
-    return c.json({reply, replacements:valid, pendingFields:markers.length, coverage:coverage(valid), partialFailure:failures>0, batches:batches.length});
+      : (failures === batches.length ? 'No pude obtener una respuesta válida del modelo en ninguno de los '+batches.length+' lotes. No se modificó la plantilla. '+missingSummary() : (replies.find(r=>r.includes('¿')) || missingSummary()));
+    return c.json({reply, replacements:valid, pendingFields:markers.length, coverage:coverage(valid), partialFailure:failures>0, batches:batches.length, failedBatches:failures});
   } catch (error) {
     console.error('Confecciones AI service error:', error);
     return c.json({reply:'El servicio de IA no respondió en este momento. No modifiqué la plantilla. ' + missingSummary(), replacements:[], pendingFields:markers.length, coverage:coverage([]), fallback:true});
