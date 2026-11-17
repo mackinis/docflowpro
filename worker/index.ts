@@ -2553,13 +2553,39 @@ app.post('/api/confecciones/:id/agent', async (c) => {
     documentEvidence.push(entry);
   }
   const template = await findTemplateOrVirtualById(c.env, row.template_id);
-  const fieldMap = (template?.fieldMap || []).filter(f => content.includes(f.id));
+  const storedFieldMap = (template?.fieldMap || []).filter(f => content.includes(f.id));
   const markers = [...new Set(Array.from(content.matchAll(/\[CAMPO_\d+\*?\]/g), m => m[0]))];
+  // Infer each marker's meaning from the original template itself, even when
+  // legacy digitizations have no semantic fieldMap.
+  const inferField = (field:string) => {
+    const at=content.indexOf(field);
+    if(at<0)return {id:field,label:'Dato pendiente de identificar',actor:'No determinado'};
+    const before=content.slice(Math.max(0,at-700),at);
+    const after=content.slice(at+field.length,at+field.length+100);
+    const actorMatch=[...before.matchAll(/\b(LOCADOR(?:ES|\/S)?|LOCATARIO(?:S|\/S)?|FIADOR(?:ES|\/S)?|GARANTE(?:S|\/S)?)\s*:/gi)].pop();
+    const actor=actorMatch?actorMatch[1].toUpperCase():'No determinado';
+    const currentLine=before.slice(before.lastIndexOf('\n')+1);
+    const labelMatch=[...currentLine.matchAll(/(FECHA DE NACIMIENTO|NOMBRE Y APELLIDO(?: DEL? C[ÓO]NYUGE)?|DOMICILIO ACTUAL|ESTADO CIVIL|DURACI[ÓO]N(?: DEL? CONTRATO)?|MESES DE GRACIA|VALOR DE LA LOCACI[ÓO]N INICIAL|IMPORTE DE MES DE DEP[ÓO]SITO|SERVICIOS? QUE ABONA (?:EL )?(?:LOCADOR|LOCATARIO)|POSESI[ÓO]N|INVENTARIO|AJUSTE|MAIL|DNI|A PARTIR|HASTA|INDICAR)\s*:?\s*$/gi)].pop();
+    let label=labelMatch?.[1]||'';
+    if(!label){
+      const tail=currentLine.split(/[;:]/).pop()?.trim()||'';
+      if(tail.length>=3&&tail.length<=65)label=tail;
+    }
+    if(!label && /^\s*(?:,|\.|;|\n)/.test(after))label='Dato solicitado en el contexto anterior';
+    return {id:field,label:label||'Dato pendiente de identificar',actor};
+  };
+  const fieldMap=markers.map(field=>{
+    const inferred=inferField(field);
+    const stored=storedFieldMap.find(f=>f.id===field);
+    return {...inferred,...stored,
+      label:stored?.label && !/^(pendiente de identificar|sin significado identificado|dato sin identificar)$/i.test(stored.label)?stored.label:inferred.label,
+      actor:stored?.actor && !/^(no determinado|por identificar)$/i.test(stored.actor)?stored.actor:inferred.actor};
+  });
   const coverage = (proposed: Array<{field:string;value:string;source:string}>) => {
     const matched = new Set(proposed.map(p => p.field));
     const unresolved = markers.filter(field => !matched.has(field)).map(field => {
       const entry = fieldMap.find(f => f.id === field);
-      return {field, label: entry?.label && entry.label !== 'Pendiente de identificar' ? entry.label : 'Sin significado identificado', status:'sin_dato_verificado'};
+      return {field, label: entry?.label || 'Dato pendiente de identificar', status:'sin_dato_verificado'};
     });
     return {total:markers.length, proposed:matched.size, unresolved:unresolved.length, fields:unresolved};
   };
