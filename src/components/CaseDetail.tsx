@@ -52,7 +52,7 @@ interface CaseDetailProps {
   uploadRequests?: UploadRequest[];
   loadState?: () => Promise<void>;
   onBack: () => void;
-  onUploadDoc: (stageId: string, reqId: string, reqName: string, fileName: string, fileSize: number, file?: File, onProgress?: (percent: number) => void) => void | Promise<void>;
+  onUploadDoc: (stageId: string, reqId: string, reqName: string, fileName: string, fileSize: number, file?: File, onProgress?: (percent: number, loadedBytes?: number, totalBytes?: number) => void) => void | Promise<void>;
   onReviewDoc: (docId: string, status: 'approved' | 'rejected', observationText?: string, allowedRoles?: string[]) => void;
   onToggleTask: (taskId: string, status: 'pending' | 'completed') => void;
   onSubmitForm: (reqId: string, values: Record<string, string | number | boolean>) => void;
@@ -157,7 +157,7 @@ export default function CaseDetail({
   const [submittingReview, setSubmittingReview] = useState(false);
   const [sharedDocs, setSharedDocs] = useState<any[]>([]);
   const caseFileInputRef = useRef<HTMLInputElement | null>(null);
-  const [uploadProgress, setUploadProgress] = useState<Record<string, { percent: number; status: 'uploading' | 'confirming' | 'success' }>>({});
+  const [uploadProgress, setUploadProgress] = useState<Record<string, { percent: number; status: 'uploading' | 'confirming' | 'success'; loadedBytes?: number; totalBytes?: number }>>({});
   const uploadingRef = useRef<Set<string>>(new Set());
   const [pendingUploadContext, setPendingUploadContext] = useState<{
     reqId: string;
@@ -309,10 +309,10 @@ export default function CaseDetail({
     // Progreso real de bytes transferidos, sin interpolación ni temporizadores ficticios.
     setUploadProgress(prev => ({ ...prev, [ctx.reqId]: { percent: 0, status: 'uploading' } }));
     try {
-      await onUploadDoc(currentStage.id, ctx.reqId, ctx.reqName, file.name, file.size, file, percent => {
+      await onUploadDoc(currentStage.id, ctx.reqId, ctx.reqName, file.name, file.size, file, (percent, loadedBytes, totalBytes) => {
         setUploadProgress(prev => ({
           ...prev,
-          [ctx.reqId]: { percent: Math.min(100, Math.max(0, percent)), status: percent >= 100 ? 'confirming' : 'uploading' }
+          [ctx.reqId]: { percent: Math.min(100, Math.max(0, percent)), status: percent >= 100 ? 'confirming' : 'uploading', loadedBytes, totalBytes }
         }));
       });
       // onUploadDoc awaits loadState(), which refreshes the checklist from the server.
@@ -1221,13 +1221,14 @@ export default function CaseDetail({
                                     {(uploadProgress[req.id]?.status === 'uploading' || uploadProgress[req.id]?.status === 'confirming') && (
                                       <span
                                         aria-hidden="true"
-                                        className="absolute inset-y-0 left-0 bg-green-600 transition-[width] duration-200 ease-out"
+                                        className="absolute inset-y-0 left-0 bg-green-600"
                                         style={{ width: `${uploadProgress[req.id].percent}%` }}
                                       />
                                     )}
                                     <span className="relative z-10 flex items-center gap-1.5">
                                       {(uploadProgress[req.id]?.status === 'success' || (doc && !uploadProgress[req.id])) ? <Check className="w-3.5 h-3.5" /> : <Upload className="w-3.5 h-3.5" />}
                                       <span>{(uploadProgress[req.id]?.status === 'success' || (doc && !uploadProgress[req.id])) ? 'Archivo cargado ✓' : uploadProgress[req.id]?.status === 'confirming' ? 'Guardando...' : uploadProgress[req.id]?.status === 'uploading' ? `Subiendo ${uploadProgress[req.id].percent}%` : doc ? 'Reemplazar archivo' : 'Cargar Archivo'}</span>
+                                      {uploadProgress[req.id]?.status === 'uploading' && uploadProgress[req.id]?.totalBytes ? <span className="text-[9px] opacity-90 tabular-nums">{Math.round((uploadProgress[req.id].loadedBytes || 0) / 1024)} / {Math.round(uploadProgress[req.id].totalBytes! / 1024)} KB</span> : null}
                                     </span>
                                   </button>
                                 </div>
