@@ -134,6 +134,8 @@ export default function CaseDetail({
   // AI Auditing loading states
   const [auditingDocId, setAuditingDocId] = useState<string | null>(null);
   const [auditResult, setAuditResult] = useState<any | null>(null);
+  const [previewDoc, setPreviewDoc] = useState<{ url: string; name: string; mime: string } | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   // Advancing Stage strict validations state
   const [validation, setValidation] = useState<{ isValid: boolean; missing: string[] }>({ isValid: true, missing: [] });
@@ -327,6 +329,25 @@ export default function CaseDetail({
     } finally {
       uploadingRef.current.delete(ctx.reqId);
     }
+  };
+
+  const handlePreviewCaseDoc = async (docId: string, fileName: string) => {
+    setPreviewLoading(true);
+    try {
+      const res = await fetch(`/api/documents/${docId}/download`, { credentials: 'include' });
+      if (!res.ok) throw new Error('No se pudo abrir el documento.');
+      const blob = await res.blob();
+      const mime = blob.type || (fileName.toLowerCase().endsWith('.pdf') ? 'application/pdf' : '');
+      const url = URL.createObjectURL(new Blob([blob], { type: mime || 'application/octet-stream' }));
+      setPreviewDoc({ url, name: fileName, mime });
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'No se pudo abrir el documento.');
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+  const closePreview = () => {
+    setPreviewDoc(prev => { if (prev) URL.revokeObjectURL(prev.url); return null; });
   };
 
   const handleDownloadCaseDoc = async (docId: string, fileName: string, downloadUrl?: string) => {
@@ -642,6 +663,22 @@ export default function CaseDetail({
 
   return (
     <div className="space-y-6">
+      {previewDoc && (
+        <div className="fixed inset-0 z-[100] bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Visor de documento">
+          <div className="w-full max-w-6xl h-[90vh] rounded-2xl border border-slate-600 bg-slate-900 shadow-2xl flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between gap-4 px-5 py-3 border-b border-slate-700 text-white">
+              <div className="flex items-center gap-2 min-w-0"><FileText className="w-5 h-5 text-indigo-400 shrink-0"/><span className="font-semibold truncate">{previewDoc.name}</span></div>
+              <button onClick={closePreview} className="rounded-lg p-2 hover:bg-slate-700" aria-label="Cerrar visor"><X className="w-5 h-5"/></button>
+            </div>
+            <div className="flex-1 min-h-0 bg-slate-800 flex items-center justify-center">
+              {previewDoc.mime.includes('pdf') || previewDoc.name.toLowerCase().endsWith('.pdf') ?
+                <iframe src={previewDoc.url} title={previewDoc.name} className="w-full h-full border-0 bg-white"/> :
+                previewDoc.mime.startsWith('image/') ? <img src={previewDoc.url} alt={previewDoc.name} className="max-w-full max-h-full object-contain"/> :
+                <p className="text-slate-200 text-sm p-6">Este formato no admite vista previa en el navegador. Podés usar el botón Descargar.</p>}
+            </div>
+          </div>
+        </div>
+      )}
       <CaseHistoryPanel caseId={caseObj.id} createdAt={caseObj.createdAt} status={caseObj.status} />
       {/* Back button & top title */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
@@ -1265,24 +1302,10 @@ export default function CaseDetail({
                                     </button>
                                   )}
 
-                                  {/* AI COMPLIANCE AUDIT CO-PILOT */}
-                                  <button
-                                    onClick={() => handleAICorrespondenceAudit(doc.id, doc.fileName || '', req.name, req.description, doc.fileName || '')}
-                                    disabled={auditingDocId !== null || caseObj.isCurrentStageApproved}
-                                    className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-bold rounded-lg flex items-center gap-1 transition-all disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-                                    title="Ejecutar análisis de cumplimiento automático mediante Inteligencia Artificial"
-                                  >
-                                    {auditingDocId === doc.id ? (
-                                      <>
-                                        <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600" />
-                                        <span>IA Evaluando...</span>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
-                                        <span>Auditar con IA</span>
-                                      </>
-                                    )}
+                                  <button onClick={() => handlePreviewCaseDoc(doc.id, doc.fileName || req.name)} disabled={previewLoading}
+                                    className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-bold rounded-lg flex items-center gap-1 transition-all disabled:opacity-50 shrink-0"
+                                    title="Abrir documento en el visor">
+                                    <Eye className="w-3.5 h-3.5" /><span>Abrir</span>
                                   </button>
                                 </div>
                               )}
