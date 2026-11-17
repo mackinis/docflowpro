@@ -753,7 +753,7 @@ export async function validateStageRequirements(
   }
 
   if (mode === 'approval' && openObs.length > 0) {
-    missing.push
+    missing.push(
       `Observación abierta: Hay ${openObs.length} observaciones pendientes de resolución.`
     );
   }
