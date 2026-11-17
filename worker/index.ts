@@ -1656,10 +1656,9 @@ app.post('/api/templates/analyze-fields', async (c) => {
   if(!object)return c.json({error:'El archivo del documento no está disponible en R2.'},404);
   const source=await object.text();
   const matches=[...source.matchAll(/\[CAMPO_\d+\*?\]/g)];
-  // The document preserves its physical marker positions; the process
-  // requirements are presented in stable numeric CAMPO order.
-  const unique=[...new Set(matches.map(m=>m[0]))].sort((a,b)=>
-    Number(a.match(/\d+/)?.[0]||0)-Number(b.match(/\d+/)?.[0]||0));
+  // Keep process requirements in the document's natural order. New
+  // digitizations already assign consecutive IDs at their source.
+  const unique=[...new Set(matches.map(m=>m[0]))];
   if(!unique.length)return c.json({error:'La plantilla no tiene campos amarillos.'},400);
   const normalize=(s:string)=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
   const roles=/\b(LOCADOR(?:ES|\/S)?|LOCATARIO(?:S|\/S)?|FIADOR(?:ES|\/S)?|GARANTE(?:S|\/S)?)\s*:/gi;
