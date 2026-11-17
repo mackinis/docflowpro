@@ -89,6 +89,31 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
   const [manualName, setManualName] = useState('');
   const [manualDescription, setManualDescription] = useState("Locador\nLocatario\nGarante mínimo 2\nEscribano\nDNI del locador\nDNI del locatario\nDNI de los garantes\nCopia de escritura\nBoleta de servicios");
   const [manualIndustry, setManualIndustry] = useState<ProcessTemplate['industry']>('Inmobiliaria');
+  const [selectedDigitalTemplateId,setSelectedDigitalTemplateId] = useState('');
+  const [importedFieldMap,setImportedFieldMap] = useState<NonNullable<ProcessTemplate['fieldMap']>>([]);
+  const [importingFields,setImportingFields] = useState(false);
+  const digitalTemplates=templates.filter(t=>!!t.originalDocumentContent?.trim() && /\\[CAMPO_\\d+\\*?\\]/.test(t.originalDocumentContent||''));
+  const importDigitalFields = async (templateId:string) => {
+    setSelectedDigitalTemplateId(templateId);
+    setImportedFieldMap([]);
+    if(!templateId)return;
+    const selected=digitalTemplates.find(t=>t.id===templateId);
+    if(!selected)return;
+    setImportingFields(true);
+    try {
+      const response=await fetch('/api/templates/analyze-fields',{
+        method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({templateId})
+      });
+      const data=await response.json();
+      if(!response.ok)throw new Error(data.error||'No se pudo interpretar la plantilla');
+      const fields=data.fields as NonNullable<ProcessTemplate['fieldMap']>;
+      setImportedFieldMap(fields);
+      setManualDescription(fields.map(f=>f.actor+' — '+f.label+' ('+f.id+')'+(f.review?' [REVISAR]':'')).join('\\n'));
+      if(!manualName.trim())setManualName(selected.name.replace(/\\s*\\(Digitalizado\\)\\s*$/i,''));
+    }catch(error){alert(error instanceof Error?error.message:'Error al analizar campos');}
+    finally{setImportingFields(false);}
+  };
   const [isCreatingManual, setIsCreatingManual] = useState(false);
 
   // Custom toast notifications
@@ -285,7 +310,8 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
           name: manualName,
           description: manualDescription,
           industry: manualIndustry,
-          originalDocumentContent: '',
+          originalDocumentContent: selectedDigitalTemplateId ? (digitalTemplates.find(t=>t.id===selectedDigitalTemplateId)?.originalDocumentContent||'') : '',
+          fieldMap: selectedDigitalTemplateId ? importedFieldMap : [],
           showDocumentToAll: true,
           sharedViewMode: 'flow',
           currentUserId: currentUser.id
@@ -297,6 +323,8 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
         alert(`¡Plantilla de proceso "${data.name}" creada correctamente!`);
         setShowProcessModal(false);
         setManualName('');
+        setSelectedDigitalTemplateId('');
+        setImportedFieldMap([]);
         setManualDescription("Locador\nLocatario\nGarante mínimo 2\nEscribano\nDNI del locador\nDNI del locatario\nDNI de los garantes\nCopia de escritura\nBoleta de servicios");
         setManualIndustry('Inmobiliaria');
         if (loadState) {
@@ -1429,6 +1457,16 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
             </div>
             <form id="new-process-form" onSubmit={handleCreateManualTemplate} className="overflow-y-auto p-5 space-y-4">
               <p className="text-xs text-slate-600">Definí qué deberán presentar los asesores al iniciar un legajo. Cada requisito debe ir en una línea. Podrás revisar y modificar las obligaciones y las etapas después de guardar.</p>
+              <label className="block text-xs font-bold text-slate-700">Plantilla digitalizada asociada
+                <select value={selectedDigitalTemplateId} onChange={e=>void importDigitalFields(e.target.value)}
+                  className="mt-1 w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
+                  <option value="">Sin plantilla (ingresar requisitos manualmente)</option>
+                  {digitalTemplates.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+                <span className="block mt-1 text-[11px] font-normal text-slate-500">Al seleccionar una plantilla se interpretan sus campos amarillos y se generan requisitos editables en Descripción / Objetivo. Revisá los marcados [REVISAR].</span>
+                {importingFields && <span className="text-xs text-indigo-600">Analizando campos de la plantilla...</span>}
+                {!!importedFieldMap.length && <span className="text-xs text-emerald-700">{importedFieldMap.length} campos importados · {importedFieldMap.filter(f=>f.review).length} para revisar</span>}
+              </label>
               <label className="block text-xs font-bold text-slate-700">Nombre del Proceso *
                 <input required value={manualName} onChange={e => setManualName(e.target.value)} placeholder="Ej.: Reserva de contrato de locación" className="mt-1 w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg"/>
               </label>
