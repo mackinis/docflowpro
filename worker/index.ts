@@ -198,6 +198,9 @@ app.use('/api/*', async (c, next) => {
   if (auth.user.role === 'SUPERADMIN') return next();
   const path = c.req.path;
   if (path.startsWith('/api/admin/rbac')) return c.json({ error: 'Acceso RBAC reservado al Superadmin.' }, 403);
+  // La carga de un requisito del legajo se autoriza en el handler por legajo/etapa/requisito,
+  // no por el permiso RBAC global de administración de documentos.
+  if (path === '/api/documents/upload' && c.req.method === 'POST') return next();
   // Audit ingestion must remain available regardless of audit-report viewing rights.
   if (path === '/api/audit/navigation' || path === '/api/audit-logs/log') return next();
   const routes: Array<[RegExp, string]> = [
@@ -2761,6 +2764,24 @@ async function handleDocumentUpload(c: AppContext) {
 
   if (!caseId || !stageId || !requirementId) {
     return c.json({ error: 'caseId, stageId y requirementId son obligatorios.' }, 400);
+  }
+
+  // Permiso acotado: un asesor solo carga requisitos de la etapa actual de su legajo asignado.
+  // La autorización no se extiende a la sección general Documentos ni a otros legajos.
+  const targetCase = await getCaseById(c.env.DB, caseId);
+  if (!targetCase) return c.json({ error: 'Legajo no encontrado.' }, 404);
+  const targetTemplate = await findTemplateOrVirtualById(c.env, targetCase.templateId);
+  const targetStage = targetTemplate?.stages[targetCase.currentStageIndex];
+  if (!targetStage || targetStage.id !== stageId ||
+      !targetStage.requirements.some((r) => r.id === requirementId && r.type === 'document')) {
+    return c.json({ error: 'El documento no corresponde a un requisito de la etapa actual.' }, 403);
+  }
+  if (auth.user.role === 'ASESOR') {
+    if (targetCase.assignedAdvisorId !== auth.user.id || targetCase.isCurrentStageApproved) {
+      return c.json({ error: 'No autorizado para cargar documentos en este legajo o etapa.' }, 403);
+    }
+  } else if (!['MANAGER', 'ADMIN', 'SUPERADMIN'].includes(auth.user.role)) {
+    return c.json({ error: 'No autorizado.' }, 403);
   }
 
   // Enforce upload authorization constraints for ASESOR if an approved request exists
