@@ -120,6 +120,8 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
   const [editIndustry, setEditIndustry] = useState<ProcessTemplate['industry']>('Inmobiliaria');
   const [editStages, setEditStages] = useState<Stage[]>([]);
   const [editOriginalDocumentContent, setEditOriginalDocumentContent] = useState('');
+  const [editFieldMap, setEditFieldMap] = useState<NonNullable<ProcessTemplate['fieldMap']>>([]);
+  const [editReviewNotes, setEditReviewNotes] = useState<string[]>([]);
   const [editShowDocumentToAll, setEditShowDocumentToAll] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [sharedDocs, setSharedDocs] = useState<any[]>([]);
@@ -387,6 +389,8 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
     setEditIndustry(tpl.industry);
     setEditStages(JSON.parse(JSON.stringify(tpl.stages))); // Deep copy
     setEditOriginalDocumentContent(tpl.originalDocumentContent || '');
+    setEditFieldMap(tpl.fieldMap || []);
+    setEditReviewNotes(tpl.digitizationReviewNotes || []);
     setEditShowDocumentToAll(tpl.showDocumentToAll !== undefined ? tpl.showDocumentToAll : true);
   };
 
@@ -483,6 +487,8 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
         description: editDescription,
         industry: editIndustry,
         originalDocumentContent: editMode === 'digital_doc' ? editOriginalDocumentContent : (editingTemplate.originalDocumentContent || ''),
+        fieldMap: editMode === 'digital_doc' ? editFieldMap : (editingTemplate.fieldMap || []),
+        digitizationReviewNotes: editMode === 'digital_doc' ? editReviewNotes : (editingTemplate.digitizationReviewNotes || []),
         showDocumentToAll: editMode === 'digital_doc' ? editShowDocumentToAll : (editingTemplate.showDocumentToAll !== undefined ? editingTemplate.showDocumentToAll : true),
         stages: editStages,
         currentUserId: currentUser.id
@@ -907,6 +913,35 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                     placeholder="Aquí se encuentra el texto digitalizado original completo. Los campos entre corchetes [Variables] se autocompletarán de forma automática..."
                     className="w-full h-40 p-3 text-xs font-mono bg-white border border-amber-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 leading-relaxed resize-y"
                   />
+                  <div className="rounded-xl border border-amber-200 bg-white p-4 space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h6 className="font-bold text-sm text-slate-800">Mapa inteligente de campos</h6>
+                      <span className="text-xs text-slate-500">{[...new Set([...editOriginalDocumentContent.matchAll(/\\[CAMPO_\\d+\\*?\\]/g)].map(m=>m[0]))].length} campos en el documento</span>
+                    </div>
+                    <p className="text-xs text-slate-600">Confirmá qué dato solicita cada campo y a qué actor corresponde. Los cambios se guardan junto a la plantilla.</p>
+                    {editReviewNotes.length>0 && <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-900">
+                      <strong>Observaciones de digitalización:</strong>
+                      {editReviewNotes.map((note,i)=><p key={i} className="mt-1">{note}</p>)}
+                    </div>}
+                    <div className="max-h-72 overflow-y-auto space-y-2">
+                      {[...new Set([...editOriginalDocumentContent.matchAll(/\\[CAMPO_\\d+\\*?\\]/g)].map(m=>m[0]))].map(id=>{
+                        const f=editFieldMap.find(x=>x.id===id);
+                        const change=(key:'label'|'actor'|'review',value:string|boolean)=>{
+                          setEditFieldMap(prev=>{
+                            const fallback={id,label:'',actor:'No determinado',source:'manual' as const,confidence:'low' as const,review:true};
+                            const next=prev.filter(x=>x.id!==id);
+                            return [...next,{...fallback,...f,[key]:value}];
+                          });
+                        };
+                        return <div key={id} className="grid grid-cols-1 md:grid-cols-[110px_1fr_1fr_auto] items-center gap-2 border border-slate-200 rounded-lg p-2">
+                          <code className="text-xs text-indigo-700 font-bold">{id}</code>
+                          <input aria-label={`Significado de ${id}`} placeholder="Dato solicitado (ej. DNI)" value={f?.label||''} onChange={e=>change('label',e.target.value)} className="border border-slate-200 rounded-md p-2 text-xs"/>
+                          <input aria-label={`Actor de ${id}`} placeholder="Actor (ej. Locador 1)" value={f?.actor||''} onChange={e=>change('actor',e.target.value)} className="border border-slate-200 rounded-md p-2 text-xs"/>
+                          <label className="flex gap-1 items-center text-xs text-amber-800"><input type="checkbox" checked={f?.review!==false} onChange={e=>change('review',e.target.checked)}/> Revisar</label>
+                        </div>;
+                      })}
+                    </div>
+                  </div>
                   <p className="text-[10px] text-slate-500 leading-normal">
                     💡 <strong>Tip de variables:</strong> El sistema puede autocompletar variables como <code>[Nombre Completo Cliente]</code>, <code>[DNI Cliente]</code>, <code>[Fecha]</code>, <code>[Asesor]</code> o campos específicos del formulario como <code>[Monto de Reserva (USD)]</code>.
                   </p>
