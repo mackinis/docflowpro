@@ -18,6 +18,7 @@ import {
   FileCheck2, 
   Plus, 
   CornerDownRight, 
+  RotateCcw, 
   Eye, 
   Loader2,
   X,
@@ -57,7 +58,8 @@ interface CaseDetailProps {
   onToggleTask: (taskId: string, status: 'pending' | 'completed') => void;
   onSubmitForm: (reqId: string, values: Record<string, string | number | boolean>) => void;
   onAddObservation: (stageId: string, reqId: string | undefined, text: string) => void;
-  onResolveObservation: (obsId: string, response: string) => void;
+  onResolveObservation: (obsId: string, response: string) => void | Promise<void>;
+  onReopenObservation: (obsId: string) => void | Promise<void>;
   onAdvanceStage: () => void;
   onApproveStage: () => void;
   onAddParticipant: (participant: Participant) => void;
@@ -85,6 +87,7 @@ export default function CaseDetail({
   onSubmitForm,
   onAddObservation,
   onResolveObservation,
+  onReopenObservation,
   onAdvanceStage,
   onApproveStage,
   onAddParticipant,
@@ -489,6 +492,32 @@ export default function CaseDetail({
   const [showReviewRequestModal, setShowReviewRequestModal] = useState(false);
   const [resolvingObservationId, setResolvingObservationId] = useState<string | null>(null);
   const [observationReply, setObservationReply] = useState('');
+  const [observationBusyId, setObservationBusyId] = useState<string | null>(null);
+  const [observationBusyAction, setObservationBusyAction] = useState<'resolve' | 'reopen' | null>(null);
+  const [observationError, setObservationError] = useState('');
+  const [optimisticObservationStatus, setOptimisticObservationStatus] = useState<Record<string, 'open' | 'resolved'>>({});
+  const changeObservationStatus = async (id: string, action: 'resolve' | 'reopen') => {
+    if (observationBusyId) return;
+    setObservationBusyId(id);
+    setObservationBusyAction(action);
+    setObservationError('');
+    setOptimisticObservationStatus(prev => ({ ...prev, [id]: action === 'resolve' ? 'resolved' : 'open' }));
+    try {
+      if (action === 'resolve') await onResolveObservation(id, 'Observación marcada como cumplida por supervisión.');
+      else await onReopenObservation(id);
+    } catch (e) {
+      setOptimisticObservationStatus(prev => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      setObservationError(e instanceof Error ? e.message : 'No se pudo actualizar la observación.');
+    } finally {
+      setObservationBusyId(null);
+      setObservationBusyAction(null);
+    }
+  };
+
 
   // Request reassignment from manager to system
   const [showReassignModal, setShowReassignModal] = useState(false);
@@ -597,7 +626,7 @@ export default function CaseDetail({
   // Submit Observation
   const handleAddObsSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!obsText.trim() || !currentStage) return;
+    if (!obsText.trim() || !currentStage || observationBusyId || observations.some(o => o.caseId === caseObj.id && o.stageId === currentStage.id && (optimisticObservationStatus[o.id] || o.status) === 'resolved')) return;
 
     onAddObservation(currentStage.id, associatedReqId, obsText);
     setObsText('');
@@ -1519,22 +1548,23 @@ export default function CaseDetail({
 
                         <p className="text-slate-700 font-medium leading-relaxed">{obs.text}</p>
 
-                        {obs.status === 'resolved' && (
+                        {(optimisticObservationStatus[obs.id] || obs.status) === 'resolved' && (
                           <div className="flex items-center gap-1.5 text-emerald-400 text-[11px] font-semibold">
                             <CheckCircle className="w-4 h-4" />
                             <span>Cumplida</span>
                           </div>
                         )}
-                        {isManagerOrAdmin && obs.status === 'open' && (
+                        {isManagerOrAdmin && (
                           <div className="flex justify-end pt-1">
                             <button
                               type="button"
-                              title="Marcar observación como cumplida"
-                              aria-label="Marcar observación como cumplida"
-                              onClick={() => onResolveObservation(obs.id, 'Observación marcada como cumplida por supervisión.')}
-                              className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors"
+                              disabled={observationBusyId !== null}
+                              title={(optimisticObservationStatus[obs.id] || obs.status) === 'resolved' ? 'Revertir cumplimiento' : 'Marcar como cumplida'}
+                              aria-label={(optimisticObservationStatus[obs.id] || obs.status) === 'resolved' ? 'Revertir cumplimiento' : 'Marcar como cumplida'}
+                              onClick={() => changeObservationStatus(obs.id, (optimisticObservationStatus[obs.id] || obs.status) === 'resolved' ? 'reopen' : 'resolve')}
+                              className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors disabled:opacity-60"
                             >
-                              <Check className="w-4 h-4" strokeWidth={2.5} />
+                              {observationBusyId === obs.id ? <Loader2 className="w-4 h-4 animate-spin" /> : (optimisticObservationStatus[obs.id] || obs.status) === 'resolved' ? <RotateCcw className="w-4 h-4" /> : <Check className="w-4 h-4" strokeWidth={2.5} />}
                             </button>
                           </div>
                         )}
@@ -1562,6 +1592,7 @@ export default function CaseDetail({
               )}
             </div>
 
+            {observationError && <p role="alert" className="text-xs text-red-400">{observationError}</p>}
             {/* Add Observation Form (Managers only) */}
             {isManagerOrAdmin && (
               <form onSubmit={handleAddObsSubmit} className="space-y-3 pt-3 border-t border-slate-100">
@@ -1592,7 +1623,8 @@ export default function CaseDetail({
                 <div className="flex justify-end">
                   <button
                     type="submit"
-                    className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-lg shadow-xs"
+                    disabled={observationBusyId !== null || observations.some(o => o.caseId === caseObj.id && o.stageId === currentStage?.id && (optimisticObservationStatus[o.id] || o.status) === 'resolved')}
+                    className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-lg shadow-xs disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     Crear Alerta
                   </button>
