@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Bot, CheckCircle2, Copy, Download, FilePenLine, FileText, Loader2, Plus, Printer, Save, Search, Send, Sparkles, X } from 'lucide-react';
 import type { Case, ProcessTemplate, User } from '../types';
 
@@ -92,8 +92,10 @@ export default function Confecciones({cases,templates,currentUser}:Props) {
     setInstruction('');setChat(c=>[...c,{from:'user',text:message}]);setBusy(true);setNotice('');
     try {
       await save();
-      const data=await request('/api/confecciones/'+selected.id+'/agent',{method:'POST',body:JSON.stringify({instruction:message,content:contentRef.current})});
-      let updated=contentRef.current;let applied=0;
+      const snapshot=contentRef.current;
+      const data=await request('/api/confecciones/'+selected.id+'/agent',{method:'POST',body:JSON.stringify({instruction:message,content:snapshot})});
+      if (contentRef.current!==snapshot) {setChat(c=>[...c,{from:'agent',text:'El documento cambió mientras analizaba. No apliqué reemplazos para proteger tus modificaciones. Volvé a pedírmelo.'}]);return;}
+      let updated=snapshot;let applied=0;
       for(const proposal of data.replacements||[]) {
         if(updated.includes(proposal.field)) {updated=updated.replace(proposal.field,proposal.value);applied++;}
       }
