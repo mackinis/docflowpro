@@ -2563,8 +2563,15 @@ app.post('/api/confecciones/:id/agent', async (c) => {
     const before=content.slice(Math.max(0,at-700),at);
     const after=content.slice(at+field.length,at+field.length+100);
     const actorMatch=[...before.matchAll(/\b(LOCADOR(?:ES|\/S)?|LOCATARIO(?:S|\/S)?|FIADOR(?:ES|\/S)?|GARANTE(?:S|\/S)?)\s*:/gi)].pop();
-    const actor=actorMatch?actorMatch[1].toUpperCase():'No determinado';
+    const actorBase=actorMatch?actorMatch[1].toUpperCase():'No determinado';
     const currentLine=before.slice(before.lastIndexOf('\n')+1);
+    // A spouse's details belong to a distinct person. The spouse context may
+    // span adjacent markers (name, DNI, email) and must not inherit the main actor.
+    const sectionTail=actorMatch?before.slice((actorMatch.index||0)+actorMatch[0].length):before;
+    const spouseStart=[...sectionTail.matchAll(/(?:NOMBRE\s+Y\s+APELLIDO\s+(?:DEL?\s+)?C[ÓO]NYUGE|DATOS\s+DEL?\s+C[ÓO]NYUGE)\s*:/gi)].pop();
+    const spouseContext=spouseStart?sectionTail.slice((spouseStart.index||0)+spouseStart[0].length):'';
+    const spouseFields=spouseContext.match(/\[CAMPO_\d+\*?\]/g)||[];
+    const actor=spouseStart && spouseFields.length<3 ? 'CÓNYUGE DE '+actorBase : actorBase;
     const labelMatch=[...currentLine.matchAll(/(FECHA DE NACIMIENTO|NOMBRE Y APELLIDO(?: DEL? C[ÓO]NYUGE)?|DOMICILIO ACTUAL|ESTADO CIVIL|DURACI[ÓO]N(?: DEL? CONTRATO)?|MESES DE GRACIA|VALOR DE LA LOCACI[ÓO]N INICIAL|IMPORTE DE MES DE DEP[ÓO]SITO|SERVICIOS? QUE ABONA (?:EL )?(?:LOCADOR|LOCATARIO)|POSESI[ÓO]N|INVENTARIO|AJUSTE|MAIL|DNI|A PARTIR|HASTA|INDICAR)\s*:?\s*$/gi)].pop();
     let label=labelMatch?.[1]||'';
     if(!label){
@@ -2572,6 +2579,7 @@ app.post('/api/confecciones/:id/agent', async (c) => {
       if(tail.length>=3&&tail.length<=65)label=tail;
     }
     if(!label && /^\s*(?:,|\.|;|\n)/.test(after))label='Dato solicitado en el contexto anterior';
+    if(actor.startsWith('CÓNYUGE') && !label) label='Dato del cónyuge';
     return {id:field,label:label||'Dato pendiente de identificar',actor};
   };
   const fieldMap=markers.map(field=>{
@@ -2723,6 +2731,24 @@ Instrucción actual: ${instruction}`;
       const normalized=normalizeEvidence(value);
       return normalized.length>=3 && evidenceCorpus.includes(normalized);
     };
+    const roleCompatible=(field:string,value:string,source:string):boolean => {
+      const entry=fieldMap.find(f=>f.id===field);
+      if(!entry)return false;
+      const expected=String(entry.actor||'').toLocaleLowerCase('es-AR');
+      const declared=source.toLocaleLowerCase('es-AR');
+      const spouse=/c[óo]nyuge|espos[ao]/i.test(expected);
+      if(!spouse)return true;
+      // No spouse proposal can be based solely on the main participant's
+      // record or generic case data, even if the literal value exists there.
+      if(!/c[óo]nyuge|espos[ao]/i.test(declared))return false;
+      const primaryActors=caseObj.participants||[];
+      const primaryValues=Array.isArray(primaryActors)?primaryActors.filter((p:any)=>
+        !/c[óo]nyuge|espos[ao]/i.test(String(p.role||p.type||''))):[];
+      const normalized=normalizeEvidence(value);
+      if(primaryValues.some((p:any)=>Object.values(p).some(v=>typeof v==='string'&&normalizeEvidence(v)===normalized)))
+        return false;
+      return true;
+    };
     const replies: string[] = [];
     let failures = 0;
     let lastFailure = '';
@@ -2772,7 +2798,7 @@ Instrucción actual: ${instruction}`;
           if (typeof x?.field !== 'string' || !batches[i].includes(x.field) || seen.has(x.field) ||
               typeof x.value !== 'string' || !x.value.trim() || x.value.length > 2000 ||
               /\[CAMPO_\d+\*?\]/.test(x.value) ||
-              typeof x.source !== 'string' || !x.source.trim() || !supportedValue(x.value)) continue;
+              typeof x.source !== 'string' || !x.source.trim() || !supportedValue(x.value) || !roleCompatible(x.field,x.value,x.source)) continue;
           seen.add(x.field);
           valid.push({field:x.field,value:x.value.trim(),source:x.source.trim()});
         }
