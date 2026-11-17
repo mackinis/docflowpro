@@ -1,3 +1,4 @@
+import DocumentPreviewViewer, { PreviewDocument } from './DocumentPreviewViewer';
 import React, { useState, useEffect } from 'react';
 import { zipSync, strToU8 } from 'fflate';
 import { 
@@ -19,7 +20,8 @@ import {
   X,
   FileCheck2,
   Settings,
-  Edit
+  Edit,
+  Eye
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User, SharedDocument } from '../types';
@@ -81,6 +83,10 @@ export default function SharedDocumentsManager({ currentUser, users, onAddAudit 
   const [fillableContent, setFillableContent] = useState('');
   const [filledValues, setFilledValues] = useState<Record<string, string>>({});
   const [isLoadingFill, setIsLoadingFill] = useState(false);
+  const [previewDoc,setPreviewDoc] = useState<PreviewDocument|null>(null);
+  const [previewLoadingId,setPreviewLoadingId] = useState<string|null>(null);
+  const [downloadingId,setDownloadingId] = useState<string|null>(null);
+  const [deleting,setDeleting] = useState(false);
 
   const openFillableDocument = async (doc: SharedDocument) => {
     if (!documentActions.download) return;
@@ -392,9 +398,24 @@ export default function SharedDocumentsManager({ currentUser, users, onAddAudit 
     }
   };
 
+  const openPreview = async (doc: SharedDocument) => {
+    if (!documentActions.view || previewLoadingId) return;
+    setPreviewLoadingId(doc.id);setError(null);
+    try {
+      const res = await fetch(doc.downloadUrl || `/api/shared-documents/${doc.id}/download`,{credentials:'include'});
+      if(!res.ok) throw new Error('No se pudo abrir el documento.');
+      const blob=await res.blob();
+      const url=URL.createObjectURL(blob);
+      setPreviewDoc(old=>{if(old)URL.revokeObjectURL(old.url);return {url,name:doc.fileName,mime:blob.type || (doc.fileName.toLowerCase().endsWith('.pdf')?'application/pdf':'application/octet-stream')};});
+    }catch(e:any){setError(e.message||'No se pudo abrir el documento.');}
+    finally{setPreviewLoadingId(null);}
+  };
+  const closePreview=()=>setPreviewDoc(old=>{if(old)URL.revokeObjectURL(old.url);return null;});
+
   // Handle real R2 file download
   const handleDownload = async (doc: SharedDocument) => {
-    if (!documentActions.download) return;
+    if (!documentActions.download || downloadingId) return;
+    setDownloadingId(doc.id);
     try {
       const downloadEndpoint = doc.downloadUrl || `/api/shared-documents/${doc.id}/download`;
       const res = await fetch(downloadEndpoint, { credentials: 'include' });
@@ -412,12 +433,13 @@ export default function SharedDocumentsManager({ currentUser, users, onAddAudit 
       URL.revokeObjectURL(blobUrl);
     } catch (err: any) {
       setError(err.message || 'No se pudo descargar el documento.');
-    }
+    } finally { setDownloadingId(null); }
   };
 
   // Handle Delete Shared Document
   const handleDelete = async () => {
-    if (!deleteDoc) return;
+    if (!deleteDoc || deleting) return;
+    setDeleting(true);
     try {
       setError(null);
       const res = await fetch(`/api/shared-documents/${deleteDoc.id}?currentUserId=${currentUser.id}`, {
@@ -433,7 +455,7 @@ export default function SharedDocumentsManager({ currentUser, users, onAddAudit 
       loadDocuments();
     } catch (err: any) {
       setError(err.message || 'Error al eliminar documento.');
-    }
+    } finally { setDeleting(false); }
   };
 
   // Toggle roles in multi-role selection
@@ -827,15 +849,6 @@ export default function SharedDocumentsManager({ currentUser, users, onAddAudit 
 
                       {/* Document Quick Actions Bar */}
                       <div className="flex items-center gap-1.5 self-end sm:self-center">
-                        {documentActions.download && <button
-                          onClick={() => handleDownload(doc)}
-                          className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg transition-all border border-indigo-100"
-                          title="Descargar archivo"
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                          <span>Descargar</span>
-                        </button>}
-
                         {documentActions.download && isDigital && <button
                           onClick={() => void openFillableDocument(doc)}
                           disabled={isLoadingFill}
@@ -855,6 +868,18 @@ export default function SharedDocumentsManager({ currentUser, users, onAddAudit 
                           <span>Editar</span>
                         </button>}
 
+                        {documentActions.view && <button
+                          onClick={() => void openPreview(doc)}
+                          disabled={previewLoadingId===doc.id}
+                          className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg transition-all border border-indigo-100 disabled:opacity-50"
+                          title="Abrir documento en el visor"
+                        >{previewLoadingId===doc.id?<Loader2 className="w-3.5 h-3.5 animate-spin"/>:<Eye className="w-3.5 h-3.5"/>}<span>{previewLoadingId===doc.id?'Abriendo…':'Abrir'}</span></button>}
+                        {documentActions.download && <button
+                          onClick={() => void handleDownload(doc)}
+                          disabled={downloadingId===doc.id}
+                          className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg border border-transparent hover:border-indigo-100 transition-all disabled:opacity-50"
+                          title="Descargar archivo" aria-label="Descargar archivo"
+                        >{downloadingId===doc.id?<Loader2 className="w-4 h-4 animate-spin"/>:<Download className="w-4 h-4"/>}</button>}
                         {currentUser.role === 'SUPERADMIN' && (
                           <>
                             <button
@@ -1145,6 +1170,7 @@ export default function SharedDocumentsManager({ currentUser, users, onAddAudit 
         );
       })()}
 
+      {previewDoc && <DocumentPreviewViewer document={previewDoc} onClose={closePreview} />}
       {/* Delete Confirmation Modal */}
       {deleteDoc && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
@@ -1172,9 +1198,10 @@ export default function SharedDocumentsManager({ currentUser, users, onAddAudit 
               <button
                 type="button"
                 onClick={handleDelete}
+                disabled={deleting}
                 className="px-4 py-2 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-all"
               >
-                Eliminar para todos
+                {deleting?<><Loader2 className="w-3.5 h-3.5 animate-spin inline mr-2"/>Eliminando…</>:'Eliminar para todos'}
               </button>
             </div>
           </motion.div>
