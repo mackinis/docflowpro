@@ -303,14 +303,28 @@ export default function CaseDetail({
 
     if (uploadingRef.current.has(ctx.reqId)) return;
     uploadingRef.current.add(ctx.reqId);
+    // Separate actual network progress from visual progress: small files may upload
+    // in one event, otherwise the browser paints only the final green state.
+    let targetPercent = 0;
+    let displayedPercent = 0;
+    let interval: ReturnType<typeof setInterval> | undefined;
     setUploadProgress(prev => ({ ...prev, [ctx.reqId]: { percent: 0, status: 'uploading' } }));
+    const animation = new Promise<void>(resolve => {
+      interval = setInterval(() => {
+        if (displayedPercent < targetPercent) {
+          displayedPercent = Math.min(targetPercent, displayedPercent + Math.max(1, Math.ceil((targetPercent - displayedPercent) * 0.15)));
+          setUploadProgress(prev => ({ ...prev, [ctx.reqId]: { percent: displayedPercent, status: 'uploading' } }));
+        }
+        if (displayedPercent >= 100) resolve();
+      }, 35);
+    });
     try {
       await onUploadDoc(currentStage.id, ctx.reqId, ctx.reqName, file.name, file.size, file, percent => {
-        setUploadProgress(prev => ({
-          ...prev,
-          [ctx.reqId]: { percent, status: percent >= 99 ? 'confirming' : 'uploading' }
-        }));
+        targetPercent = Math.max(targetPercent, Math.min(95, percent));
       });
+      // Only reach 100% after the server has confirmed the file was saved.
+      targetPercent = 100;
+      await animation;
       setUploadProgress(prev => ({ ...prev, [ctx.reqId]: { percent: 100, status: 'success' } }));
     } catch (error) {
       setUploadProgress(prev => {
@@ -320,6 +334,7 @@ export default function CaseDetail({
       });
       alert(error instanceof Error ? error.message : 'No se pudo cargar el archivo.');
     } finally {
+      if (interval) clearInterval(interval);
       uploadingRef.current.delete(ctx.reqId);
     }
   };
