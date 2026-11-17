@@ -4,6 +4,7 @@ import type { Case, ProcessTemplate, User } from '../types';
 
 type Confeccion = { id:string; case_id:string; template_id:string; title:string; content:string; status:'draft'|'closed'; last_field_number:number; case_code:string; case_title:string; updated_at:string };
 type ChatLine = { from:'agent'|'user'; text:string };
+type Proposal = {field:string;value:string;source?:string};
 type Props = { cases:Case[]; templates:ProcessTemplate[]; currentUser:User };
 const marker = /\[CAMPO_(\d+)(\*)?\]/g;
 async function request(url:string, init?:RequestInit) {
@@ -33,6 +34,8 @@ export default function Confecciones({cases,templates,currentUser}:Props) {
   const [templateId,setTemplateId] = useState('');
   const [showCreate,setShowCreate] = useState(false);
   const [instruction,setInstruction] = useState('');
+  const [proposals,setProposals] = useState<Proposal[]>([]);
+  const [proposalSnapshot,setProposalSnapshot] = useState('');
   const [chat,setChat] = useState<ChatLine[]>([{from:'agent',text:'Estoy listo para ayudarte. Puedo completar campos usando los datos del legajo y preguntarte cuando falte información.'}]);
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const contentRef = useRef(content);
@@ -66,6 +69,7 @@ export default function Confecciones({cases,templates,currentUser}:Props) {
   },[content,selected?.id,dirty]);
   const open = (item:Confeccion) => {
     setSelected(item); selectedRef.current=item; setContent(item.content); contentRef.current=item.content; savedRef.current=item.content;
+    setProposals([]);setProposalSnapshot('');
     setLastUsed(item.last_field_number); setDirty(false); setNotice(''); setChat([{from:'agent',text:'Plantilla cargada. Indicame qué datos querés completar o consultame sobre un campo.'}]);
   };
   const changeContent = (value:string) => {
@@ -75,6 +79,7 @@ export default function Confecciones({cases,templates,currentUser}:Props) {
     const existing=new Set(Array.from(contentRef.current.matchAll(marker),m=>m[0]));
     const normalized=value.replace(/\[CAMPO_(\d+)\](?=\s|$|[.,;:])/g,(token,num) =>
       originals.has(token)||existing.has(token) ? token : '[CAMPO_'+num+'*]');
+    setProposals([]);setProposalSnapshot('');
     setContent(normalized);contentRef.current=normalized;setDirty(true);
   };
   const create = async () => {
@@ -106,13 +111,23 @@ export default function Confecciones({cases,templates,currentUser}:Props) {
       const snapshot=contentRef.current;
       const data=await request('/api/confecciones/'+selected.id+'/agent',{method:'POST',body:JSON.stringify({instruction:message,content:snapshot})});
       if (contentRef.current!==snapshot) {setChat(c=>[...c,{from:'agent',text:'El documento cambió mientras analizaba. No apliqué reemplazos para proteger tus modificaciones. Volvé a pedírmelo.'}]);return;}
-      let updated=snapshot;let applied=0;
-      for(const proposal of data.replacements||[]) {
-        if(updated.includes(proposal.field)) {updated=updated.replace(proposal.field,proposal.value);applied++;}
-      }
-      if(applied)changeContent(updated);
-      setChat(c=>[...c,{from:'agent',text:String(data.reply||'')+(applied?' · '+applied+' campo(s) completado(s).':'')}]);
+      const pending:Proposal[] = Array.isArray(data.replacements) ? data.replacements.filter((p:Proposal)=>typeof p.field==='string' && typeof p.value==='string' && snapshot.includes(p.field)) : [];
+      setProposalSnapshot(snapshot);
+      setProposals(pending);
+      setChat(c=>[...c,{from:'agent',text:String(data.reply||'')+(pending.length?' · Revisá '+pending.length+' propuesta(s) antes de aplicarlas.':'')}]);
     }catch(e:any){setChat(c=>[...c,{from:'agent',text:'No pude completar la solicitud: '+e.message}]);}finally{setBusy(false);}
+  };
+  const applyProposals = () => {
+    if (contentRef.current!==proposalSnapshot) {setNotice('El documento cambió. Pedile nuevas propuestas al agente para no sobrescribir tus correcciones.');setProposals([]);return;}
+    let updated=proposalSnapshot;
+    let count=0;
+    for(const p of proposals) {
+      if(!updated.includes(p.field))continue;
+      updated=updated.replace(p.field,p.value);
+      count++;
+    }
+    setProposals([]);setProposalSnapshot('');
+    if(count) {changeContent(updated);setChat(c=>[...c,{from:'agent',text:count+' campo(s) aplicados. Revisá el documento y guardalo.'}]);}
   };
   const close = async () => {
     if(!selected || !window.confirm('¿Finalizar esta confección? El documento quedará bloqueado para edición.'))return;
@@ -159,6 +174,11 @@ export default function Confecciones({cases,templates,currentUser}:Props) {
             {chat.map((line,i)=><div key={i} className={'rounded-xl p-3 text-sm whitespace-pre-wrap '+(line.from==='user'?'bg-indigo-600 text-white ml-5':'bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-white mr-5')}>{line.text}</div>)}
             {busy&&<div className="flex items-center gap-2 text-xs text-slate-500"><Loader2 className="animate-spin" size={15}/> Analizando...</div>}
           </div>
+          {selected.status==='draft'&&proposals.length>0&&<div className="border-t border-amber-300 bg-amber-50 dark:bg-slate-900 p-3 space-y-2">
+            <p className="text-xs font-bold text-amber-900 dark:text-amber-300">Propuestas del agente · confirmar antes de escribir</p>
+            <div className="max-h-44 overflow-y-auto space-y-1">{proposals.map((p,i)=><div key={i} className="flex gap-2 items-start text-xs dark:text-white"><code className="shrink-0">{p.field}</code><span className="break-words flex-1">{p.value}</span><button aria-label={'Descartar '+p.field} title="Descartar propuesta" onClick={()=>setProposals(prev=>prev.filter((_,j)=>j!==i))} className="text-red-600"><X size={14}/></button></div>)}</div>
+            <div className="flex gap-2"><button onClick={applyProposals} className="bg-emerald-600 text-white rounded-lg px-3 py-2 text-xs font-semibold">Aplicar propuestas</button><button onClick={()=>setProposals([])} className="border border-slate-300 rounded-lg px-3 py-2 text-xs dark:text-white">Descartar todas</button></div>
+          </div>}
           {selected.status==='draft'&&<form onSubmit={e=>{e.preventDefault();void send();}} className="border-t border-slate-200 dark:border-slate-700 p-3 flex gap-2">
             <textarea aria-label="Mensaje al agente" value={instruction} onChange={e=>setInstruction(e.target.value)} placeholder="Pedile que complete campos o consultale datos faltantes..." rows={3} className="min-w-0 flex-1 bg-slate-50 dark:bg-slate-900 dark:text-white rounded-lg p-3 text-sm resize-none outline-none"/>
             <button type="submit" disabled={busy||!instruction.trim()} aria-label="Enviar al agente" className="self-end bg-indigo-600 text-white rounded-lg p-3 disabled:opacity-40"><Send size={17}/></button>

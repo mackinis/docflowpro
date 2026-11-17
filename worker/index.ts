@@ -2508,12 +2508,14 @@ app.post('/api/confecciones/:id/agent', async (c) => {
     .map(d => ({ name: d.name, fileName: d.fileName, status: d.status }));
   const template = await findTemplateOrVirtualById(c.env, row.template_id);
   const fieldMap = (template?.fieldMap || []).filter(f => content.includes(f.id));
+  const markers = [...new Set(Array.from(content.matchAll(/\[CAMPO_\d+\*?\]/g), m => m[0]))];
   const prompt = `Sos un asistente de confección documental. Trabajá SOLO con datos aportados, sin inventar.
-Respondé EXCLUSIVAMENTE JSON válido: {"reply":"respuesta breve en español","replacements":[{"field":"[CAMPO_1]","value":"texto"}]}.
+Respondé EXCLUSIVAMENTE JSON válido: {"reply":"respuesta breve en español","replacements":[{"field":"[CAMPO_1]","value":"texto","source":"dato exacto del legajo o aportado por operador"}]}.
 No reescribas el documento. Solo proponé reemplazos de marcadores que existan en el documento.
-Si falta información, preguntá en reply y omití el reemplazo. No modifiques texto escrito manualmente.
+Si falta información, preguntá de forma concreta en reply y omití el reemplazo. No modifiques texto escrito manualmente. Nunca deduzcas fechas, importes, DNI, domicilios o identidades. La lista de documentos solo contiene nombres y estados, NO su contenido: nunca afirmes haber leído sus archivos. Cuando la instrucción sea completar toda la plantilla, proponé únicamente valores comprobables y enumerá los datos faltantes. El operador debe revisar todas las propuestas antes de aplicarlas.
 Legajo: ${JSON.stringify({ code:caseObj.code,title:caseObj.title,description:caseObj.description,participants:caseObj.participants,documents:docs })}
 Mapa de campos validado (identificador, significado y actor): ${JSON.stringify(fieldMap).slice(0,16000)}
+Campos pendientes: ${JSON.stringify(markers).slice(0,10000)}
 Documento actual: ${content.slice(0,24000)}
 Instrucción del usuario: ${instruction}`;
   try {
@@ -2525,9 +2527,9 @@ Instrucción del usuario: ${instruction}`;
     const parsed = JSON.parse(raw.replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,''));
     const valid = Array.isArray(parsed.replacements) ? parsed.replacements.filter((x:any) =>
       typeof x.field === 'string' && /^\[CAMPO_\d+\*?\]$/.test(x.field) &&
-      content.includes(x.field) && typeof x.value === 'string' && x.value.length <= 2000
+      markers.includes(x.field) && typeof x.value === 'string' && x.value.trim().length > 0 && x.value.length <= 2000 && !/\[CAMPO_\d+\*?\]/.test(x.value)
     ) : [];
-    return c.json({ reply: String(parsed.reply || 'Revisá los datos propuestos.').slice(0,2000), replacements:valid });
+    return c.json({ reply: String(parsed.reply || 'Revisá los datos propuestos.').slice(0,2000), replacements:valid, pendingFields: markers.length });
   } catch (error) {
     console.error('Confecciones AI error:', error);
     return c.json({ error: 'El agente no pudo procesar esta solicitud. Intentá nuevamente.' }, 502);
