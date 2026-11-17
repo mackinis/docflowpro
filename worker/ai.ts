@@ -241,77 +241,75 @@ export async function digitizeTemplateWithAI(
     throw new Error('No se pudo extraer contenido del documento proporcionado.');
   }
 
-  // Phase 1: deterministic discovery of explicit blanks. Preserve all other source
-  // characters and never renumber pre-existing placeholders.
-  const existingNumbers = Array.from(extractedText.matchAll(/\[CAMPO_(\d+)\*?\]/g), m => Number(m[1]));
-  let fieldNumber = Math.max(0, ...existingNumbers);
-  const explicitBlank = /_{3,}|\.{3,}|…{2,}/g;
-  const used = new Set<number>(existingNumbers);
-  const nextField = () => {
-    do { fieldNumber++; } while (used.has(fieldNumber));
-    used.add(fieldNumber);
-    return `[CAMPO_${fieldNumber}]`;
-  };
-  let interactiveContent = extractedText.replace(explicitBlank, () => nextField());
 
-  // Phase 2: ask AI to identify missing semantic slots using literal source
-  // anchors, not to rewrite the document. Anchors are verified before insertion.
-  const systemPrompt = `Sos especialista en digitalización de formularios en español.
-  Devolvé únicamente JSON válido. NO reescribas ni resumas el documento.
-  Detectá etiquetas que solicitan un dato pero no tienen un marcador [CAMPO_N].
-  Ejemplos: "FECHA DE NACIMIENTO:", "DNI:", "DOMICILIO:", "CUIT:".
-  Distinguí cada actor (locador, locatario, garante, cónyuge, etc.) según contexto.
-  No insertes campos en títulos, instrucciones, párrafos narrativos ni cuando
-  la etiqueta ya tiene un valor fijo o un marcador existente.
-  Para cada omisión devolvé un ancla EXACTA que exista literalmente en el texto
-  y termine inmediatamente donde debe insertarse el campo.
-  Si hay dudas, no inventes: agregá una observación de revisión.
-  Formato: {"name":"Título","description":"Descripción breve",
-  "insertions":[{"anchor":"texto literal exacto","label":"Fecha de nacimiento","actor":"Locador 1"}],
-  "reviewNotes":["duda concreta"]}. Máximo 100 inserciones.`;
-  const userPrompt = `Analizá íntegramente esta plantilla para encontrar campos omitidos.
-  Los marcadores existentes son correctos y no deben alterarse.
-  Documento completo:
-  ${interactiveContent.slice(0, 26000)}`;
-  const raw = await runWorkersAiText(env, systemPrompt, userPrompt, 4096);
-  const parsed = cleanAndParseJSON(raw);
-  const reviewNotes: string[] = Array.isArray(parsed.reviewNotes)
-    ? parsed.reviewNotes.filter((v: unknown) => typeof v === 'string').slice(0, 30)
-    : [];
-  const insertions = Array.isArray(parsed.insertions) ? parsed.insertions.slice(0, 100) : [];
-  const seenAnchors = new Set<string>();
-  let inserted = 0;
-  for (const item of insertions) {
-    if (!item || typeof item.anchor !== 'string' || typeof item.label !== 'string') continue;
-    const anchor = item.anchor;
-    if (anchor.length < 6 || anchor.length > 220 || seenAnchors.has(anchor)) continue;
-    seenAnchors.add(anchor);
-    const first = interactiveContent.indexOf(anchor);
-    if (first < 0 || interactiveContent.indexOf(anchor, first + 1) !== -1) {
-      reviewNotes.push(`Revisar campo ambiguo: ${item.label.slice(0, 80)}`);
-      continue;
-    }
-    const at = first + anchor.length;
-    const after = interactiveContent.slice(at).split('\n', 1)[0];
-    // Do not insert over an existing marker or an explicit same-line value.
-    if (/^\s*\[CAMPO_\d+\*?\]/.test(after) || /^\s*[^\s,.;:\[\]()_-]{2,}/.test(after)) continue;
-    const field = nextField();
-    interactiveContent = interactiveContent.slice(0, at) + ' ' + field + interactiveContent.slice(at);
-    inserted++;
+  // Extract explicit blanks without changing existing placeholder IDs.
+  const existing = [...extractedText.matchAll(/\[CAMPO_(\d+)\*?\]/g)].map(m => Number(m[1]));
+  let number = Math.max(0, ...existing);
+  const next = () => `[CAMPO_${++number}]`;
+  let content = extractedText.replace(/_{3,}|\.{3,}|…{2,}/g, next);
+  type Field = { id:string; label:string; actor:string; source:'explicit'|'semantic'|'manual'; confidence:'high'|'medium'|'low'; review:boolean };
+  const fields: Field[] = [];
+  const notes: string[] = [];
+  const originalLines = content.split('\n');
+  // Analyze bounded chunks: truncating the whole document silently loses later fields.
+  const chunks: string[] = [];
+  let chunk = '';
+  for (const line of originalLines) {
+    if (chunk.length + line.length > 8500 && chunk) { chunks.push(chunk); chunk=''; }
+    chunk += line + '\n';
   }
-  // Keep human review explicit; do not claim exhaustive automatic detection.
-  const description = String(parsed.description || 'Documento digitalizado pendiente de revisión.');
-  const note = reviewNotes.length
-    ? ` Revisar: ${reviewNotes.slice(0, 5).join('; ').slice(0, 600)}`
-    : '';
-  parsed.description = `${description} · ${inserted} campos semánticos incorporados.${note}`;
-
+  if (chunk) chunks.push(chunk);
+  if (chunks.length > 16) throw new Error('Documento demasiado extenso para una digitalización segura. Dividilo en archivos más pequeños.');
+  let title = params.fileName || 'Documento digitalizado';
+  let description = 'Documento digitalizado pendiente de revisión.';
+  const prompt = `Sos un especialista en formularios inmobiliarios, jurídicos y administrativos.
+Devolvé EXCLUSIVAMENTE JSON: {"name":"título","description":"resumen","fields":[{"id":"[CAMPO_1]","label":"DNI","actor":"Locador 1","confidence":"high"}],"insertions":[{"anchor":"fragmento literal exacto terminado en dos puntos","label":"Fecha de nacimiento","actor":"Locador 1","confidence":"high"}],"reviewNotes":[]}.
+Identificá el significado de CADA marcador existente. Los actores son distintos: locador, locatario, garante, cónyuge, representante, etc. Usá actor "No determinado" cuando corresponda.
+Detectá etiquetas que solicitan datos sin marcador. Para cada omisión devolvé un anchor LITERAL, único, que termine exactamente en el lugar donde debería insertarse el campo.
+No propongas campos en instrucciones, títulos, narraciones ni valores ya escritos. No inventes contenido ni modifiques el texto. Si hay dudas, reviewNotes.
+Máximo 80 campos e inserciones por fragmento.`;
+  for (let index=0; index<chunks.length; index++) {
+    const raw = await runWorkersAiText(env, prompt, `Fragmento ${index+1}/${chunks.length}:\n${chunks[index]}`, 4096);
+    const parsed = cleanAndParseJSON(raw);
+    if (index===0) {
+      title = typeof parsed.name==='string' && parsed.name.trim() ? parsed.name.trim().slice(0,160) : title;
+      description = typeof parsed.description==='string' && parsed.description.trim() ? parsed.description.trim().slice(0,400) : description;
+    }
+    if (Array.isArray(parsed.reviewNotes)) for(const n of parsed.reviewNotes.slice(0,30)) if(typeof n==='string') notes.push(n.slice(0,200));
+    if (Array.isArray(parsed.fields)) for(const f of parsed.fields.slice(0,100)) {
+      if (!f || typeof f.id!=='string' || !/^\[CAMPO_\d+\*?\]$/.test(f.id) || !content.includes(f.id)) continue;
+      if (fields.some(v=>v.id===f.id)) continue;
+      fields.push({id:f.id,label:String(f.label||'Dato sin identificar').slice(0,120),actor:String(f.actor||'No determinado').slice(0,100),source:'explicit',confidence:f.confidence==='high'?'high':f.confidence==='medium'?'medium':'low',review:f.confidence!=='high'});
+    }
+    if (!Array.isArray(parsed.insertions)) continue;
+    for (const ins of parsed.insertions.slice(0,100)) {
+      if (!ins || typeof ins.anchor!=='string' || typeof ins.label!=='string') continue;
+      const anchor=ins.anchor;
+      // Only unique, unambiguous anchors ending at a field label are eligible.
+      if(anchor.length<6 || anchor.length>200 || !/[:：]\s*$/.test(anchor)) {notes.push('Revisar posible campo: '+String(ins.label).slice(0,90));continue;}
+      const pos=content.indexOf(anchor);
+      if(pos<0 || content.indexOf(anchor,pos+1)!==-1) {notes.push('Ubicación ambigua: '+String(ins.label).slice(0,90));continue;}
+      const at=pos+anchor.length;
+      const sameLine=content.slice(at).split('\n',1)[0];
+      if (/^\s*\[CAMPO_\d+\*?\]/.test(sameLine) || /^\s*[\p{L}\p{N}]{2,}/u.test(sameLine)) continue;
+      const id=next();
+      content=content.slice(0,at)+' '+id+content.slice(at);
+      fields.push({id,label:String(ins.label).slice(0,120),actor:String(ins.actor||'No determinado').slice(0,100),source:'semantic',confidence:ins.confidence==='high'?'high':ins.confidence==='medium'?'medium':'low',review:ins.confidence!=='high'});
+    }
+  }
+  // Include every marker, even when AI did not understand its meaning.
+  for(const m of content.matchAll(/\[CAMPO_\d+\*?\]/g)) if(!fields.some(f=>f.id===m[0]))
+    fields.push({id:m[0],label:'Pendiente de identificar',actor:'No determinado',source:'explicit',confidence:'low',review:true});
+  const ids=new Set<string>();
+  for(const f of fields) {
+    if(ids.has(f.id)) continue;
+    ids.add(f.id);
+    if(f.review) notes.push('Revisar '+f.id+': '+f.label+' — '+f.actor);
+  }
   return {
-    name: parsed.name || params.fileName || 'Documento digitalizado',
-    description: parsed.description || 'Documento interactivo pendiente de aprobación.',
-    industry: (params.industry || 'Administrativo') as ProcessTemplate['industry'],
-    originalDocumentContent: interactiveContent,
-    showDocumentToAll: true,
-    stages: [],
+    name:title,description,industry:(params.industry||'Administrativo') as ProcessTemplate['industry'],
+    originalDocumentContent:content,showDocumentToAll:true,stages:[],
+    fieldMap:fields, digitizationReviewNotes:[...new Set(notes)].slice(0,100)
   };
+
 }
