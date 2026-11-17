@@ -871,7 +871,7 @@ export default function SharedDocumentsManager({ currentUser, users, onAddAudit 
                         {documentActions.view && <button
                           onClick={() => void openPreview(doc)}
                           disabled={previewLoadingId===doc.id}
-                          className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg transition-all border border-indigo-100 disabled:opacity-50"
+                          className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-2 mr-4 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg transition-all border border-indigo-100 disabled:opacity-50"
                           title="Abrir documento en el visor"
                         >{previewLoadingId===doc.id?<Loader2 className="w-3.5 h-3.5 animate-spin"/>:<Eye className="w-3.5 h-3.5"/>}<span>{previewLoadingId===doc.id?'Abriendo…':'Abrir'}</span></button>}
                         {documentActions.download && <button
