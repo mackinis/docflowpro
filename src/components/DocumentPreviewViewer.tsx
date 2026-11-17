@@ -5,7 +5,7 @@ export type PreviewDocument = {url:string;name:string;mime:string};
 
 // A TXT file has no PDF toolbar in the browser. Produce an in-memory PDF preview
 // so every document uses the same native PDF viewer without changing the source file.
-function textToPdf(value:string):Blob {
+function textToPdf(value:string, title:string):Blob {
   const lines:string[]=[];
   for(const line of value.replace(/\r\n?/g,'\n').replace(/\t/g,'    ').split('\n')){
     if(!line.length){lines.push('');continue;}
@@ -30,9 +30,15 @@ function textToPdf(value:string):Blob {
   let pdf='%PDF-1.4\n%\xE2\xE3\xCF\xD3\n';
   const offsets=[0];
   objects.forEach((obj,i)=>{offsets.push(pdf.length);pdf+=(i+1)+' 0 obj\n'+obj+'\nendobj\n';});
+  // Preserve the accented, user-facing title as UTF-16BE PDF metadata.
+  // The native browser toolbar may still display its temporary blob URL.
+  const titleHex='FEFF'+Array.from(title).map(ch=>ch.charCodeAt(0).toString(16).padStart(4,'0')).join('').toUpperCase();
+  const infoId=objects.length+1;
+  offsets.push(pdf.length);
+  pdf+=infoId+' 0 obj\\n<< /Title <'+titleHex+'> >>\\nendobj\\n';
   const xref=pdf.length;
-  pdf+='xref\n0 '+(objects.length+1)+'\n0000000000 65535 f \n'+offsets.slice(1).map(o=>String(o).padStart(10,'0')+' 00000 n \n').join('');
-  pdf+='trailer\n<< /Size '+(objects.length+1)+' /Root 1 0 R >>\nstartxref\n'+xref+'\n%%EOF';
+  pdf+='xref\n0 '+(objects.length+2)+'\n0000000000 65535 f \n'+offsets.slice(1).map(o=>String(o).padStart(10,'0')+' 00000 n \n').join('');
+  pdf+='trailer\n<< /Size '+(objects.length+2)+' /Root 1 0 R /Info '+infoId+' 0 R >>\nstartxref\n'+xref+'\n%%EOF';
   return new Blob([Uint8Array.from(pdf,c=>c.charCodeAt(0))],{type:'application/pdf'});
 }
 
@@ -47,7 +53,7 @@ export default function DocumentPreviewViewer({document:doc,onClose}:{document:P
     setPdfUrl(null);setError('');
     fetch(doc.url,{signal:controller.signal})
       .then(r=>{if(!r.ok)throw new Error('No se pudo leer el documento.');return r.text();})
-      .then(text=>{if(controller.signal.aborted)return;objectUrl=URL.createObjectURL(textToPdf(text));setPdfUrl(objectUrl);})
+      .then(text=>{if(controller.signal.aborted)return;objectUrl=URL.createObjectURL(textToPdf(text,doc.name));setPdfUrl(objectUrl);})
       .catch(e=>{if(e.name!=='AbortError')setError('No se pudo preparar la vista previa.');});
     return ()=>{controller.abort();if(objectUrl)URL.revokeObjectURL(objectUrl);};
   },[doc.url,isText]);
