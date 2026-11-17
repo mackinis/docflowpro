@@ -629,18 +629,6 @@ export default function CasesList({
                        c.status === 'pending_assignment' ? 'Sin Asignar' :
                        'Activo'}
                     </span>
-                    {currentUser.role === 'SUPERADMIN' && (
-                      <button
-                        title="Eliminar Legajo"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setCaseToDelete(c);
-                        }}
-                        className="p-1 text-rose-500 hover:bg-rose-50 hover:text-rose-700 rounded transition-all cursor-pointer shrink-0 z-10"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
                     <ChevronRight className="w-4 h-4 text-slate-400" />
                   </div>
                 </div>
