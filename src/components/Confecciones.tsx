@@ -73,7 +73,10 @@ export default function Confecciones({cases,templates,currentUser}:Props) {
   const open = (item:Confeccion) => {
     setSelected(item); selectedRef.current=item; setContent(item.content); contentRef.current=item.content; savedRef.current=item.content;
     setProposals([]);setProposalSnapshot('');
-    setLastUsed(item.last_field_number); setDirty(false); setNotice(''); setChat([{from:'agent',text:'Plantilla cargada. Indicame qué datos querés completar o consultame sobre un campo.'}]);
+    setLastUsed(item.last_field_number); setDirty(false); setNotice(''); setChat([{from:'agent',text:'Cargando conversación de esta confección...'}]);
+    void request('/api/confecciones/'+encodeURIComponent(item.id)+'/chat').then((history:ChatLine[])=>{
+      if (selectedRef.current?.id===item.id) setChat(history.length?history:[{from:'agent',text:'Plantilla cargada. Voy a consultar los datos del proceso y recordar las respuestas que me confirmes.'}]);
+    }).catch((e:any)=>{if(selectedRef.current?.id===item.id)setNotice('No se pudo recuperar la conversación: '+e.message);});
   };
   const changeContent = (value:string) => {
     // New manual fields are normalized on completion; existing original markers remain untouched.
@@ -193,7 +196,7 @@ export default function Confecciones({cases,templates,currentUser}:Props) {
           </div>
           {selected.status==='draft'&&proposals.length>0&&<div className="border-t border-amber-300 bg-amber-50 dark:bg-slate-900 p-3 space-y-2">
             <p className="text-xs font-bold text-amber-900 dark:text-amber-300">Propuestas del agente · confirmar antes de escribir</p>
-            <div className="max-h-44 overflow-y-auto space-y-1">{proposals.map((p,i)=><div key={i} className="flex gap-2 items-start text-xs dark:text-white"><code className="shrink-0">{p.field}</code><span className="break-words flex-1">{p.value}</span><button aria-label={'Descartar '+p.field} title="Descartar propuesta" onClick={()=>setProposals(prev=>prev.filter((_,j)=>j!==i))} className="text-red-600"><X size={14}/></button></div>)}</div>
+            <div className="max-h-44 overflow-y-auto space-y-1">{proposals.map((p,i)=><div key={i} className="flex gap-2 items-start text-xs dark:text-white"><code className="shrink-0">{p.field}</code><span className="break-words flex-1">{p.value}<span className="block text-[10px] opacity-75">Fuente declarada: {p.source||'No indicada; verificar antes de aplicar'}</span></span><button aria-label={'Descartar '+p.field} title="Descartar propuesta" onClick={()=>setProposals(prev=>prev.filter((_,j)=>j!==i))} className="text-red-600"><X size={14}/></button></div>)}</div>
             {coverage && <div className="text-xs dark:text-slate-200 space-y-1 border-t border-amber-300/40 pt-2">
               <p className="font-semibold">Control de campos: {coverage.total} pendientes al consultar · {coverage.proposed} propuestas · {coverage.unresolved} sin dato verificado.</p>
               <details><summary className="cursor-pointer">Ver todos los campos sin resolver ({coverage.unresolved})</summary>
