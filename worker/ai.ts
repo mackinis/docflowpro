@@ -331,6 +331,23 @@ Máximo 80 campos e inserciones por fragmento.`;
   // Include every marker, even when AI did not understand its meaning.
   for(const m of content.matchAll(/\[CAMPO_\d+\*?\]/g)) if(!fields.some(f=>f.id===m[0]))
     fields.push({id:m[0],label:'Pendiente de identificar',actor:'No determinado',source:'explicit',confidence:'low',review:true});
+  // Final digitization pass: assign stable, consecutive marker IDs in the
+  // order of their FIRST appearance in the document, after all AI insertions.
+  // Preserve repeated references to the same field and optional (*) markers.
+  // Never run this migration on an already saved document.
+  const idMapping=new Map<string,string>();
+  let ordinal=0;
+  content=content.replace(/\[CAMPO_\d+\*?\]/g,oldId=>{
+    if(!idMapping.has(oldId)){
+      const optional=oldId.endsWith('*]');
+      idMapping.set(oldId,`[CAMPO_${++ordinal}${optional?'*':''}]`);
+    }
+    return idMapping.get(oldId)!;
+  });
+  for(const field of fields)field.id=idMapping.get(field.id)||field.id;
+  for(let i=0;i<notes.length;i++){
+    notes[i]=notes[i].replace(/\[CAMPO_\d+\*?\]/g,id=>idMapping.get(id)||id);
+  }
   const ids=new Set<string>();
   for(const f of fields) {
     if(ids.has(f.id)) continue;
