@@ -2547,7 +2547,7 @@ Si faltan datos, hacé una pregunta específica y útil al operador, no una nega
 Lote ${index+1}/${batches.length}. Marcadores: ${JSON.stringify(batch)}
 Campos y contexto: ${JSON.stringify(batch.map(field => {
  const entry=fieldMap.find(f=>f.id===field);
- const positions=[...content.matchAll(/\\[CAMPO_\\d+\\*?\\]/g)].filter(m=>m[0]===field).slice(0,4).map(m=>content.slice(Math.max(0,(m.index||0)-220),Math.min(content.length,(m.index||0)+field.length+220)));
+ const positions=[...content.matchAll(/\[CAMPO_\d+\*?\]/g)].filter(m=>m[0]===field).slice(0,4).map(m=>content.slice(Math.max(0,(m.index||0)-220),Math.min(content.length,(m.index||0)+field.length+220)));
  return {field,label:entry?.label,actor:entry?.actor,contexts:positions};
 }))}
 Datos disponibles del legajo (pueden incluir contenido digitalizado): ${evidence.slice(0,50000)}
@@ -2592,7 +2592,7 @@ Instrucción actual: ${instruction}`;
         for (const x of parsed.replacements) {
           if (typeof x?.field !== 'string' || !batches[i].includes(x.field) || seen.has(x.field) ||
               typeof x.value !== 'string' || !x.value.trim() || x.value.length > 2000 ||
-              /\\[CAMPO_\\d+\\*?\\]/.test(x.value) ||
+              /\[CAMPO_\d+\*?\]/.test(x.value) ||
               typeof x.source !== 'string' || !x.source.trim()) continue;
           seen.add(x.field);
           valid.push({field:x.field,value:x.value.trim(),source:x.source.trim()});
