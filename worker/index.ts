@@ -17,6 +17,8 @@ import {
 import {
   decodeDataUrl,
   guessMimeType,
+  extractTextFromDocx,
+  extractTextFromPdf,
   sanitizeFileName,
 } from './document-parser';
 import {
@@ -2506,6 +2508,33 @@ app.post('/api/confecciones/:id/agent', async (c) => {
   if (current?.content !== content) return c.json({ error: 'Guardá los cambios del documento antes de consultar al agente.' }, 409);
   const docs = (await getAllDocuments(c.env.DB)).filter(d => d.caseId === caseObj.id)
     .map(d => ({ name: d.name, fileName: d.fileName, status: d.status }));
+  // Read actual R2 contents where a safe text extractor is available. Never claim
+  // scanned images or unsupported formats were read successfully.
+  const documentEvidence: Array<{name:string;status:string;text?:string;note?:string}> = [];
+  for (const doc of (await getAllDocuments(c.env.DB)).filter(d=>d.caseId===caseObj.id).slice(0,60)) {
+    const entry:{name:string;status:string;text?:string;note?:string} = {name:doc.name,status:doc.status};
+    const key=doc.r2Key || doc.versions?.[doc.versions.length-1]?.r2Key;
+    const mime=guessMimeType(doc.fileName || doc.name,doc.mimeType);
+    if (!key) entry.note='Sin archivo disponible en almacenamiento';
+    else if (!/^(text\/plain|application\/json|application\/pdf|application\/vnd.openxmlformats-officedocument.wordprocessingml.document)/.test(mime)) entry.note='Formato pendiente de lectura visual o conversión';
+    else {
+      try {
+        const obj=await c.env.R2_BUCKET.get(key);
+        if (!obj) entry.note='Archivo no encontrado';
+        else if (obj.size>8_000_000) entry.note='Archivo demasiado grande para extracción directa';
+        else {
+          const bytes=new Uint8Array(await obj.arrayBuffer());
+          const value=mime.includes('wordprocessingml')?extractTextFromDocx(bytes):mime.includes('pdf')?extractTextFromPdf(bytes):new TextDecoder().decode(bytes);
+          if(value.trim()) entry.text=value.slice(0,30000);
+          else entry.note='No se pudo extraer texto; requiere OCR o revisión manual';
+        }
+      } catch (e) {
+        console.warn('Confecciones attachment extraction failed', {documentId:doc.id,error:e});
+        entry.note='Extracción fallida; requiere revisión';
+      }
+    }
+    documentEvidence.push(entry);
+  }
   const template = await findTemplateOrVirtualById(c.env, row.template_id);
   const fieldMap = (template?.fieldMap || []).filter(f => content.includes(f.id));
   const markers = [...new Set(Array.from(content.matchAll(/\[CAMPO_\d+\*?\]/g), m => m[0]))];
@@ -2534,7 +2563,7 @@ app.post('/api/confecciones/:id/agent', async (c) => {
     code:caseObj.code, title:caseObj.title, description:caseObj.description,
     participants:caseObj.participants,
     caseDocumentContent:caseObj.documentContent || '',
-    documents:docs
+    documents:documentEvidence
   });
   // Process every marker in bounded batches instead of truncating the marker list.
   const batches: string[][] = [];
@@ -2543,7 +2572,7 @@ app.post('/api/confecciones/:id/agent', async (c) => {
 Tu tarea es completar todos los campos que tengan evidencia verificable y continuar preguntando al operador hasta terminar. No te detengas por datos faltantes: resolvé los que sí tengan datos.
 Respondé exclusivamente JSON {"reply":"mensaje breve o pregunta concreta","replacements":[{"field":"[CAMPO_1]","value":"valor","source":"origen concreto"}]}.
 Cada reemplazo debe tener evidencia en los datos suministrados o en una respuesta explícita del operador. Nunca inventes DNI, fechas, personas, montos ni condiciones. No confundas locador, locatario ni cónyuges. No modifiques texto fuera de marcadores. Si hay contradicciones, preguntá antes de proponer.
-Si faltan datos, hacé una pregunta específica y útil al operador, no una negativa genérica. Los documentos adjuntos se proporcionan solo como metadatos; NO afirmes haber leído sus archivos.
+Si faltan datos, hacé una pregunta específica y útil al operador, no una negativa genérica. Algunos documentos incluyen texto extraído y otros solo metadatos o notas de extracción. Usá únicamente el texto realmente presente; no afirmes haber leído archivos sin texto.
 Lote ${index+1}/${batches.length}. Marcadores: ${JSON.stringify(batch)}
 Campos y contexto: ${JSON.stringify(batch.map(field => {
  const entry=fieldMap.find(f=>f.id===field);
