@@ -2509,6 +2509,14 @@ app.post('/api/confecciones/:id/agent', async (c) => {
   const template = await findTemplateOrVirtualById(c.env, row.template_id);
   const fieldMap = (template?.fieldMap || []).filter(f => content.includes(f.id));
   const markers = [...new Set(Array.from(content.matchAll(/\[CAMPO_\d+\*?\]/g), m => m[0]))];
+  const coverage = (proposed: Array<{field:string;value:string;source:string}>) => {
+    const matched = new Set(proposed.map(p => p.field));
+    const unresolved = markers.filter(field => !matched.has(field)).map(field => {
+      const entry = fieldMap.find(f => f.id === field);
+      return {field, label: entry?.label && entry.label !== 'Pendiente de identificar' ? entry.label : 'Sin significado identificado', status:'sin_dato_verificado'};
+    });
+    return {total:markers.length, proposed:matched.size, unresolved:unresolved.length, fields:unresolved};
+  };
   const missingSummary = () => {
     const labels = markers.slice(0, 8).map(id => {
       const entry = fieldMap.find(f => f.id === id);
@@ -2517,13 +2525,13 @@ app.post('/api/confecciones/:id/agent', async (c) => {
     });
     return 'Hay ' + markers.length + ' campos pendientes. Para completarlos sin inventar información, revisá los datos del legajo y facilitame los valores que falten. Empecemos por: ' + labels.join(', ') + (markers.length > 8 ? ', entre otros.' : '.');
   };
-  if (!markers.length) return c.json({ reply: 'La plantilla no tiene campos pendientes para completar.', replacements: [], pendingFields: 0 });
+  if (!markers.length) return c.json({ reply: 'La plantilla no tiene campos pendientes para completar.', replacements: [], pendingFields: 0, coverage:coverage([]) });
   const prompt = `Sos un asistente de confección documental inmobiliaria argentina. La instrucción "completá los datos en los campos" significa: revisá TODOS los marcadores pendientes y proponé valores SOLO cuando sean verificables en los datos suministrados. No inventes, no supongas y no reemplaces marcadores por textos genéricos.
 Devolvé exclusivamente un objeto JSON con las claves "reply" (español breve) y "replacements" (array de objetos con "field", "value", "source"). Si no hay valores seguros, devolvé replacements vacío y pedí los datos concretos faltantes en reply. No modifiques el texto que rodea los campos. No afirmes haber leído el contenido de archivos adjuntos: solo recibís sus nombres.
 Datos del legajo: ${JSON.stringify({code:caseObj.code,title:caseObj.title,description:caseObj.description,participants:caseObj.participants,documents:docs}).slice(0,12000)}
 Mapa de campos: ${JSON.stringify(fieldMap).slice(0,9000)}
 Marcadores pendientes: ${JSON.stringify(markers)}
-Fragmento de la plantilla: ${content.slice(0,9000)}
+Contexto completo de cada campo pendiente (hasta 140 caracteres antes y después): ${JSON.stringify(markers.map(field => { const position=content.indexOf(field); return {field, context:content.slice(Math.max(0,position-140),Math.min(content.length,position+field.length+140))}; })).slice(0,20000)}
 Pedido del operador: ${instruction}`;
   const extractJson = (raw: string): any => {
     const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
@@ -2554,7 +2562,7 @@ Pedido del operador: ${instruction}`;
     const parsed = extractJson(raw);
     if (!parsed || typeof parsed !== 'object') {
       console.warn('Confecciones AI: respuesta sin JSON completo', {length:raw.length, markers:markers.length});
-      return c.json({reply: missingSummary(), replacements: [], pendingFields: markers.length, fallback: true});
+      return c.json({reply: missingSummary(), replacements: [], pendingFields: markers.length, coverage:coverage([]), fallback: true});
     }
     const seen = new Set<string>();
     const valid = Array.isArray(parsed.replacements) ? parsed.replacements.filter((x:any) => {
@@ -2566,10 +2574,10 @@ Pedido del operador: ${instruction}`;
       return true;
     }) : [];
     const reply = typeof parsed.reply === 'string' && parsed.reply.trim() ? parsed.reply.slice(0,2000) : missingSummary();
-    return c.json({reply, replacements:valid, pendingFields:markers.length});
+    return c.json({reply, replacements:valid, pendingFields:markers.length, coverage:coverage(valid)});
   } catch (error) {
     console.error('Confecciones AI service error:', error);
-    return c.json({reply:'El servicio de IA no respondió en este momento. No modifiqué la plantilla. ' + missingSummary(), replacements:[], pendingFields:markers.length, fallback:true});
+    return c.json({reply:'El servicio de IA no respondió en este momento. No modifiqué la plantilla. ' + missingSummary(), replacements:[], pendingFields:markers.length, coverage:coverage([]), fallback:true});
   }
 });
 
