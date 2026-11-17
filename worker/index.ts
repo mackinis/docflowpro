@@ -2659,15 +2659,46 @@ Instrucción actual: ${instruction}`;
     const replies: string[] = [];
     let failures = 0;
     let lastFailure = '';
+    const models = ['@cf/meta/llama-3.3-70b-instruct-fp8-fast', '@cf/meta/llama-3.1-8b-instruct-fast'] as const;
+    const runAgentBatch = async (batch:string[], index:number):Promise<any> => {
+      if (!c.env.AI) throw new Error('Binding Workers AI no disponible');
+      let lastError = '';
+      for (const model of models) {
+        // Retry on a smaller, structured prompt if the primary context is rejected.
+        for (const compact of [false,true]) {
+          try {
+            const compactPrompt = JSON.stringify({
+              task:'Completar marcadores con datos verificados. No inventar. Responder solo JSON: {"reply":"texto","replacements":[{"field":"[CAMPO_1]","value":"dato","source":"fuente"}]}',
+              fields:batch.map(field=>({field,label:fieldMap.find(f=>f.id===field)?.label,actor:fieldMap.find(f=>f.id===field)?.actor,
+                context:content.slice(Math.max(0,content.indexOf(field)-130),content.indexOf(field)+field.length+130)})),
+              caseData:{code:caseObj.code,title:caseObj.title,participants:caseObj.participants},
+              evidence:evidenceFor(batch).slice(0,6500),
+              instruction,history:history.slice(-6)
+            });
+            const response = await (c.env.AI as any).run(model,{
+              messages:[
+                {role:'system',content:'Sos un asistente documental. Solo JSON válido. Proponé únicamente datos respaldados por evidencia; no inventes.'},
+                {role:'user',content:compact?compactPrompt:promptFor(batch,index)}
+              ],
+              temperature:0,max_tokens:compact?1200:1600
+            });
+            const raw=typeof response?.response==='string'?response.response:
+              typeof response==='string'?response:
+              typeof response?.choices?.[0]?.message?.content==='string'?response.choices[0].message.content:'';
+            const parsed=extractJson(raw);
+            if (parsed && typeof parsed==='object') return parsed;
+            lastError='Respuesta no interpretable del modelo '+model;
+          } catch (error) {
+            lastError=error instanceof Error?error.message:String(error);
+            console.warn('Confecciones AI retry',{batch:index,model,compact,error:lastError.slice(0,250)});
+          }
+        }
+      }
+      throw new Error(lastError||'Los modelos no devolvieron una respuesta válida');
+    };
     for (let i=0;i<batches.length;i++) {
       try {
-        const response = await (c.env.AI as any).run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', {
-          messages: [{role:'system',content:'Devolvé exclusivamente JSON válido. No inventes información. Respondé como copiloto colaborativo.'},{role:'user',content:promptFor(batches[i],i)}],
-          temperature:0,max_tokens:1000
-        });
-        const raw = typeof response?.response === 'string' ? response.response : typeof response === 'string' ? response : '';
-        const parsed = extractJson(raw);
-        if (!parsed || typeof parsed !== 'object') {failures++;console.warn('Confecciones AI invalid JSON',{batch:i,rawLength:raw.length,rawPrefix:raw.slice(0,180)});continue;}
+        const parsed = await runAgentBatch(batches[i],i);
         if (typeof parsed.reply === 'string' && parsed.reply.trim()) replies.push(parsed.reply.trim().slice(0,500));
         if (!Array.isArray(parsed.replacements)) continue;
         for (const x of parsed.replacements) {
