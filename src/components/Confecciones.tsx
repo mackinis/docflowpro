@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Bot, CheckCircle2, Copy, Download, FilePenLine, FileText, Loader2, Plus, Printer, Save, Search, Send, Sparkles, X } from 'lucide-react';
+import { ArrowLeft, Bot, CheckCircle2, Copy, Download, FilePenLine, FileText, Loader2, Plus, Printer, Save, Search, Send, Sparkles, Trash2, X } from 'lucide-react';
 import type { Case, ProcessTemplate, User } from '../types';
 
 type Confeccion = { id:string; case_id:string; template_id:string; title:string; content:string; status:'draft'|'closed'; last_field_number:number; case_code:string; case_title:string; updated_at:string };
@@ -87,6 +87,17 @@ export default function Confecciones({cases,templates,currentUser}:Props) {
       setShowCreate(false);
     }catch(e:any){setNotice(e.message);}finally{setBusy(false);}
   };
+  const remove = async (item:Confeccion) => {
+    if (!window.confirm('¿Eliminar definitivamente esta confección? Se borrará todo el documento, incluso si está finalizado. Esta acción no se puede deshacer.')) return;
+    setBusy(true);setNotice('');
+    try {
+      await request('/api/confecciones/'+encodeURIComponent(item.id),{method:'DELETE'});
+      if(selectedRef.current?.id===item.id) {selectedRef.current=null;setSelected(null);setDirty(false);}
+      setItems(prev=>prev.filter(x=>x.id!==item.id));
+      await refresh();
+    } catch(e:any) {setNotice('No se pudo eliminar: '+e.message);}
+    finally {setBusy(false);}
+  };
   const send = async () => {
     const message=instruction.trim();if(!message||!selected||busy)return;
     setInstruction('');setChat(c=>[...c,{from:'user',text:message}]);setBusy(true);setNotice('');
@@ -124,6 +135,7 @@ export default function Confecciones({cases,templates,currentUser}:Props) {
           <p className="text-sm text-slate-500 mt-1">{selected.case_code} · {selected.status==='closed'?'Finalizada':'En confección'} · {saving?'Guardando...':dirty?'Cambios pendientes':'Guardado'}</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <button onClick={()=>void remove(selected)} disabled={busy} className="px-3 py-2 rounded-lg border border-red-400 text-red-500 flex gap-2 items-center text-sm disabled:opacity-50"><Trash2 size={16}/> Eliminar</button>
           <button onClick={print} className="px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 flex gap-2 items-center text-sm dark:text-white"><Printer size={16}/> Imprimir / PDF</button>
           <button onClick={()=>exportText(selected.title,content)} className="px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 flex gap-2 items-center text-sm dark:text-white"><Download size={16}/> Exportar TXT</button>
           {selected.status==='draft'&&<><button onClick={()=>void save().catch((e:any)=>setNotice(e.message))} className="px-3 py-2 rounded-lg bg-indigo-600 text-white flex gap-2 items-center text-sm"><Save size={16}/> Guardar</button>
@@ -171,6 +183,6 @@ export default function Confecciones({cases,templates,currentUser}:Props) {
       <div className="flex gap-4 text-xs font-semibold text-slate-500"><span>Todas ({items.length})</span><span>En confección ({items.filter(i=>i.status==='draft').length})</span><span>Finalizadas ({items.filter(i=>i.status==='closed').length})</span></div>
     </div>
     {filtered.length===0?<div className="border border-dashed border-slate-300 dark:border-slate-600 rounded-2xl p-12 text-center text-slate-500"><FilePenLine size={34} className="mx-auto mb-3 text-indigo-500"/><p className="font-semibold">Todavía no hay confecciones para mostrar.</p><p className="text-sm mt-2">Seleccioná «Nueva confección» para comenzar.</p></div>:
-    <div className="space-y-3">{filtered.map(i=><button key={i.id} onClick={()=>open(i)} className="w-full text-left bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 flex flex-wrap justify-between gap-3 hover:border-indigo-500 transition-colors"><div className="flex gap-3 items-start"><FilePenLine className="text-indigo-500 mt-1"/><div><div className="font-bold text-slate-900 dark:text-white">{i.title}</div><div className="text-xs text-slate-500 mt-2">{i.case_code} · {new Date(i.updated_at).toLocaleString('es-AR')}</div></div></div><span className={'rounded-full px-3 py-1 text-xs font-bold h-fit '+(i.status==='closed'?'bg-emerald-100 text-emerald-700':'bg-amber-100 text-amber-800')}>{i.status==='closed'?'Finalizada':'En confección'}</span></button>)}</div>}
+    <div className="space-y-3">{filtered.map(i=><div key={i.id} className="relative"><button onClick={()=>open(i)} className="w-full text-left bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 flex flex-wrap justify-between gap-3 hover:border-indigo-500 transition-colors"><div className="flex gap-3 items-start"><FilePenLine className="text-indigo-500 mt-1"/><div><div className="font-bold text-slate-900 dark:text-white">{i.title}</div><div className="text-xs text-slate-500 mt-2">{i.case_code} · {new Date(i.updated_at).toLocaleString('es-AR')}</div></div></div><span className={'rounded-full px-3 py-1 text-xs font-bold h-fit '+(i.status==='closed'?'bg-emerald-100 text-emerald-700':'bg-amber-100 text-amber-800')}>{i.status==='closed'?'Finalizada':'En confección'}</span></button><button onClick={()=>void remove(i)} disabled={busy} aria-label={'Eliminar '+i.title} title="Eliminar definitivamente" className="absolute right-4 bottom-3 p-2 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-950 disabled:opacity-40"><Trash2 size={17}/></button></div>)}</div>}
   </div>;
 }
