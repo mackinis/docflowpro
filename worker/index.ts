@@ -1643,10 +1643,18 @@ function requirementsFromProcessDescription(description: string): ProcessTemplat
 app.post('/api/templates/analyze-fields', async (c) => {
   const auth=c.get('auth')!;
   if (!(await canUserManageTemplates(c.env.DB,auth.user.id))) return c.json({error:'No autorizado.'},403);
-  const {templateId}=await c.req.json();
-  const template=(await getAllTemplates(c.env.DB)).find(t=>t.id===String(templateId||''));
-  if(!template?.originalDocumentContent) return c.json({error:'Seleccioná una plantilla digitalizada válida.'},400);
-  const source=template.originalDocumentContent;
+  const {sharedDocumentId}=await c.req.json();
+  const doc=await c.env.DB.prepare('SELECT * FROM shared_documents WHERE id = ?').bind(String(sharedDocumentId||'')).first<any>();
+  if(!doc)return c.json({error:'El documento digitalizado no existe en Documentos.'},404);
+  const allowedRoles:string[]=doc.allowed_roles_json?JSON.parse(doc.allowed_roles_json):[];
+  const allowedUsers:string[]=doc.allowed_user_ids_json?JSON.parse(doc.allowed_user_ids_json):[];
+  if(auth.user.role!=='SUPERADMIN'&&!allowedRoles.includes(auth.user.role)&&!allowedUsers.includes(auth.user.id))
+    return c.json({error:'No tenés acceso al documento seleccionado.'},403);
+  if(!String(doc.file_name||doc.fileName||'').toLowerCase().endsWith('.txt'))
+    return c.json({error:'Seleccioná un documento digitalizado de texto.'},400);
+  const object=await c.env.R2_BUCKET.get(doc.r2_key);
+  if(!object)return c.json({error:'El archivo del documento no está disponible en R2.'},404);
+  const source=await object.text();
   const matches=[...source.matchAll(/\[CAMPO_\d+\*?\]/g)];
   const unique=[...new Set(matches.map(m=>m[0]))];
   if(!unique.length)return c.json({error:'La plantilla no tiene campos amarillos.'},400);
@@ -1673,7 +1681,7 @@ app.post('/api/templates/analyze-fields', async (c) => {
       const m=nearest.match(/(?:DURACI[ÓO]N\s+CONTRATO|NOMBRE\s+Y\s+APELLIDO\s+C[ÓO]NYUGE)\s*[:;]?\s*$/i);
       if(m)label=m[0].trim();
     }
-    const stored=template.fieldMap?.find(f=>f.id===field);
+    const stored=undefined as {label?:string;actor?:string}|undefined;
     if(stored?.label && !/^(pendiente|sin significado|dato sin identificar)/i.test(stored.label))label=stored.label;
     if(stored?.actor && !/^(no determinado|por identificar)/i.test(stored.actor))actor=stored.actor;
     if(/^(A PARTIR|HASTA|INDICAR)$/i.test(label))label=label==='INDICAR'?'Meses de gracia':label==='HASTA'?'Fecha de finalización del contrato':'Fecha de inicio del contrato';
@@ -1681,7 +1689,7 @@ app.post('/api/templates/analyze-fields', async (c) => {
     const review=label==='Dato por identificar'||label==='Dato solicitado en el contexto anterior'||actor==='Operación'&&!/(contrato|alquiler|locaci[oó]n|dep[oó]sito|ajuste|inventario|servicio|posesi[oó]n|gracia|inicio|finalizaci[oó]n)/i.test(label);
     return {id:field,label,actor,source:'semantic' as const,confidence:review?'low' as const:'medium' as const,review};
   });
-  return c.json({fields});
+  return c.json({fields,originalDocumentContent:source});
 });
 app.post('/api/templates', async (c) => {
   const auth = c.get('auth')!;
