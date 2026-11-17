@@ -2526,7 +2526,7 @@ Marcadores pendientes: ${JSON.stringify(markers)}
 Fragmento de la plantilla: ${content.slice(0,9000)}
 Pedido del operador: ${instruction}`;
   const extractJson = (raw: string): any => {
-    const cleaned = raw.trim().replace(/^\`\`\`(?:json)?\\s*/i, '').replace(/\\s*\`\`\`$/, '');
+    const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
     try { return JSON.parse(cleaned); } catch {}
     const start = cleaned.indexOf('{');
     if (start < 0) return null;
@@ -2535,7 +2535,7 @@ Pedido del operador: ${instruction}`;
       const ch = cleaned[i];
       if (inString) {
         if (escaped) escaped = false;
-        else if (ch === '\\\\') escaped = true;
+        else if (ch === '\\') escaped = true;
         else if (ch === '"') inString = false;
       } else if (ch === '"') inString = true;
       else if (ch === '{') depth++;
@@ -2558,9 +2558,9 @@ Pedido del operador: ${instruction}`;
     }
     const seen = new Set<string>();
     const valid = Array.isArray(parsed.replacements) ? parsed.replacements.filter((x:any) => {
-      if (typeof x?.field !== 'string' || !/^\\[CAMPO_\\d+\\*?\\]$/.test(x.field) ||
+      if (typeof x?.field !== 'string' || !/^\[CAMPO_\d+\*?\]$/.test(x.field) ||
           !markers.includes(x.field) || seen.has(x.field) || typeof x.value !== 'string' ||
-          !x.value.trim() || x.value.length > 2000 || /\\[CAMPO_\\d+\\*?\\]/.test(x.value) ||
+          !x.value.trim() || x.value.length > 2000 || /\[CAMPO_\d+\*?\]/.test(x.value) ||
           typeof x.source !== 'string' || !x.source.trim()) return false;
       seen.add(x.field);
       return true;
