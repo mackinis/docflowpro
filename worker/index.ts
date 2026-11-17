@@ -2586,7 +2586,13 @@ app.post('/api/confecciones/:id/agent', async (c) => {
       return c.json({reply:'Necesito un valor concreto para '+field+'. '+questionFor(field),replacements:[],pendingFields:markers.length,coverage:coverage([])});
     const proposal={field,value,source:'Respuesta explícita del operador'};
     const next=markers.find(m=>m!==field);
-    return c.json({reply:'Registré una propuesta para '+field+'. Revisala y aplicala. '+(next?questionFor(next):'No quedan otros marcadores pendientes.'),replacements:[proposal],pendingFields:markers.length,coverage:coverage([proposal])});
+    const reply='Registré una propuesta para '+field+'. Revisala y aplicala. '+(next?questionFor(next):'No quedan otros marcadores pendientes.');
+    const now=new Date().toISOString();
+    await c.env.DB.batch([
+      c.env.DB.prepare('INSERT INTO confeccion_chat (id, confeccion_id, sender, message, created_at) VALUES (?, ?, ?, ?, ?)').bind(crypto.randomUUID(),id,'user',instruction.trim(),now),
+      c.env.DB.prepare('INSERT INTO confeccion_chat (id, confeccion_id, sender, message, created_at) VALUES (?, ?, ?, ?, ?)').bind(crypto.randomUUID(),id,'agent',reply,now)
+    ]);
+    return c.json({reply,replacements:[proposal],pendingFields:markers.length,coverage:coverage([proposal])});
   }
   // Persist the conversation per confection, so confirmed operator answers survive
   // navigation and later requests. Client-provided history is not trusted as evidence.
@@ -2678,6 +2684,19 @@ Instrucción actual: ${instruction}`;
   try {
     const seen = new Set<string>();
     const valid: Array<{field:string;value:string;source:string}> = [];
+    // A model's claim of a source is not proof. Only propose literal values
+    // actually found in the case evidence or explicitly supplied by the operator.
+    const normalizeEvidence=(v:string)=>v.toLocaleLowerCase('es-AR').normalize('NFD')
+      .replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'');
+    const evidenceCorpus=normalizeEvidence(JSON.stringify({
+      participants:caseObj.participants,description:caseObj.description,
+      documentContent:caseObj.documentContent,documents:documentEvidence.map(d=>d.text||''),
+      operatorStatements:history.filter(m=>m.role==='user').map(m=>m.text)
+    }));
+    const supportedValue=(value:string)=> {
+      const normalized=normalizeEvidence(value);
+      return normalized.length>=3 && evidenceCorpus.includes(normalized);
+    };
     const replies: string[] = [];
     let failures = 0;
     let lastFailure = '';
@@ -2727,7 +2746,7 @@ Instrucción actual: ${instruction}`;
           if (typeof x?.field !== 'string' || !batches[i].includes(x.field) || seen.has(x.field) ||
               typeof x.value !== 'string' || !x.value.trim() || x.value.length > 2000 ||
               /\[CAMPO_\d+\*?\]/.test(x.value) ||
-              typeof x.source !== 'string' || !x.source.trim()) continue;
+              typeof x.source !== 'string' || !x.source.trim() || !supportedValue(x.value)) continue;
           seen.add(x.field);
           valid.push({field:x.field,value:x.value.trim(),source:x.source.trim()});
         }
