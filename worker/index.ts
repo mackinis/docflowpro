@@ -2493,11 +2493,14 @@ app.post('/api/confecciones/:id/agent', async (c) => {
   if (current?.content !== content) return c.json({ error: 'Guardá los cambios del documento antes de consultar al agente.' }, 409);
   const docs = (await getAllDocuments(c.env.DB)).filter(d => d.caseId === caseObj.id)
     .map(d => ({ name: d.name, fileName: d.fileName, status: d.status }));
+  const template = await findTemplateOrVirtualById(c.env, row.template_id);
+  const fieldMap = (template?.fieldMap || []).filter(f => content.includes(f.id));
   const prompt = `Sos un asistente de confección documental. Trabajá SOLO con datos aportados, sin inventar.
 Respondé EXCLUSIVAMENTE JSON válido: {"reply":"respuesta breve en español","replacements":[{"field":"[CAMPO_1]","value":"texto"}]}.
 No reescribas el documento. Solo proponé reemplazos de marcadores que existan en el documento.
 Si falta información, preguntá en reply y omití el reemplazo. No modifiques texto escrito manualmente.
 Legajo: ${JSON.stringify({ code:caseObj.code,title:caseObj.title,description:caseObj.description,participants:caseObj.participants,documents:docs })}
+Mapa de campos validado (identificador, significado y actor): ${JSON.stringify(fieldMap).slice(0,16000)}
 Documento actual: ${content.slice(0,24000)}
 Instrucción del usuario: ${instruction}`;
   try {
