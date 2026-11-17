@@ -292,9 +292,9 @@ export async function digitizeTemplateWithAI(
       continue;
     }
     const at = first + anchor.length;
-    const after = interactiveContent.slice(at, at + 100);
-    // Reject if a placeholder or filled value already follows the label.
-    if (/^\s*\[CAMPO_\d+\*?\]/.test(after) || /^\s*[^\s,.;:\n\[\]()_-]{2,}/.test(after)) continue;
+    const after = interactiveContent.slice(at).split('\n', 1)[0];
+    // Do not insert over an existing marker or an explicit same-line value.
+    if (/^\s*\[CAMPO_\d+\*?\]/.test(after) || /^\s*[^\s,.;:\[\]()_-]{2,}/.test(after)) continue;
     const field = nextField();
     interactiveContent = interactiveContent.slice(0, at) + ' ' + field + interactiveContent.slice(at);
     inserted++;
