@@ -364,6 +364,12 @@ export default function App() {
     }, 'Respuesta guardada. La observación pasó a revisión.');
   };
 
+  const handleReopenObservation = async (obsId: string) => {
+    await syncOperation(`/api/observations/${obsId}/reopen`, {
+      method: 'POST'
+    }, 'Observación reabierta.');
+  };
+
   // Advance Stage (Validated)
   const handleAdvanceStage = async () => {
     if (!activeCaseId) return;
@@ -601,6 +607,7 @@ export default function App() {
                 onSubmitForm={handleFormSubmit}
                 onAddObservation={handleAddObservation}
                 onResolveObservation={handleResolveObservation}
+                onReopenObservation={handleReopenObservation}
                 onAdvanceStage={handleAdvanceStage}
                 onApproveStage={handleApproveStage}
                 onAddParticipant={handleAddParticipant}
