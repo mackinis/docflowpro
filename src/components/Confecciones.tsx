@@ -5,6 +5,7 @@ import type { Case, ProcessTemplate, User } from '../types';
 type Confeccion = { id:string; case_id:string; template_id:string; title:string; content:string; status:'draft'|'closed'; last_field_number:number; case_code:string; case_title:string; updated_at:string };
 type ChatLine = { from:'agent'|'user'; text:string };
 type Proposal = {field:string;value:string;source?:string};
+type Coverage = {total:number;proposed:number;unresolved:number;fields:Array<{field:string;label:string;status:string}>};
 type Props = { cases:Case[]; templates:ProcessTemplate[]; currentUser:User };
 const marker = /\[CAMPO_(\d+)(\*)?\]/g;
 async function request(url:string, init?:RequestInit) {
@@ -35,6 +36,7 @@ export default function Confecciones({cases,templates,currentUser}:Props) {
   const [showCreate,setShowCreate] = useState(false);
   const [instruction,setInstruction] = useState('');
   const [proposals,setProposals] = useState<Proposal[]>([]);
+  const [coverage,setCoverage] = useState<Coverage|null>(null);
   const [proposalSnapshot,setProposalSnapshot] = useState('');
   const [chat,setChat] = useState<ChatLine[]>([{from:'agent',text:'Estoy listo para ayudarte. Puedo completar campos usando los datos del legajo y preguntarte cuando falte información.'}]);
   const editorRef = useRef<HTMLTextAreaElement>(null);
@@ -113,6 +115,7 @@ export default function Confecciones({cases,templates,currentUser}:Props) {
       const data=await request('/api/confecciones/'+selected.id+'/agent',{method:'POST',body:JSON.stringify({instruction:message,content:snapshot})});
       if (contentRef.current!==snapshot) {setChat(c=>[...c,{from:'agent',text:'El documento cambió mientras analizaba. No apliqué reemplazos para proteger tus modificaciones. Volvé a pedírmelo.'}]);return;}
       const pending:Proposal[] = Array.isArray(data.replacements) ? data.replacements.filter((p:Proposal)=>typeof p.field==='string' && typeof p.value==='string' && snapshot.includes(p.field)) : [];
+      setCoverage(data.coverage || null);
       setProposalSnapshot(snapshot);
       setProposals(pending);
       setChat(c=>[...c,{from:'agent',text:String(data.reply||'')+(pending.length?' · Revisá '+pending.length+' propuesta(s) antes de aplicarlas.':'')}]);
@@ -191,6 +194,13 @@ export default function Confecciones({cases,templates,currentUser}:Props) {
           {selected.status==='draft'&&proposals.length>0&&<div className="border-t border-amber-300 bg-amber-50 dark:bg-slate-900 p-3 space-y-2">
             <p className="text-xs font-bold text-amber-900 dark:text-amber-300">Propuestas del agente · confirmar antes de escribir</p>
             <div className="max-h-44 overflow-y-auto space-y-1">{proposals.map((p,i)=><div key={i} className="flex gap-2 items-start text-xs dark:text-white"><code className="shrink-0">{p.field}</code><span className="break-words flex-1">{p.value}</span><button aria-label={'Descartar '+p.field} title="Descartar propuesta" onClick={()=>setProposals(prev=>prev.filter((_,j)=>j!==i))} className="text-red-600"><X size={14}/></button></div>)}</div>
+            {coverage && <div className="text-xs dark:text-slate-200 space-y-1 border-t border-amber-300/40 pt-2">
+              <p className="font-semibold">Control de campos: {coverage.total} pendientes al consultar · {coverage.proposed} propuestas · {coverage.unresolved} sin dato verificado.</p>
+              <details><summary className="cursor-pointer">Ver todos los campos sin resolver ({coverage.unresolved})</summary>
+                <div className="max-h-44 overflow-y-auto mt-2 space-y-1">{coverage.fields.map(f=><div key={f.field}><strong>{f.field}</strong> — {f.label} · Requiere verificación</div>)}</div>
+              </details>
+              <p>«Sin dato verificado» no significa que el dato no exista: puede faltar en el contexto consultado o requerir identificar al actor.</p>
+            </div>}
             <div className="flex gap-2"><button onClick={applyProposals} className="bg-emerald-600 text-white rounded-lg px-3 py-2 text-xs font-semibold">Aplicar propuestas</button><button onClick={()=>setProposals([])} className="border border-slate-300 rounded-lg px-3 py-2 text-xs dark:text-white">Descartar todas</button></div>
           </div>}
           {selected.status==='draft'&&<form onSubmit={e=>{e.preventDefault();void send();}} className="border-t border-slate-200 dark:border-slate-700 p-3 flex gap-2">
