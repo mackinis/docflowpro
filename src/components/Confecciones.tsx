@@ -127,11 +127,11 @@ export default function Confecciones({cases,templates,currentUser}:Props) {
     let count=0;
     for(const p of proposals) {
       if(!updated.includes(p.field))continue;
-      updated=updated.replace(p.field,p.value);
+      updated=updated.split(p.field).join(p.value);
       count++;
     }
     setProposals([]);setProposalSnapshot('');
-    if(count) {changeContent(updated);setChat(c=>[...c,{from:'agent',text:count+' campo(s) aplicados. Revisá el documento y guardalo.'}]);}
+    if(count) {changeContent(updated);setChat(c=>[...c,{from:'agent',text:count+' campo(s) completados en todas sus apariciones. Revisá el documento y guardalo.'}]);}
   };
   const close = async () => {
     if(!selected || !window.confirm('¿Finalizar esta confección? El documento quedará bloqueado para edición.'))return;
