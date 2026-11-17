@@ -3414,6 +3414,20 @@ async function handleResolveObservation(c: AppContext) {
   });
 }
 
+app.post('/api/observations/:id/reopen', async (c) => {
+  const auth = c.get('auth')!;
+  if (!['MANAGER', 'ADMIN', 'SUPERADMIN'].includes(auth.user.role)) return c.json({ error: 'Sin autorización' }, 403);
+  const { id } = c.req.param();
+  const obs = await c.env.DB.prepare('SELECT * FROM observations WHERE id = ?').bind(id).first<any>();
+  if (!obs) return c.json({ error: 'Observación no encontrada' }, 404);
+  if (obs.status !== 'resolved') return c.json({ error: 'La observación no está cumplida' }, 409);
+  const now = new Date().toISOString();
+  await c.env.DB.prepare("UPDATE observations SET status = 'open', response = NULL, resolved_by = NULL, resolved_at = NULL WHERE id = ? AND status = 'resolved'").bind(id).run();
+  await c.env.DB.prepare("UPDATE cases SET status = 'observed', updated_at = ? WHERE id = ?").bind(now, obs.case_id).run();
+  await createAudit(c.env.DB, auth.user.id, 'Cumplimiento de observación revertido', 'Observation', id, obs.text.substring(0, 80));
+  return c.json({ success: true });
+});
+
 app.post('/api/observations/:id/resolve', handleResolveObservation);
 app.put('/api/observations/:id/resolve', handleResolveObservation);
 
