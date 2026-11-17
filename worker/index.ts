@@ -2703,17 +2703,17 @@ app.get('/api/cases/:caseId/documents', async (c) => {
   const auth = c.get('auth')!;
   const { caseId } = c.req.param();
   const allDocs = (await getAllDocuments(c.env.DB)).filter((d) => d.caseId === caseId);
-  if (auth.user.role !== 'SUPERADMIN' && auth.user.role !== 'ADMIN') {
-    return c.json(
-      allDocs.filter((d) => {
-        if (d.status === 'approved' && d.allowedRoles && d.allowedRoles.length > 0) {
-          return d.allowedRoles.includes(auth.user.role);
-        }
-        return true;
-      })
-    );
-  }
-  return c.json(allDocs);
+  const caseObj = await getCaseById(c.env.DB, caseId);
+  return c.json(allDocs.filter(d => {
+    if (d.status !== 'approved') return true;
+    if (d.allowedRoles?.includes('PRIVATE_CASE_ADVISOR')) {
+      return ['SUPERADMIN', 'ADMIN'].includes(auth.user.role) ||
+        (auth.user.role === 'MANAGER' && caseObj?.assignedManagerId === auth.user.id) ||
+        (auth.user.role === 'ASESOR' && caseObj?.assignedAdvisorId === auth.user.id);
+    }
+    return ['SUPERADMIN', 'ADMIN'].includes(auth.user.role) ||
+      !d.allowedRoles?.length || d.allowedRoles.includes(auth.user.role);
+  }));
 });
 
 async function handleDocumentUpload(c: AppContext) {
@@ -2934,9 +2934,14 @@ app.get('/api/documents/:id/download', async (c) => {
   const doc = await c.env.DB.prepare('SELECT * FROM documents WHERE id = ?').bind(id).first<any>();
   if (!doc) return c.json({ error: 'Documento no encontrado.' }, 404);
 
-  if (doc.status === 'approved' && doc.allowed_roles_json && !['SUPERADMIN', 'ADMIN'].includes(auth.user.role)) {
+  if (doc.status === 'approved' && doc.allowed_roles_json) {
     const allowed: string[] = JSON.parse(doc.allowed_roles_json);
-    if (allowed.length > 0 && !allowed.includes(auth.user.role)) {
+    const caseObj = await getCaseById(c.env.DB, doc.case_id);
+    const privateAccess = ['SUPERADMIN', 'ADMIN'].includes(auth.user.role) ||
+      (auth.user.role === 'MANAGER' && caseObj?.assignedManagerId === auth.user.id) ||
+      (auth.user.role === 'ASESOR' && caseObj?.assignedAdvisorId === auth.user.id);
+    if (allowed.includes('PRIVATE_CASE_ADVISOR') ? !privateAccess :
+      (!['SUPERADMIN', 'ADMIN'].includes(auth.user.role) && allowed.length > 0 && !allowed.includes(auth.user.role))) {
       return c.json({ error: 'No tienes permiso para descargar este documento.' }, 403);
     }
   }
@@ -3107,7 +3112,7 @@ async function handleDocumentReview(c: AppContext) {
 
   const rolesJson =
     status === 'approved'
-      ? JSON.stringify(allowedRoles || ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR'])
+      ? JSON.stringify(Array.isArray(allowedRoles) && allowedRoles.length ? allowedRoles : ['PRIVATE_CASE_ADVISOR'])
       : docRow.allowed_roles_json;
 
   await c.env.DB.prepare('UPDATE documents SET status = ?, allowed_roles_json = ? WHERE id = ?')
