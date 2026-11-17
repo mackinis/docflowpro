@@ -688,7 +688,8 @@ export async function validateStageRequirements(
   db: D1Database,
   caseId: string,
   stageId: string,
-  template: ProcessTemplate
+  template: ProcessTemplate,
+  mode: 'approval' | 'submission' = 'approval'
 ): Promise<{ isValid: boolean; missing: string[] }> {
   const stage = template.stages.find((s) => s.id === stageId);
   if (!stage) return { isValid: false, missing: ['Etapa no válida'] };
@@ -736,7 +737,7 @@ export async function validateStageRequirements(
         missing.push(`Documento faltante: "${req.name}"`);
       } else if (doc.status === 'rejected') {
         missing.push(`Documento rechazado: "${req.name}" (Debe ser aprobado)`);
-      } else if (doc.status === 'in_review' || doc.status === 'uploaded') {
+      } else if (mode === 'approval' && (doc.status === 'in_review' || doc.status === 'uploaded')) {
         missing.push(`Documento en revisión: "${req.name}" (Requiere aprobación del Manager)`);
       }
     } else if (req.type === 'task') {
@@ -751,8 +752,8 @@ export async function validateStageRequirements(
     }
   }
 
-  if (openObs.length > 0) {
-    missing.push(
+  if (mode === 'approval' && openObs.length > 0) {
+    missing.push
       `Observación abierta: Hay ${openObs.length} observaciones pendientes de resolución.`
     );
   }
