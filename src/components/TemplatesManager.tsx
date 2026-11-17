@@ -95,10 +95,6 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
   const [selectedDocumentContent,setSelectedDocumentContent]=useState('');
   // The source of truth is Documentos (shared_documents), not virtual
   // process templates or legacy copies of the same digitized document.
-  const digitalTemplates=sharedDocs.filter(d=>
-    (d.fileName||'').toLowerCase().endsWith('.txt') &&
-    (/digitalizado/i.test(d.name||'') || /_digitalizado\.txt$/i.test(d.fileName||'') || d.sourceTemplateId)
-  );
   const importDigitalFields = async (templateId:string) => {
     setSelectedDigitalTemplateId(templateId);
     setImportedFieldMap([]);
@@ -158,6 +154,11 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
   const [editShowDocumentToAll, setEditShowDocumentToAll] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [sharedDocs, setSharedDocs] = useState<any[]>([]);
+  const digitalTemplates=sharedDocs.filter(d=>
+    (d.fileName||'').toLowerCase().endsWith('.txt') &&
+    (/digitalizado/i.test(d.name||'') || /_digitalizado\.txt$/i.test(d.fileName||'') || d.sourceTemplateId)
+  );
+
 
   React.useEffect(() => {
     const fetchSharedDocs = async () => {
