@@ -211,8 +211,8 @@ export default function App() {
   };
 
   // Upload Document (real file to Cloudflare R2 or digital contract registration)
-  const handleUploadDoc = async (stageId: string, reqId: string, reqName: string, fileName: string, fileSize: number, file?: File) => {
-    if (!activeCaseId || !currentUser) return;
+  const handleUploadDoc = async (stageId: string, reqId: string, reqName: string, fileName: string, fileSize: number, file?: File, onProgress?: (percent: number) => void) => {
+    if (!activeCaseId || !currentUser) throw new Error('No hay un legajo o usuario activo.');
     if (file) {
       const formData = new FormData();
       formData.append('caseId', activeCaseId);
@@ -220,10 +220,30 @@ export default function App() {
       formData.append('requirementId', reqId);
       formData.append('name', reqName);
       formData.append('file', file);
-      await syncOperation('/api/documents/upload', {
-        method: 'POST',
-        body: formData
+      // XMLHttpRequest permite medir bytes realmente enviados; fetch no expone progreso de subida.
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/documents/upload');
+        xhr.withCredentials = true;
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable && event.total > 0) {
+            onProgress?.(Math.min(99, Math.round((event.loaded / event.total) * 100)));
+          }
+        };
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve();
+          } else {
+            let message = 'No se pudo guardar el archivo.';
+            try { message = JSON.parse(xhr.responseText).error || message; } catch {}
+            reject(new Error(message));
+          }
+        };
+        xhr.onerror = () => reject(new Error('Falló la conexión durante la subida.'));
+        xhr.onabort = () => reject(new Error('Se canceló la subida.'));
+        xhr.send(formData);
       });
+      await loadState();
     } else {
       await syncOperation('/api/documents/upload', {
         method: 'POST',
