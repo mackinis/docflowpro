@@ -227,7 +227,7 @@ export default function App() {
         xhr.withCredentials = true;
         xhr.upload.onprogress = (event) => {
           if (event.lengthComputable && event.total > 0) {
-            onProgress?.(Math.min(99, Math.round((event.loaded / event.total) * 100)));
+            onProgress?.(Math.min(100, Math.floor((event.loaded / event.total) * 100)));
           }
         };
         xhr.onload = () => {
