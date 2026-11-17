@@ -264,24 +264,8 @@ export default function CaseDetail({
 
   // Trigger real file picker for document requirement upload (with authorization check for ASESOR)
   const handleTriggerFileUpload = (reqId: string, reqName: string) => {
-    if (currentUser.role === 'ASESOR') {
-      const approvedReq = uploadRequests?.find(
-        r => r.caseId === caseId && r.requirementId === reqId && r.status === 'approved'
-      );
-      if (!approvedReq) {
-        alert('No tienes autorización aprobada para subir este documento.');
-        return;
-      }
-      setPendingUploadContext({
-        reqId,
-        reqName,
-        allowedExt: approvedReq.allowedExtension || '.pdf',
-        allowedMaxWeight: approvedReq.allowedMaxWeight || 5
-      });
-    } else {
-      setPendingUploadContext({ reqId, reqName });
-    }
-
+    if (currentUser.role === 'ASESOR' && (caseObj.assignedAdvisorId !== currentUser.id || caseObj.isCurrentStageApproved)) return;
+    setPendingUploadContext({ reqId, reqName });
     setTimeout(() => {
       if (caseFileInputRef.current) {
         caseFileInputRef.current.value = '';
@@ -1198,99 +1182,16 @@ export default function CaseDetail({
                                 </span>
                               )}
 
-                              {/* Operations for advisors */}
-                              {isAsesor && (
-                                <div className="flex flex-col items-end gap-1.5">
-                                  {(() => {
-                                    const approvedReq = uploadRequests?.find(
-                                      r => r.caseId === caseId && r.requirementId === req.id && r.status === 'approved'
-                                    );
-                                    const pendingReq = uploadRequests?.find(
-                                      r => r.caseId === caseId && r.requirementId === req.id && r.status === 'pending'
-                                    );
-                                    const rejectedReq = uploadRequests?.find(
-                                      r => r.caseId === caseId && r.requirementId === req.id && r.status === 'rejected'
-                                    );
-
-                                    if (approvedReq) {
-                                      return (
-                                        <div className="flex flex-col items-end gap-1">
-                                          <div className="flex items-center gap-1.5">
-                                            <span className="text-[10px] text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full font-semibold">
-                                              Autorizado (Máx: {approvedReq.allowedMaxWeight}MB, Ext: {approvedReq.allowedExtension})
-                                            </span>
-                                            <button
-                                              onClick={() => handleTriggerFileUpload(req.id, req.name)}
-                                              className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-[10px] font-bold rounded-lg shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
-                                            >
-                                              <Upload className="w-3.5 h-3.5 text-slate-400" />
-                                              <span>{doc ? 'Reemplazar' : 'Subir Documento'}</span>
-                                            </button>
-                                          </div>
-                                        </div>
-                                      );
-                                    }
-
-                                    if (pendingReq) {
-                                      return (
-                                        <div className="flex items-center gap-2 text-amber-600 bg-amber-50/60 border border-amber-200/50 px-2.5 py-1.5 rounded-lg text-[10px]">
-                                          <Clock className="w-3.5 h-3.5 text-amber-500 animate-spin shrink-0" />
-                                          <span>Permiso solicitado ({pendingReq.requestedExtension}) [Pendiente]</span>
-                                        </div>
-                                      );
-                                    }
-
-                                    return (
-                                      <div className="flex flex-col items-end gap-1">
-                                        {rejectedReq && (
-                                          <div className="text-red-600 bg-red-50 border border-red-100 px-2.5 py-1.5 rounded-lg text-[10px] max-w-xs text-right mb-1">
-                                            <p className="font-semibold">Rechazado ({rejectedReq.requestedExtension})</p>
-                                            {rejectedReq.responseComment && <p className="text-[9px] text-slate-500 italic">Motivo: "{rejectedReq.responseComment}"</p>}
-                                          </div>
-                                        )}
-                                        {requestingForReqId === req.id ? (
-                                          <div className="flex items-center gap-1 bg-slate-100 p-1.5 rounded-lg border border-slate-200">
-                                            <select
-                                              value={requestedExt}
-                                              onChange={(e) => setRequestedExt(e.target.value)}
-                                              className="text-[10px] font-mono border-0 bg-transparent py-0.5 px-1 focus:ring-0 focus:outline-none"
-                                            >
-                                              <option value=".pdf">.pdf</option>
-                                              <option value=".docx">.docx</option>
-                                              <option value=".doc">.doc</option>
-                                              <option value=".xlsx">.xlsx</option>
-                                              <option value=".xls">.xls</option>
-                                              <option value=".png">.png</option>
-                                              <option value=".jpg">.jpg</option>
-                                            </select>
-                                            <button
-                                              onClick={() => handleCreateUploadRequestSubmit(currentStage!.id, req.id, req.name, requestedExt)}
-                                              className="px-2 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold rounded cursor-pointer"
-                                            >
-                                              Solicitar
-                                            </button>
-                                            <button
-                                              onClick={() => setRequestingForReqId(null)}
-                                              className="px-1.5 py-1 text-slate-400 hover:text-slate-600 text-[10px] font-bold"
-                                            >
-                                              <X className="w-3.5 h-3.5" />
-                                            </button>
-                                          </div>
-                                        ) : (
-                                          <button
-                                            onClick={() => {
-                                              setRequestingForReqId(req.id);
-                                              setRequestedExt('.pdf');
-                                            }}
-                                            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold rounded-lg shadow-sm flex items-center gap-1 transition-all cursor-pointer"
-                                          >
-                                            <Settings className="w-3.5 h-3.5 text-indigo-200" />
-                                            <span>{rejectedReq ? 'Volver a Solicitar' : 'Solicitar Permiso de Subida'}</span>
-                                          </button>
-                                        )}
-                                      </div>
-                                    );
-                                  })()}
+                              {/* Carga de requisitos del legajo asignado: no requiere permiso documental general. */}
+                              {isAsesor && caseObj.assignedAdvisorId === currentUser.id && !caseObj.isCurrentStageApproved && (
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    onClick={() => handleTriggerFileUpload(req.id, req.name)}
+                                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold rounded-lg shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
+                                  >
+                                    <Upload className="w-3.5 h-3.5" />
+                                    <span>{doc ? 'Reemplazar archivo' : 'Cargar Archivo'}</span>
+                                  </button>
                                 </div>
                               )}
 
