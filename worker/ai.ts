@@ -241,24 +241,70 @@ export async function digitizeTemplateWithAI(
     throw new Error('No se pudo extraer contenido del documento proporcionado.');
   }
 
-  const systemPrompt =
-    'Eres un transcriptor y digitalizador documental minucioso. Responde EXCLUSIVAMENTE con un objeto JSON válido sin markdown adicional.';
+  // Phase 1: deterministic discovery of explicit blanks. Preserve all other source
+  // characters and never renumber pre-existing placeholders.
+  const existingNumbers = Array.from(extractedText.matchAll(/\[CAMPO_(\d+)\*?\]/g), m => Number(m[1]));
+  let fieldNumber = Math.max(0, ...existingNumbers);
+  const explicitBlank = /_{3,}|\.{3,}|…{2,}/g;
+  const used = new Set<number>(existingNumbers);
+  const nextField = () => {
+    do { fieldNumber++; } while (used.has(fieldNumber));
+    used.add(fieldNumber);
+    return `[CAMPO_${fieldNumber}]`;
+  };
+  let interactiveContent = extractedText.replace(explicitBlank, () => nextField());
 
-  // A document is not a process. Preserve the full source text and turn
-  // dotted/underscored blanks into explicit fillable field markers.
-  let fieldNumber = 0;
-  const interactiveContent = extractedText.replace(/_{3,}|\.{3,}|…{2,}/g, () => `[CAMPO_${++fieldNumber}]`);
-  const userPrompt = `Extraé únicamente el título y la descripción del documento siguiente.
-No generes etapas, actores, tareas ni requisitos de legajo.
-Devolvé JSON: {"name":"Título","description":"Descripción breve"}.
-Documento:
-"""
-${extractedText.slice(0, 9000)}
-"""`;
-
-  const raw = await runWorkersAiText(env, systemPrompt, userPrompt, 3584);
+  // Phase 2: ask AI to identify missing semantic slots using literal source
+  // anchors, not to rewrite the document. Anchors are verified before insertion.
+  const systemPrompt = `Sos especialista en digitalización de formularios en español.
+  Devolvé únicamente JSON válido. NO reescribas ni resumas el documento.
+  Detectá etiquetas que solicitan un dato pero no tienen un marcador [CAMPO_N].
+  Ejemplos: "FECHA DE NACIMIENTO:", "DNI:", "DOMICILIO:", "CUIT:".
+  Distinguí cada actor (locador, locatario, garante, cónyuge, etc.) según contexto.
+  No insertes campos en títulos, instrucciones, párrafos narrativos ni cuando
+  la etiqueta ya tiene un valor fijo o un marcador existente.
+  Para cada omisión devolvé un ancla EXACTA que exista literalmente en el texto
+  y termine inmediatamente donde debe insertarse el campo.
+  Si hay dudas, no inventes: agregá una observación de revisión.
+  Formato: {"name":"Título","description":"Descripción breve",
+  "insertions":[{"anchor":"texto literal exacto","label":"Fecha de nacimiento","actor":"Locador 1"}],
+  "reviewNotes":["duda concreta"]}. Máximo 100 inserciones.`;
+  const userPrompt = `Analizá íntegramente esta plantilla para encontrar campos omitidos.
+  Los marcadores existentes son correctos y no deben alterarse.
+  Documento completo:
+  ${interactiveContent.slice(0, 26000)}`;
+  const raw = await runWorkersAiText(env, systemPrompt, userPrompt, 4096);
   const parsed = cleanAndParseJSON(raw);
-  const now = Date.now();
+  const reviewNotes: string[] = Array.isArray(parsed.reviewNotes)
+    ? parsed.reviewNotes.filter((v: unknown) => typeof v === 'string').slice(0, 30)
+    : [];
+  const insertions = Array.isArray(parsed.insertions) ? parsed.insertions.slice(0, 100) : [];
+  const seenAnchors = new Set<string>();
+  let inserted = 0;
+  for (const item of insertions) {
+    if (!item || typeof item.anchor !== 'string' || typeof item.label !== 'string') continue;
+    const anchor = item.anchor;
+    if (anchor.length < 6 || anchor.length > 220 || seenAnchors.has(anchor)) continue;
+    seenAnchors.add(anchor);
+    const first = interactiveContent.indexOf(anchor);
+    if (first < 0 || interactiveContent.indexOf(anchor, first + 1) !== -1) {
+      reviewNotes.push(`Revisar campo ambiguo: ${item.label.slice(0, 80)}`);
+      continue;
+    }
+    const at = first + anchor.length;
+    const after = interactiveContent.slice(at, at + 100);
+    // Reject if a placeholder or filled value already follows the label.
+    if (/^\s*\[CAMPO_\d+\*?\]/.test(after) || /^\s*[^\s,.;:\n\[\]()_-]{2,}/.test(after)) continue;
+    const field = nextField();
+    interactiveContent = interactiveContent.slice(0, at) + ' ' + field + interactiveContent.slice(at);
+    inserted++;
+  }
+  // Keep human review explicit; do not claim exhaustive automatic detection.
+  const description = String(parsed.description || 'Documento digitalizado pendiente de revisión.');
+  const note = reviewNotes.length
+    ? ` Revisar: ${reviewNotes.slice(0, 5).join('; ').slice(0, 600)}`
+    : '';
+  parsed.description = `${description} · ${inserted} campos semánticos incorporados.${note}`;
 
   return {
     name: parsed.name || params.fileName || 'Documento digitalizado',
