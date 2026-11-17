@@ -916,7 +916,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                   <div className="rounded-xl border border-amber-200 bg-white p-4 space-y-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <h6 className="font-bold text-sm text-slate-800">Mapa inteligente de campos</h6>
-                      <span className="text-xs text-slate-500">{[...new Set([...editOriginalDocumentContent.matchAll(/\\[CAMPO_\\d+\\*?\\]/g)].map(m=>m[0]))].length} campos en el documento</span>
+                      <span className="text-xs text-slate-500">{[...new Set([...editOriginalDocumentContent.matchAll(/\[CAMPO_\d+\*?\]/g)].map(m=>m[0]))].length} campos en el documento</span>
                     </div>
                     <p className="text-xs text-slate-600">Confirmá qué dato solicita cada campo y a qué actor corresponde. Los cambios se guardan junto a la plantilla.</p>
                     {editReviewNotes.length>0 && <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-900">
@@ -924,7 +924,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                       {editReviewNotes.map((note,i)=><p key={i} className="mt-1">{note}</p>)}
                     </div>}
                     <div className="max-h-72 overflow-y-auto space-y-2">
-                      {[...new Set([...editOriginalDocumentContent.matchAll(/\\[CAMPO_\\d+\\*?\\]/g)].map(m=>m[0]))].map(id=>{
+                      {[...new Set([...editOriginalDocumentContent.matchAll(/\[CAMPO_\d+\*?\]/g)].map(m=>m[0]))].map(id=>{
                         const f=editFieldMap.find(x=>x.id===id);
                         const change=(key:'label'|'actor'|'review',value:string|boolean)=>{
                           setEditFieldMap(prev=>{
