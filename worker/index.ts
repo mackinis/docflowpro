@@ -2575,12 +2575,47 @@ app.post('/api/confecciones/:id/agent', async (c) => {
   const history = Array.isArray(conversation) ? conversation.slice(-24)
     .filter((m:any) => (m?.from === 'user' || m?.from === 'agent') && typeof m.text === 'string')
     .map((m:any) => ({role:m.from, text:m.text.slice(0,2000)})) : [];
-  const evidence = JSON.stringify({
+  // Build a separate evidence window for each field batch. The previous single
+  // JSON.slice(0, 14000) silently hid later attachments, even when relevant.
+  const baseEvidence = {
     code:caseObj.code, title:caseObj.title, description:caseObj.description,
-    participants:caseObj.participants,
-    caseDocumentContent:caseObj.documentContent || '',
-    documents:documentEvidence
-  });
+    participants:caseObj.participants
+  };
+  const caseEvidence = String(caseObj.documentContent || '');
+  const evidenceFor = (batch:string[]):string => {
+    const terms = batch.flatMap(field => {
+      const entry=fieldMap.find(f=>f.id===field);
+      const at=content.indexOf(field);
+      const context=at>=0?content.slice(Math.max(0,at-110),Math.min(content.length,at+field.length+110)):'';
+      return [entry?.label||'',entry?.actor||'',context];
+    }).join(' ').toLocaleLowerCase('es-AR');
+    const keywords=[...new Set(terms.match(/[a-záéíóúñü]{4,}/g)||[])]
+      .filter(w=>!['campo','para','esta','este','datos','parte','debe','donde','sobre','entre','documento','plantilla','completar'].includes(w))
+      .slice(0,35);
+    const snippets=(value:string,limit:number):string => {
+      if(value.length<=limit)return value;
+      const windows:Array<{at:number;score:number}>=[];
+      for(let at=0;at<value.length;at+=850) {
+        const chunk=value.slice(at,at+1100).toLocaleLowerCase('es-AR');
+        const score=keywords.reduce((n,k)=>n+(chunk.includes(k)?1:0),0);
+        windows.push({at,score});
+      }
+      const chosen=windows.sort((a,b)=>b.score-a.score||a.at-b.at).slice(0,Math.max(1,Math.floor(limit/1100)))
+        .sort((a,b)=>a.at-b.at);
+      return chosen.map(w=>'[posición '+w.at+'] '+value.slice(w.at,w.at+1050)).join('\n[…]\n').slice(0,limit);
+    };
+    // Reserve space for every attachment's status, even when its text is unreadable.
+    const docs= documentEvidence.map((d,i)=>({
+      name:d.name,status:d.status,note:d.note,
+      excerpt:d.text?snippets(d.text,Math.min(2500,Math.max(900,Math.floor(18000/Math.max(1,documentEvidence.length))))):undefined,
+      index:i+1
+    }));
+    return JSON.stringify({
+      ...baseEvidence,
+      caseDocumentContent:snippets(caseEvidence,4500),
+      documents:docs
+    });
+  };
   // Process every marker in bounded batches instead of truncating the marker list.
   const batches: string[][] = [];
   for (let i=0;i<markers.length;i+=6) batches.push(markers.slice(i,i+6));
@@ -2595,7 +2630,7 @@ Campos y contexto: ${JSON.stringify(batch.map(field => {
  const positions=[...content.matchAll(/\[CAMPO_\d+\*?\]/g)].filter(m=>m[0]===field).slice(0,4).map(m=>content.slice(Math.max(0,(m.index||0)-220),Math.min(content.length,(m.index||0)+field.length+220)));
  return {field,label:entry?.label,actor:entry?.actor,contexts:positions};
 }))}
-Datos disponibles del legajo (pueden incluir contenido digitalizado): ${evidence.slice(0,14000)}
+Datos disponibles del legajo (pueden incluir contenido digitalizado; extractos identificados por posición): ${evidenceFor(batch)}
 Conversación reciente: ${JSON.stringify(history)}
 Instrucción actual: ${instruction}`;
   const extractJson = (raw: string): any => {
