@@ -20,7 +20,7 @@ function textToPdf(value:string):Blob {
   const fontId=add('<< /Type /Font /Subtype /Type1 /BaseFont /Courier /Encoding /WinAnsiEncoding >>');
   const encode=(s:string)=>s.replace(/[^\x20-\x7e\u00a0-\u00ff]/g,'?').replace(/\\/g,'\\\\').replace(/\(/g,'\\(').replace(/\)/g,'\\)');
   for(const page of pages){
-    const stream='BT /F1 9 Tf 12 TL 36 805 Td\n'+page.map((line,i)=> (i?'T* ':'')+'('+encode(line)+') Tj').join('\n')+'\nET';
+    const stream='0.10 0.15 0.23 rg 0 0 595 842 re f\n1 1 1 rg BT /F1 9 Tf 12 TL 36 805 Td\n'+page.map((line,i)=> (i?'T* ':'')+'('+encode(line)+') Tj').join('\n')+'\nET';
     const streamId=add('<< /Length '+stream.length+' >>\nstream\n'+stream+'\nendstream');
     const pageId=add('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 '+fontId+' 0 R >> >> /Contents '+streamId+' 0 R >>');
     pageIds.push(pageId);
