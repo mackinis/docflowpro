@@ -2027,7 +2027,7 @@ app.post('/api/cases/:id/request-review', async (c) => {
   const templateForReview = await findTemplateOrVirtualById(c.env, caseObj.templateId);
   const stageForReview = templateForReview?.stages?.[caseObj.currentStageIndex];
   if (!stageForReview) return c.json({ error: 'El proceso no tiene una etapa válida.' }, 400);
-  const validationForReview = await validateStageRequirements(c.env.DB, id, stageForReview.id, templateForReview!);
+  const validationForReview = await validateStageRequirements(c.env.DB, id, stageForReview.id, templateForReview!, 'submission');
   if (!validationForReview.isValid) return c.json({ error: 'Requisitos obligatorios pendientes', reasons: validationForReview.missing }, 400);
 
   await c.env.DB.prepare("UPDATE cases SET status = 'pending_review', updated_at = ? WHERE id = ?")
