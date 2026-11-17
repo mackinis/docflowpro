@@ -144,7 +144,7 @@ export default function CaseDetail({
 
   // Visibility role for approved documents
   const [approvingDoc, setApprovingDoc] = useState<{ id: string; name: string } | null>(null);
-  const [selectedAllowedRole, setSelectedAllowedRole] = useState<string>('Todos');
+  const [selectedAllowedRole, setSelectedAllowedRole] = useState<string>('Privado');
 
   // Advisor upload requests state
   const [requestingForReqId, setRequestingForReqId] = useState<string | null>(null);
@@ -1059,7 +1059,7 @@ export default function CaseDetail({
                       .filter(r => r.type === 'document')
                       .map((req) => {
                         const originalDoc = documents.find(d => d.caseId === caseObj.id && d.requirementId === req.id);
-                        const isDocVisible = !originalDoc || originalDoc.status !== 'approved' || !originalDoc.allowedRoles || originalDoc.allowedRoles.includes(currentUser.role) || currentUser.role === 'SUPERADMIN' || currentUser.role === 'ADMIN';
+                        const isDocVisible = !originalDoc || originalDoc.status !== 'approved' || !originalDoc.allowedRoles || originalDoc.allowedRoles.includes(currentUser.role) || originalDoc.allowedRoles.includes('PRIVATE_CASE_ADVISOR') || currentUser.role === 'SUPERADMIN' || currentUser.role === 'ADMIN';
                         const doc = isDocVisible ? originalDoc : undefined;
                         const isDownloadAsset = req.documentSourceType === 'download_asset';
                         const linkedSharedDoc = isDownloadAsset ? sharedDocs.find(d => d.id === req.linkedSharedDocumentId) : null;
@@ -1283,7 +1283,7 @@ export default function CaseDetail({
                                       disabled={caseObj.isCurrentStageApproved}
                                       onClick={() => {
                                         setApprovingDoc({ id: doc.id, name: req.name });
-                                        setSelectedAllowedRole('Todos');
+                                        setSelectedAllowedRole('Privado');
                                       }}
                                       className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-[10px] font-bold rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
@@ -1806,6 +1806,7 @@ export default function CaseDetail({
                   onChange={(e) => setSelectedAllowedRole(e.target.value)}
                   className="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
                 >
+                  <option value="Privado">Privado — solo el asesor asignado a este legajo (predeterminado)</option>
                   <option value="Todos">Todos (Público para todos los roles)</option>
                   <option value="Asesor">Asesor (Asesores, Managers, Admins y Superadmins)</option>
                   <option value="Manager">Manager (Managers, Admins y Superadmins)</option>
@@ -1817,6 +1818,7 @@ export default function CaseDetail({
               <div className="bg-slate-50 p-3 rounded-lg border border-slate-200/50 text-[11px] text-slate-600 space-y-1">
                 <p className="font-bold text-slate-700">Resumen de Permisos:</p>
                 <p className="leading-normal">
+                  {selectedAllowedRole === 'Privado' && '✓ Visible para el asesor asignado únicamente a este legajo; Manager asignado y administradores conservan acceso de supervisión.'}
                   {selectedAllowedRole === 'Todos' && '✓ Todos los usuarios que participen o tengan acceso al legajo podrán visualizar este documento.'}
                   {selectedAllowedRole === 'Asesor' && '✓ Permitido para roles: ASESOR, MANAGER, ADMIN, SUPERADMIN.'}
                   {selectedAllowedRole === 'Manager' && '✓ Permitido para roles: MANAGER, ADMIN, SUPERADMIN (Oculto para Asesores).'}
@@ -1836,7 +1838,9 @@ export default function CaseDetail({
               <button 
                 onClick={() => {
                   let roles: string[] = ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR'];
-                  if (selectedAllowedRole === 'Asesor') {
+                  if (selectedAllowedRole === 'Privado') {
+                    roles = ['PRIVATE_CASE_ADVISOR'];
+                  } else if (selectedAllowedRole === 'Asesor') {
                     roles = ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR'];
                   } else if (selectedAllowedRole === 'Manager') {
                     roles = ['SUPERADMIN', 'ADMIN', 'MANAGER'];
