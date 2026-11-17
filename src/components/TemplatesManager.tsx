@@ -92,10 +92,17 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
   const [selectedDigitalTemplateId,setSelectedDigitalTemplateId] = useState('');
   const [importedFieldMap,setImportedFieldMap] = useState<NonNullable<ProcessTemplate['fieldMap']>>([]);
   const [importingFields,setImportingFields] = useState(false);
-  const digitalTemplates=templates.filter(t=>!!t.originalDocumentContent?.trim() && /\[CAMPO_\d+\*?\]/.test(t.originalDocumentContent||''));
+  const [selectedDocumentContent,setSelectedDocumentContent]=useState('');
+  // The source of truth is Documentos (shared_documents), not virtual
+  // process templates or legacy copies of the same digitized document.
+  const digitalTemplates=sharedDocs.filter(d=>
+    (d.fileName||'').toLowerCase().endsWith('.txt') &&
+    (/digitalizado/i.test(d.name||'') || /_digitalizado\.txt$/i.test(d.fileName||'') || d.sourceTemplateId)
+  );
   const importDigitalFields = async (templateId:string) => {
     setSelectedDigitalTemplateId(templateId);
     setImportedFieldMap([]);
+    setSelectedDocumentContent('');
     if(!templateId)return;
     const selected=digitalTemplates.find(t=>t.id===templateId);
     if(!selected)return;
@@ -103,12 +110,13 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
     try {
       const response=await fetch('/api/templates/analyze-fields',{
         method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({templateId})
+        body:JSON.stringify({sharedDocumentId:templateId})
       });
       const data=await response.json();
       if(!response.ok)throw new Error(data.error||'No se pudo interpretar la plantilla');
       const fields=data.fields as NonNullable<ProcessTemplate['fieldMap']>;
       setImportedFieldMap(fields);
+      setSelectedDocumentContent(data.originalDocumentContent||'');
       setManualDescription(fields.map(f=>f.actor+' — '+f.label+' ('+f.id+')'+(f.review?' [REVISAR]':'')).join('\n'));
       if(!manualName.trim())setManualName(selected.name.replace(/\s*\(Digitalizado\)\s*$/i,''));
     }catch(error){alert(error instanceof Error?error.message:'Error al analizar campos');}
@@ -310,7 +318,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
           name: manualName,
           description: manualDescription,
           industry: manualIndustry,
-          originalDocumentContent: selectedDigitalTemplateId ? (digitalTemplates.find(t=>t.id===selectedDigitalTemplateId)?.originalDocumentContent||'') : '',
+          originalDocumentContent: selectedDigitalTemplateId ? selectedDocumentContent : '',
           fieldMap: selectedDigitalTemplateId ? importedFieldMap : [],
           showDocumentToAll: true,
           sharedViewMode: 'flow',
@@ -325,6 +333,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
         setManualName('');
         setSelectedDigitalTemplateId('');
         setImportedFieldMap([]);
+        setSelectedDocumentContent('');
         setManualDescription("Locador\nLocatario\nGarante mínimo 2\nEscribano\nDNI del locador\nDNI del locatario\nDNI de los garantes\nCopia de escritura\nBoleta de servicios");
         setManualIndustry('Inmobiliaria');
         if (loadState) {
