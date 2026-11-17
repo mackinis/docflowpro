@@ -1519,6 +1519,25 @@ export default function CaseDetail({
 
                         <p className="text-slate-700 font-medium leading-relaxed">{obs.text}</p>
 
+                        {obs.status === 'resolved' && (
+                          <div className="flex items-center gap-1.5 text-emerald-400 text-[11px] font-semibold">
+                            <CheckCircle className="w-4 h-4" />
+                            <span>Cumplida</span>
+                          </div>
+                        )}
+                        {isManagerOrAdmin && obs.status === 'open' && (
+                          <div className="flex justify-end pt-1">
+                            <button
+                              type="button"
+                              title="Marcar observación como cumplida"
+                              aria-label="Marcar observación como cumplida"
+                              onClick={() => onResolveObservation(obs.id, 'Observación marcada como cumplida por supervisión.')}
+                              className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors"
+                            >
+                              <Check className="w-4 h-4" strokeWidth={2.5} />
+                            </button>
+                          </div>
+                        )}
                         {obs.response ? (
                           <div className="mt-2.5 pl-3 border-l-2 border-slate-300 text-[11px] text-slate-600 space-y-1">
                             <p className="font-semibold text-[10px] text-slate-500 uppercase tracking-wider">Respuesta del Asesor:</p>
