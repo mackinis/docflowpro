@@ -251,6 +251,7 @@ export async function digitizeTemplateWithAI(
   const fields: Field[] = [];
   const notes: string[] = [];
   const originalLines = content.split('\n');
+  if (originalLines.some(line => line.length > 8500)) throw new Error('Hay líneas demasiado largas para interpretar con seguridad. Separá el texto en párrafos.');
   // Analyze bounded chunks: truncating the whole document silently loses later fields.
   const chunks: string[] = [];
   let chunk = '';
@@ -270,7 +271,9 @@ No propongas campos en instrucciones, títulos, narraciones ni valores ya escrit
 Máximo 80 campos e inserciones por fragmento.`;
   for (let index=0; index<chunks.length; index++) {
     const raw = await runWorkersAiText(env, prompt, `Fragmento ${index+1}/${chunks.length}:\n${chunks[index]}`, 4096);
-    const parsed = cleanAndParseJSON(raw);
+    let parsed: any;
+    try { parsed = cleanAndParseJSON(raw); }
+    catch { notes.push(`No se pudo interpretar el fragmento ${index+1}. Revisar manualmente.`); continue; }
     if (index===0) {
       title = typeof parsed.name==='string' && parsed.name.trim() ? parsed.name.trim().slice(0,160) : title;
       description = typeof parsed.description==='string' && parsed.description.trim() ? parsed.description.trim().slice(0,400) : description;
