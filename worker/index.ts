@@ -3109,6 +3109,16 @@ async function handleDocumentReview(c: AppContext) {
   const { status, observationText, allowedRoles } = await c.req.json();
   const docRow = await c.env.DB.prepare('SELECT * FROM documents WHERE id = ?').bind(id).first<any>();
   if (!docRow) return c.json({ error: 'Documento no encontrado' }, 404);
+  if (!['approved', 'rejected', 'uploaded'].includes(status)) return c.json({ error: 'Estado inválido.' }, 400);
+  if (docRow.status === 'approved' && status === 'rejected') {
+    return c.json({ error: 'Primero debe revertir la aprobación para rechazar el documento.' }, 409);
+  }
+  if (status === 'uploaded' && docRow.status !== 'approved') {
+    return c.json({ error: 'Solo se puede revertir un documento aprobado.' }, 409);
+  }
+  if (status === 'rejected' && (!observationText || !String(observationText).trim())) {
+    return c.json({ error: 'Debe indicar una observación para el rechazo.' }, 400);
+  }
 
   const rolesJson =
     status === 'approved'
@@ -3122,7 +3132,7 @@ async function handleDocumentReview(c: AppContext) {
   await createAudit(
     c.env.DB,
     auth.user.id,
-    `Documento ${status === 'approved' ? 'aprobado' : 'rechazado'}: "${docRow.name}"`,
+    `Documento ${status === 'approved' ? 'aprobado' : status === 'uploaded' ? 'con aprobación revertida' : 'rechazado'}: "${docRow.name}"`,
     'Document',
     id,
     docRow.name
@@ -3175,7 +3185,7 @@ async function handleDocumentReview(c: AppContext) {
       .bind(nextStatus, now, caseObj.id)
       .run();
 
-    await createNotification(
+    if (status === 'approved') await createNotification(
       c.env.DB,
       caseObj.assignedAdvisorId,
       'Documento Aprobado',
