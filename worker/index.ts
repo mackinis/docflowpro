@@ -190,6 +190,43 @@ app.use('/api/*', async (c, next) => {
   return next();
 });
 
+// A finalized case is read-only across all mutation APIs, including direct HTTP calls.
+app.use('/api/*', async (c, next) => {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(c.req.method)) return next();
+  const path = c.req.path;
+  if (/^\/api\/cases\/[^/]+\/reopen$/.test(path)) return next();
+  let caseId: string | null = null;
+  const caseMatch = path.match(/^\/api\/cases\/([^/]+)/);
+  if (caseMatch) caseId = caseMatch[1];
+  if (!caseId && /^\/api\/documents(?:\/upload|\/[^/]+\/review|\/[^/]+)$/.test(path)) {
+    if (path.endsWith('/upload')) {
+      const contentType = c.req.header('Content-Type') || '';
+      if (contentType.includes('multipart/form-data')) {
+        const form = await c.req.raw.clone().formData();
+        caseId = String(form.get('caseId') || '') || null;
+      } else {
+        const body = await c.req.raw.clone().json().catch(() => ({}));
+        caseId = body.caseId || null;
+      }
+    } else {
+      const docId = path.split('/')[3];
+      const doc = await c.env.DB.prepare('SELECT case_id FROM documents WHERE id = ?').bind(docId).first<{ case_id: string }>();
+      caseId = doc?.case_id || null;
+    }
+  }
+  if (!caseId && /^\/api\/(?:tasks|observations|forms)\/[^/]+/.test(path)) {
+    const parts = path.split('/');
+    const table = parts[2] === 'tasks' ? 'tasks' : parts[2] === 'observations' ? 'observations' : 'form_submissions';
+    const row = await c.env.DB.prepare(`SELECT case_id FROM ${table} WHERE id = ?`).bind(parts[3]).first<{ case_id: string }>().catch(() => null);
+    caseId = row?.case_id || null;
+  }
+  if (caseId) {
+    const row = await c.env.DB.prepare('SELECT status FROM cases WHERE id = ?').bind(caseId).first<{ status: string }>();
+    if (row?.status === 'completed') return c.json({ error: 'El legajo está finalizado. Reábralo con su contraseña para modificarlo.' }, 409);
+  }
+  return next();
+});
+
 // Permission overrides are checked for every authenticated API request, before route handlers.
 app.use('/api/*', async (c, next) => {
   const auth = c.get('auth');
@@ -2318,6 +2355,34 @@ app.delete('/api/cases/:id/participants/:participantId', async (c) => {
     caseObj.title
   );
   return c.json(await getCaseById(c.env.DB, id));
+});
+
+app.post('/api/cases/:id/reopen', async (c) => {
+  const auth = c.get('auth')!;
+  if (!['MANAGER', 'ADMIN', 'SUPERADMIN'].includes(auth.user.role)) {
+    return c.json({ error: 'No autorizado para reabrir legajos.' }, 403);
+  }
+  const { id } = c.req.param();
+  const { password } = await c.req.json().catch(() => ({}));
+  if (typeof password !== 'string' || !password) return c.json({ error: 'Ingrese su contraseña.' }, 400);
+  const caseObj = await getCaseById(c.env.DB, id);
+  if (!caseObj) return c.json({ error: 'Legajo no encontrado.' }, 404);
+  if (caseObj.status !== 'completed') return c.json({ error: 'El legajo no está finalizado.' }, 409);
+  if (auth.user.role === 'MANAGER' && caseObj.assignedManagerId !== auth.user.id) {
+    return c.json({ error: 'Solo el manager responsable puede reabrir este legajo.' }, 403);
+  }
+  const userRow = await c.env.DB.prepare('SELECT password_hash FROM users WHERE id = ? AND active = 1').bind(auth.user.id).first<{ password_hash: string }>();
+  const rateKey = `reopen:${getClientIp(c.req.raw)}:${auth.user.id}`;
+  const rateCheck = await checkLoginRateLimit(c.env, rateKey);
+  if (!rateCheck.allowed) return c.json({ error: 'Demasiados intentos. Intente nuevamente más tarde.' }, 429);
+  if (!userRow || !(await verifyPassword(password, userRow.password_hash))) {
+    await recordFailedLoginAttempt(c.env, rateKey);
+    return c.json({ error: 'Contraseña incorrecta.' }, 401);
+  }
+  await c.env.DB.prepare("UPDATE cases SET status = 'active', is_current_stage_approved = 1, updated_at = ? WHERE id = ? AND status = 'completed'")
+    .bind(new Date().toISOString(), id).run();
+  await createAudit(c.env.DB, auth.user.id, 'Reabrió legajo con validación de contraseña', 'Case', id, caseObj.title);
+  return c.json({ success: true, case: await getCaseById(c.env.DB, id) });
 });
 
 app.post('/api/cases/:id/advance', async (c) => {
