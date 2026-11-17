@@ -246,10 +246,38 @@ export async function digitizeTemplateWithAI(
   const existing = [...extractedText.matchAll(/\[CAMPO_(\d+)\*?\]/g)].map(m => Number(m[1]));
   let number = Math.max(0, ...existing);
   const next = () => `[CAMPO_${++number}]`;
-  let content = extractedText.replace(/_{3,}|\.{3,}|…{2,}/g, next);
+  let content = extractedText.replace(/_{3,}|\.{3,}|…+/g, next);
   type Field = { id:string; label:string; actor:string; source:'explicit'|'semantic'|'manual'; confidence:'high'|'medium'|'low'; review:boolean };
   const fields: Field[] = [];
   const notes: string[] = [];
+
+  // Deterministic pass for frequent real-world labels missed by the AI.
+  // Only add a marker if the label is unfilled; never alter an existing marker.
+  const commonSlots = [
+    {pattern: /(?:NOMBRE(?:S)?\s+Y\s+APELLIDO(?:S)?\s+(?:DEL?\s+)?C[ÓO]NYUGE|APELLIDO\s+Y\s+NOMBRE\s+DEL?\s+C[ÓO]NYUGE)\s*:/gi, label:'Nombre y apellido del cónyuge',actor:'Cónyuge'},
+    {pattern: /FECHA\s+DE\s+NACIMIENTO\s*:/gi,label:'Fecha de nacimiento',actor:'Por identificar'},
+    {pattern: /(?:A\s+PARTIR|DESDE)\s*(?=(?:HASTA\b|[.,;\n]|$))/gi,label:'Inicio del plazo',actor:'Contrato'},
+    {pattern: /(?:A\s+PARTIR|DESDE)\s*:\s*/gi,label:'Inicio del plazo',actor:'Contrato'},
+  ];
+  const known: Array<{id:string;label:string;actor:string}> = [];
+  for (const slot of commonSlots) {
+    // Work from right to left so positions remain stable.
+    const matches = [...content.matchAll(slot.pattern)].reverse();
+    for (const match of matches) {
+      const at=(match.index||0)+match[0].length;
+      const rest=content.slice(at);
+      // Avoid existing markers, literal dates, and nonempty values.
+      if (/^\s*\[CAMPO_\d+\*?\]/.test(rest) || /^\s*\d{1,4}[\/-]\d/.test(rest)) continue;
+      const line=rest.split('\n',1)[0];
+      if (slot.label==='Inicio del plazo' && /^\s*[^\s.,;:\[\]()_-]{2,}/.test(line) && !/^\s*HASTA\b/i.test(line)) continue;
+      if (slot.label!=='Inicio del plazo' && /^\s*[\p{L}\p{N}]{2,}/u.test(line)) continue;
+      const id=next();
+      content=content.slice(0,at)+' '+id+content.slice(at);
+      known.push({id,label:slot.label,actor:slot.actor});
+    }
+  }
+  for(const f of known) fields.push({...f,source:'semantic',confidence:'medium',review:true});
+
   const originalLines = content.split('\n');
   if (originalLines.some(line => line.length > 8500)) throw new Error('Hay líneas demasiado largas para interpretar con seguridad. Separá el texto en párrafos.');
   // Analyze bounded chunks: truncating the whole document silently loses later fields.
@@ -289,12 +317,12 @@ Máximo 80 campos e inserciones por fragmento.`;
       if (!ins || typeof ins.anchor!=='string' || typeof ins.label!=='string') continue;
       const anchor=ins.anchor;
       // Only unique, unambiguous anchors ending at a field label are eligible.
-      if(anchor.length<6 || anchor.length>200 || !/[:：]\s*$/.test(anchor)) {notes.push('Revisar posible campo: '+String(ins.label).slice(0,90));continue;}
+      if(anchor.length<6 || anchor.length>200 || !/(?:[:：]|\b(?:A\s+PARTIR|DESDE|HASTA))\s*$/i.test(anchor)) {notes.push('Revisar posible campo: '+String(ins.label).slice(0,90));continue;}
       const pos=content.indexOf(anchor);
       if(pos<0 || content.indexOf(anchor,pos+1)!==-1) {notes.push('Ubicación ambigua: '+String(ins.label).slice(0,90));continue;}
       const at=pos+anchor.length;
       const sameLine=content.slice(at).split('\n',1)[0];
-      if (/^\s*\[CAMPO_\d+\*?\]/.test(sameLine) || /^\s*[\p{L}\p{N}]{2,}/u.test(sameLine)) continue;
+      if (/^\s*\[CAMPO_\d+\*?\]/.test(sameLine) || (/^\s*[\p{L}\p{N}]{2,}/u.test(sameLine) && !/^\s*HASTA\b/i.test(sameLine))) continue;
       const id=next();
       content=content.slice(0,at)+' '+id+content.slice(at);
       fields.push({id,label:String(ins.label).slice(0,120),actor:String(ins.actor||'No determinado').slice(0,100),source:'semantic',confidence:ins.confidence==='high'?'high':ins.confidence==='medium'?'medium':'low',review:ins.confidence!=='high'});
