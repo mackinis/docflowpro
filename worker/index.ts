@@ -1638,6 +1638,51 @@ function requirementsFromProcessDescription(description: string): ProcessTemplat
   return [{ id: `stage-${crypto.randomUUID()}`, name: 'Presentación y revisión de requisitos', description: 'Requisitos establecidos por el responsable del proceso', requirements }];
 }
 
+// Interpret highlighted fields before creating a process, rather than asking
+// the Confecciones agent to rediscover their meaning at the end of the workflow.
+app.post('/api/templates/analyze-fields', async (c) => {
+  const auth=c.get('auth')!;
+  if (!(await canUserManageTemplates(c.env.DB,auth.user.id))) return c.json({error:'No autorizado.'},403);
+  const {templateId}=await c.req.json();
+  const template=(await getAllTemplates(c.env.DB)).find(t=>t.id===String(templateId||''));
+  if(!template?.originalDocumentContent) return c.json({error:'Seleccioná una plantilla digitalizada válida.'},400);
+  const source=template.originalDocumentContent;
+  const matches=[...source.matchAll(/\\[CAMPO_\\d+\\*?\\]/g)];
+  const unique=[...new Set(matches.map(m=>m[0]))];
+  if(!unique.length)return c.json({error:'La plantilla no tiene campos amarillos.'},400);
+  const normalize=(s:string)=>s.normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase();
+  const roles=/\\b(LOCADOR(?:ES|\\/S)?|LOCATARIO(?:S|\\/S)?|FIADOR(?:ES|\\/S)?|GARANTE(?:S|\\/S)?)\\s*:/gi;
+  const fields=unique.map(field=>{
+    const at=source.indexOf(field);
+    const before=source.slice(0,at);
+    const roleMatches=[...before.matchAll(roles)];
+    const lastRole=roleMatches[roleMatches.length-1];
+    let actor=lastRole?normalize(lastRole[1]).includes('locatario')?'Locatario':normalize(lastRole[1]).includes('locador')?'Locador':'Garante':'Operación';
+    const section=lastRole?before.slice((lastRole.index||0)+lastRole[0].length):before;
+    const spouseHeading=[...section.matchAll(/NOMBRE\\s+Y\\s+APELLIDO\\s+(?:DEL?\\s+)?C[ÓO]NYUGE\\s*:/gi)].pop();
+    if(spouseHeading){
+      const spouseTail=section.slice((spouseHeading.index||0)+spouseHeading[0].length);
+      const spouseCount=(spouseTail.match(/\\[CAMPO_\\d+\\*?\\]/g)||[]).length;
+      if(spouseCount<3)actor='Cónyuge del '+actor.toLowerCase();
+    }
+    const line=before.slice(before.lastIndexOf('\\n')+1);
+    const tokens=[...line.matchAll(/(FECHA DE NACIMIENTO|NOMBRE Y APELLIDO(?:\\s+(?:DEL?\\s+)?C[ÓO]NYUGE)?|DOMICILIO ACTUAL|ESTADO CIVIL|DURACI[ÓO]N(?:\\s+CONTRATO)?|MESES DE GRACIA|VALOR DE LA LOCACI[ÓO]N INICIAL|IMPORTE DE MES DE DEP[ÓO]SITO[^\\n]*|SERVICIOS? QUE ABONA[^\\n]*|POSESI[ÓO]N|INVENTARIO|AJUSTE|MAIL|DNI|A PARTIR|HASTA|INDICAR)\\s*:?\\s*$/gi)];
+    let label=tokens.length?tokens[tokens.length-1][1]:'';
+    if(!label){
+      const nearest=section.slice(Math.max(0,section.length-110));
+      const m=nearest.match(/(?:DURACI[ÓO]N\\s+CONTRATO|NOMBRE\\s+Y\\s+APELLIDO\\s+C[ÓO]NYUGE)\\s*[:;]?\\s*$/i);
+      if(m)label=m[0].trim();
+    }
+    const stored=template.fieldMap?.find(f=>f.id===field);
+    if(stored?.label && !/^(pendiente|sin significado|dato sin identificar)/i.test(stored.label))label=stored.label;
+    if(stored?.actor && !/^(no determinado|por identificar)/i.test(stored.actor))actor=stored.actor;
+    if(/^(A PARTIR|HASTA|INDICAR)$/i.test(label))label=label==='INDICAR'?'Meses de gracia':label==='HASTA'?'Fecha de finalización del contrato':'Fecha de inicio del contrato';
+    if(!label)label='Dato por identificar';
+    const review=label==='Dato por identificar'||label==='Dato solicitado en el contexto anterior'||actor==='Operación'&&!/(contrato|alquiler|locaci[oó]n|dep[oó]sito|ajuste|inventario|servicio|posesi[oó]n|gracia|inicio|finalizaci[oó]n)/i.test(label);
+    return {id:field,label,actor,source:'semantic' as const,confidence:review?'low' as const:'medium' as const,review};
+  });
+  return c.json({fields});
+});
 app.post('/api/templates', async (c) => {
   const auth = c.get('auth')!;
   if (!(await canUserManageTemplates(c.env.DB, auth.user.id))) {
@@ -1645,7 +1690,18 @@ app.post('/api/templates', async (c) => {
   }
   const body = await c.req.json();
   let parsedStages: ProcessTemplate['stages'];
-  try { parsedStages = Array.isArray(body.stages) && body.stages.length ? body.stages : requirementsFromProcessDescription(body.description || ''); }
+  try {
+    if(Array.isArray(body.stages) && body.stages.length) parsedStages=body.stages;
+    else if(Array.isArray(body.fieldMap) && body.fieldMap.length && body.originalDocumentContent) {
+      const sourceFields=body.fieldMap.filter((f:any)=>typeof f.id==='string' && typeof f.label==='string' && typeof f.actor==='string');
+      const requirements=sourceFields.map((f:any)=>({
+        id:'req-'+crypto.randomUUID(),name:f.actor+' — '+f.label+' ('+f.id+')',
+        type:'task' as const,description:'Dato a recopilar para completar '+f.id,
+        isRequired:!f.review
+      }));
+      parsedStages=[{id:'stage-'+crypto.randomUUID(),name:'Recolección de datos de la plantilla',description:'Verificar los campos identificados antes de confeccionar el documento',requirements}];
+    } else parsedStages=requirementsFromProcessDescription(body.description||'');
+  }
   catch (error) { return c.json({ error: error instanceof Error ? error.message : 'No se pudieron interpretar los requisitos.' }, 400); }
   const newTemplate: ProcessTemplate = {
     id: `tmpl-${Date.now()}-${crypto.randomUUID().slice(0, 4)}`,
