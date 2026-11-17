@@ -38,6 +38,7 @@ export default function Confecciones({cases,templates,currentUser}:Props) {
   const [proposalSnapshot,setProposalSnapshot] = useState('');
   const [chat,setChat] = useState<ChatLine[]>([{from:'agent',text:'Estoy listo para ayudarte. Puedo completar campos usando los datos del legajo y preguntarte cuando falte información.'}]);
   const editorRef = useRef<HTMLTextAreaElement>(null);
+  const highlightRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef(content);
   const selectedRef = useRef(selected);
   const savedRef = useRef(content);
@@ -166,7 +167,20 @@ export default function Confecciones({cases,templates,currentUser}:Props) {
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-4 items-start">
         <section className="min-w-0 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden shadow-sm">
           <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700 flex gap-2 items-center text-slate-800 dark:text-white font-bold"><FileText size={18}/> Plantilla interactiva <span className="ml-auto text-xs font-normal text-slate-500">Edición directa · Guardado automático</span></div>
-          <textarea ref={editorRef} spellCheck={false} aria-label="Documento editable" readOnly={selected.status==='closed'} value={content} onChange={e=>changeContent(e.target.value)} className="w-full min-h-[68vh] resize-y p-6 md:p-9 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 leading-7 text-sm font-serif outline-none" />
+          <div className="relative min-h-[68vh] bg-white dark:bg-slate-900">
+            <div ref={highlightRef} aria-hidden="true" className="absolute inset-0 overflow-hidden pointer-events-none">
+              <div className="p-6 md:p-9 text-sm leading-7 font-serif whitespace-pre-wrap break-words text-slate-900 dark:text-slate-100" style={{overflowWrap:'anywhere'}}>
+                {content.split(/(\[CAMPO_\d+\*?\])/g).map((part,i)=>/^\[CAMPO_\d+\*?\]$/.test(part)
+                  ? <mark key={i} className="rounded border border-amber-400 bg-amber-900/50 px-0.5 text-amber-200 font-semibold">{part}</mark>
+                  : <React.Fragment key={i}>{part}</React.Fragment>)}
+                {'\n'}
+              </div>
+            </div>
+            <textarea ref={editorRef} spellCheck={false} aria-label="Documento editable" readOnly={selected.status==='closed'} value={content} onChange={e=>changeContent(e.target.value)}
+              onScroll={e=>{if(highlightRef.current){highlightRef.current.scrollTop=e.currentTarget.scrollTop;highlightRef.current.scrollLeft=e.currentTarget.scrollLeft;}}}
+              className="relative block w-full min-h-[68vh] resize-y p-6 md:p-9 bg-transparent text-transparent caret-indigo-400 selection:bg-indigo-500/40 leading-7 text-sm font-serif outline-none whitespace-pre-wrap"
+              style={{overflowWrap:'anywhere'}} />
+          </div>
         </section>
         <section className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-sm overflow-hidden xl:sticky xl:top-4">
           <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex items-center gap-2 font-bold dark:text-white"><Bot size={19} className="text-indigo-500"/> Agente de confección <Sparkles size={15} className="text-amber-500 ml-auto"/></div>
