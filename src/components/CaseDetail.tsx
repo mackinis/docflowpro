@@ -1211,7 +1211,7 @@ export default function CaseDetail({
                                   <button
                                     onClick={() => handleTriggerFileUpload(req.id, req.name)}
                                     disabled={uploadProgress[req.id]?.status === 'uploading' || uploadProgress[req.id]?.status === 'confirming'}
-                                    className={`relative overflow-hidden min-w-[124px] px-3 py-1.5 text-white text-[10px] font-bold rounded-lg shadow-sm flex items-center justify-center gap-1.5 transition-colors ${uploadProgress[req.id]?.status === 'success' ? 'bg-green-600 hover:bg-green-700' : 'bg-indigo-600 hover:bg-indigo-700'} disabled:cursor-wait cursor-pointer`}
+                                    className={`relative overflow-hidden min-w-[124px] px-3 py-1.5 text-white text-[10px] font-bold rounded-lg shadow-sm flex items-center justify-center gap-1.5 transition-colors ${(uploadProgress[req.id]?.status === 'success' || (doc && !uploadProgress[req.id])) ? 'bg-green-600 hover:bg-green-700' : 'bg-indigo-600 hover:bg-indigo-700'} disabled:cursor-wait cursor-pointer`}
                                   >
                                     {(uploadProgress[req.id]?.status === 'uploading' || uploadProgress[req.id]?.status === 'confirming') && (
                                       <span
@@ -1221,8 +1221,8 @@ export default function CaseDetail({
                                       />
                                     )}
                                     <span className="relative z-10 flex items-center gap-1.5">
-                                      {uploadProgress[req.id]?.status === 'success' ? <Check className="w-3.5 h-3.5" /> : <Upload className="w-3.5 h-3.5" />}
-                                      <span>{uploadProgress[req.id]?.status === 'success' ? 'Archivo cargado ✓' : uploadProgress[req.id]?.status === 'confirming' ? 'Confirmando...' : uploadProgress[req.id]?.status === 'uploading' ? `Subiendo ${uploadProgress[req.id].percent}%` : doc ? 'Reemplazar archivo' : 'Cargar Archivo'}</span>
+                                      {(uploadProgress[req.id]?.status === 'success' || (doc && !uploadProgress[req.id])) ? <Check className="w-3.5 h-3.5" /> : <Upload className="w-3.5 h-3.5" />}
+                                      <span>{(uploadProgress[req.id]?.status === 'success' || (doc && !uploadProgress[req.id])) ? 'Archivo cargado ✓' : uploadProgress[req.id]?.status === 'confirming' ? 'Confirmando...' : uploadProgress[req.id]?.status === 'uploading' ? `Subiendo ${uploadProgress[req.id].percent}%` : doc ? 'Reemplazar archivo' : 'Cargar Archivo'}</span>
                                     </span>
                                   </button>
                                 </div>
