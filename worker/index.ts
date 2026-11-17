@@ -1647,11 +1647,11 @@ app.post('/api/templates/analyze-fields', async (c) => {
   const template=(await getAllTemplates(c.env.DB)).find(t=>t.id===String(templateId||''));
   if(!template?.originalDocumentContent) return c.json({error:'Seleccioná una plantilla digitalizada válida.'},400);
   const source=template.originalDocumentContent;
-  const matches=[...source.matchAll(/\\[CAMPO_\\d+\\*?\\]/g)];
+  const matches=[...source.matchAll(/\[CAMPO_\d+\*?\]/g)];
   const unique=[...new Set(matches.map(m=>m[0]))];
   if(!unique.length)return c.json({error:'La plantilla no tiene campos amarillos.'},400);
-  const normalize=(s:string)=>s.normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase();
-  const roles=/\\b(LOCADOR(?:ES|\\/S)?|LOCATARIO(?:S|\\/S)?|FIADOR(?:ES|\\/S)?|GARANTE(?:S|\\/S)?)\\s*:/gi;
+  const normalize=(s:string)=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  const roles=/\b(LOCADOR(?:ES|\/S)?|LOCATARIO(?:S|\/S)?|FIADOR(?:ES|\/S)?|GARANTE(?:S|\/S)?)\s*:/gi;
   const fields=unique.map(field=>{
     const at=source.indexOf(field);
     const before=source.slice(0,at);
@@ -1659,18 +1659,18 @@ app.post('/api/templates/analyze-fields', async (c) => {
     const lastRole=roleMatches[roleMatches.length-1];
     let actor=lastRole?normalize(lastRole[1]).includes('locatario')?'Locatario':normalize(lastRole[1]).includes('locador')?'Locador':'Garante':'Operación';
     const section=lastRole?before.slice((lastRole.index||0)+lastRole[0].length):before;
-    const spouseHeading=[...section.matchAll(/NOMBRE\\s+Y\\s+APELLIDO\\s+(?:DEL?\\s+)?C[ÓO]NYUGE\\s*:/gi)].pop();
+    const spouseHeading=[...section.matchAll(/NOMBRE\s+Y\s+APELLIDO\s+(?:DEL?\s+)?C[ÓO]NYUGE\s*:/gi)].pop();
     if(spouseHeading){
       const spouseTail=section.slice((spouseHeading.index||0)+spouseHeading[0].length);
-      const spouseCount=(spouseTail.match(/\\[CAMPO_\\d+\\*?\\]/g)||[]).length;
+      const spouseCount=(spouseTail.match(/\[CAMPO_\d+\*?\]/g)||[]).length;
       if(spouseCount<3)actor='Cónyuge del '+actor.toLowerCase();
     }
-    const line=before.slice(before.lastIndexOf('\\n')+1);
-    const tokens=[...line.matchAll(/(FECHA DE NACIMIENTO|NOMBRE Y APELLIDO(?:\\s+(?:DEL?\\s+)?C[ÓO]NYUGE)?|DOMICILIO ACTUAL|ESTADO CIVIL|DURACI[ÓO]N(?:\\s+CONTRATO)?|MESES DE GRACIA|VALOR DE LA LOCACI[ÓO]N INICIAL|IMPORTE DE MES DE DEP[ÓO]SITO[^\\n]*|SERVICIOS? QUE ABONA[^\\n]*|POSESI[ÓO]N|INVENTARIO|AJUSTE|MAIL|DNI|A PARTIR|HASTA|INDICAR)\\s*:?\\s*$/gi)];
+    const line=before.slice(before.lastIndexOf('\n')+1);
+    const tokens=[...line.matchAll(/(FECHA DE NACIMIENTO|NOMBRE Y APELLIDO(?:\s+(?:DEL?\s+)?C[ÓO]NYUGE)?|DOMICILIO ACTUAL|ESTADO CIVIL|DURACI[ÓO]N(?:\s+CONTRATO)?|MESES DE GRACIA|VALOR DE LA LOCACI[ÓO]N INICIAL|IMPORTE DE MES DE DEP[ÓO]SITO[^\n]*|SERVICIOS? QUE ABONA[^\n]*|POSESI[ÓO]N|INVENTARIO|AJUSTE|MAIL|DNI|A PARTIR|HASTA|INDICAR)\s*:?\s*$/gi)];
     let label=tokens.length?tokens[tokens.length-1][1]:'';
     if(!label){
       const nearest=section.slice(Math.max(0,section.length-110));
-      const m=nearest.match(/(?:DURACI[ÓO]N\\s+CONTRATO|NOMBRE\\s+Y\\s+APELLIDO\\s+C[ÓO]NYUGE)\\s*[:;]?\\s*$/i);
+      const m=nearest.match(/(?:DURACI[ÓO]N\s+CONTRATO|NOMBRE\s+Y\s+APELLIDO\s+C[ÓO]NYUGE)\s*[:;]?\s*$/i);
       if(m)label=m[0].trim();
     }
     const stored=template.fieldMap?.find(f=>f.id===field);
