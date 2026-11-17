@@ -2385,6 +2385,122 @@ app.post('/api/cases/:id/reopen', async (c) => {
   return c.json({ success: true, case: await getCaseById(c.env.DB, id) });
 });
 
+
+/** Confecciones: persistent, independent copies of finalized case templates. */
+async function ensureConfecciones(db: Env['DB']) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS confecciones (
+    id TEXT PRIMARY KEY, case_id TEXT NOT NULL, template_id TEXT NOT NULL,
+    title TEXT NOT NULL, content TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'draft',
+    last_field_number INTEGER NOT NULL DEFAULT 0, created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL, closed_at TEXT
+  )`).run();
+}
+const confeccionesRoles = ['SUPERADMIN', 'ADMIN', 'MANAGER'];
+app.get('/api/confecciones', async (c) => {
+  const auth = c.get('auth')!;
+  if (!confeccionesRoles.includes(auth.user.role)) return c.json({ error: 'No autorizado.' }, 403);
+  await ensureConfecciones(c.env.DB);
+  const rows = await c.env.DB.prepare(`SELECT f.*, cs.code AS case_code, cs.title AS case_title
+    FROM confecciones f JOIN cases cs ON cs.id = f.case_id ORDER BY f.updated_at DESC`).all();
+  return c.json(rows.results || []);
+});
+app.post('/api/confecciones', async (c) => {
+  const auth = c.get('auth')!;
+  if (!confeccionesRoles.includes(auth.user.role)) return c.json({ error: 'No autorizado.' }, 403);
+  const { caseId, templateId } = await c.req.json();
+  const caseObj = await getCaseById(c.env.DB, String(caseId || ''));
+  if (!caseObj || caseObj.status !== 'completed') return c.json({ error: 'Seleccioná un legajo finalizado.' }, 400);
+  if (auth.user.role === 'MANAGER' && caseObj.assignedManagerId !== auth.user.id) return c.json({ error: 'Legajo fuera de tu responsabilidad.' }, 403);
+  const template = await findTemplateOrVirtualById(c.env, String(templateId || ''));
+  if (!template?.originalDocumentContent?.trim()) return c.json({ error: 'La plantilla no tiene contenido digitalizado.' }, 400);
+  const content = template.originalDocumentContent;
+  const lastField = Math.max(0, ...Array.from(content.matchAll(/\\[CAMPO_(\\d+)\\*?\\]/g), m => Number(m[1])));
+  await ensureConfecciones(c.env.DB);
+  const id = crypto.randomUUID(), now = new Date().toISOString();
+  await c.env.DB.prepare(`INSERT INTO confecciones
+    (id, case_id, template_id, title, content, status, last_field_number, created_by, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?)`)
+    .bind(id, caseObj.id, template.id, template.name + ' — ' + caseObj.title, content, lastField, auth.user.id, now, now).run();
+  await createAudit(c.env.DB, auth.user.id, 'Inició confección', 'Case', caseObj.id, template.name);
+  return c.json({ success: true, id }, 201);
+});
+app.put('/api/confecciones/:id', async (c) => {
+  const auth = c.get('auth')!;
+  if (!confeccionesRoles.includes(auth.user.role)) return c.json({ error: 'No autorizado.' }, 403);
+  await ensureConfecciones(c.env.DB);
+  const { id } = c.req.param();
+  const existing = await c.env.DB.prepare('SELECT * FROM confecciones WHERE id = ?').bind(id).first<any>();
+  if (!existing) return c.json({ error: 'Confección no encontrada.' }, 404);
+  const caseObj = await getCaseById(c.env.DB, existing.case_id);
+  if (auth.user.role === 'MANAGER' && caseObj?.assignedManagerId !== auth.user.id) return c.json({ error: 'No autorizado.' }, 403);
+  if (existing.status !== 'draft') return c.json({ error: 'La confección está cerrada.' }, 409);
+  const body = await c.req.json();
+  if (typeof body.content !== 'string' || body.content.length > 500000) return c.json({ error: 'Contenido inválido.' }, 400);
+  const maxInText = Math.max(0, ...Array.from(body.content.matchAll(/\\[CAMPO_(\\d+)\\*?\\]/g), (m: RegExpMatchArray) => Number(m[1])));
+  const lastField = Math.max(existing.last_field_number, maxInText);
+  const now = new Date().toISOString();
+  await c.env.DB.prepare('UPDATE confecciones SET content = ?, last_field_number = ?, updated_at = ? WHERE id = ?')
+    .bind(body.content, lastField, now, id).run();
+  return c.json({ success: true, updatedAt: now, lastFieldNumber: lastField });
+});
+app.post('/api/confecciones/:id/close', async (c) => {
+  const auth = c.get('auth')!;
+  if (!confeccionesRoles.includes(auth.user.role)) return c.json({ error: 'No autorizado.' }, 403);
+  await ensureConfecciones(c.env.DB);
+  const { id } = c.req.param();
+  const row = await c.env.DB.prepare('SELECT * FROM confecciones WHERE id = ?').bind(id).first<any>();
+  if (!row) return c.json({ error: 'Confección no encontrada.' }, 404);
+  const caseObj = await getCaseById(c.env.DB, row.case_id);
+  if (auth.user.role === 'MANAGER' && caseObj?.assignedManagerId !== auth.user.id) return c.json({ error: 'No autorizado.' }, 403);
+  if (row.status !== 'draft') return c.json({ error: 'Ya está cerrada.' }, 409);
+  if (/\\[CAMPO_\\d+\\*?\\]/.test(row.content)) return c.json({ error: 'Quedan campos sin completar. Revisalos antes de cerrar.' }, 409);
+  const now = new Date().toISOString();
+  await c.env.DB.prepare("UPDATE confecciones SET status = 'closed', closed_at = ?, updated_at = ? WHERE id = ?")
+    .bind(now, now, id).run();
+  await createAudit(c.env.DB, auth.user.id, 'Finalizó confección', 'Case', row.case_id, row.title);
+  return c.json({ success: true });
+});
+app.post('/api/confecciones/:id/agent', async (c) => {
+  const auth = c.get('auth')!;
+  if (!confeccionesRoles.includes(auth.user.role)) return c.json({ error: 'No autorizado.' }, 403);
+  await ensureConfecciones(c.env.DB);
+  const { id } = c.req.param();
+  const row = await c.env.DB.prepare('SELECT * FROM confecciones WHERE id = ?').bind(id).first<any>();
+  if (!row || row.status !== 'draft') return c.json({ error: 'Confección inexistente o cerrada.' }, 409);
+  const caseObj = await getCaseById(c.env.DB, row.case_id);
+  if (!caseObj) return c.json({ error: 'Legajo inexistente.' }, 404);
+  if (auth.user.role === 'MANAGER' && caseObj.assignedManagerId !== auth.user.id) return c.json({ error: 'No autorizado.' }, 403);
+  const { instruction, content } = await c.req.json();
+  if (typeof instruction !== 'string' || !instruction.trim() || instruction.length > 2500 || typeof content !== 'string' || content.length > 500000) return c.json({ error: 'Instrucción o documento inválido.' }, 400);
+  const current = await c.env.DB.prepare('SELECT content FROM confecciones WHERE id = ?').bind(id).first<{content: string}>();
+  if (current?.content !== content) return c.json({ error: 'Guardá los cambios del documento antes de consultar al agente.' }, 409);
+  const docs = (await getAllDocuments(c.env.DB)).filter(d => d.caseId === caseObj.id)
+    .map(d => ({ name: d.name, fileName: d.fileName, status: d.status }));
+  const prompt = `Sos un asistente de confección documental. Trabajá SOLO con datos aportados, sin inventar.
+Respondé EXCLUSIVAMENTE JSON válido: {"reply":"respuesta breve en español","replacements":[{"field":"[CAMPO_1]","value":"texto"}]}.
+No reescribas el documento. Solo proponé reemplazos de marcadores que existan en el documento.
+Si falta información, preguntá en reply y omití el reemplazo. No modifiques texto escrito manualmente.
+Legajo: ${JSON.stringify({ code:caseObj.code,title:caseObj.title,description:caseObj.description,participants:caseObj.participants,documents:docs })}
+Documento actual: ${content.slice(0,24000)}
+Instrucción del usuario: ${instruction}`;
+  try {
+    const response = await (c.env.AI as any).run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', {
+      messages: [{role:'system',content:'Respondé solamente JSON válido. No inventes datos.'},{role:'user',content:prompt}],
+      temperature:0.1,max_tokens:1600
+    });
+    const raw = String(response?.response || '');
+    const parsed = JSON.parse(raw.replace(/^```(?:json)?\\s*/,'').replace(/\\s*```$/,''));
+    const valid = Array.isArray(parsed.replacements) ? parsed.replacements.filter((x:any) =>
+      typeof x.field === 'string' && /^\\[CAMPO_\\d+\\*?\\]$/.test(x.field) &&
+      content.includes(x.field) && typeof x.value === 'string' && x.value.length <= 2000
+    ) : [];
+    return c.json({ reply: String(parsed.reply || 'Revisá los datos propuestos.').slice(0,2000), replacements:valid });
+  } catch (error) {
+    console.error('Confecciones AI error:', error);
+    return c.json({ error: 'El agente no pudo procesar esta solicitud. Intentá nuevamente.' }, 502);
+  }
+});
+
 app.post('/api/cases/:id/advance', async (c) => {
   const auth = c.get('auth')!;
   const { id } = c.req.param();
