@@ -137,6 +137,7 @@ export default function CaseDetail({
 
   // Advancing Stage strict validations state
   const [validation, setValidation] = useState<{ isValid: boolean; missing: string[] }>({ isValid: true, missing: [] });
+  const [submissionValidation, setSubmissionValidation] = useState<{ isValid: boolean; missing: string[] }>({ isValid: true, missing: [] });
   const [isAdvancing, setIsAdvancing] = useState(false);
 
   // Visibility role for approved documents
@@ -191,6 +192,7 @@ export default function CaseDetail({
     const openObs = observations.filter(o => o.caseId === caseObj.id && o.stageId === currentStage.id && o.status === 'open');
 
     const missing: string[] = [];
+    const submissionMissing: string[] = [];
 
     currentStage.requirements.forEach(req => {
       // El documento digitalizado es material de referencia, no un requisito documental automático.
@@ -226,10 +228,11 @@ export default function CaseDetail({
       missing.push(`Hay ${openObs.length} observaciones pendientes de resolución.`);
     }
 
-    setValidation({
-      isValid: missing.length === 0,
-      missing
-    });
+    // Para solicitar revisión no se exige aprobación previa del Manager ni cerrar sus observaciones.
+    // Solo impiden la solicitud los documentos faltantes/rechazados y otros requisitos incompletos.
+    submissionMissing.push(...missing.filter(item => !item.startsWith('Documento en revisión:') && !item.startsWith('Hay ')));
+    setSubmissionValidation({ isValid: submissionMissing.length === 0, missing: submissionMissing });
+    setValidation({ isValid: missing.length === 0, missing });
   }, [caseObj, currentStage, documents, tasks, observations, formSubmissions]);
 
   // Handle form input change
@@ -1548,14 +1551,14 @@ export default function CaseDetail({
               </p>
 
               {/* Blocker feedback checklist */}
-              {!validation.isValid && (
+              {!(currentUser.role === 'ASESOR' ? submissionValidation.isValid : validation.isValid) && (
                 <div className="bg-red-500/10 border border-red-500/20 p-3 rounded-lg text-[11px] text-red-400 space-y-1.5 mt-2 max-w-lg">
                   <p className="font-bold flex items-center gap-1.5 text-red-300">
                     <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-red-400" />
                     Requisitos pendientes para poder avanzar:
                   </p>
                   <ul className="list-disc list-inside space-y-0.5 text-red-300">
-                    {validation.missing.map((m, idx) => (
+                    {(currentUser.role === 'ASESOR' ? submissionValidation.missing : validation.missing).map((m, idx) => (
                       <li key={idx} className="truncate">{m}</li>
                     ))}
                   </ul>
@@ -1608,15 +1611,15 @@ export default function CaseDetail({
                     <div className="text-center space-y-1">
                       <button
                         onClick={() => setShowReviewRequestModal(true)}
-                        disabled={!validation.isValid}
-                        title={!validation.isValid ? 'Completá los requisitos pendientes antes de solicitar revisión' : undefined}
+                        disabled={!submissionValidation.isValid}
+                        title={!submissionValidation.isValid ? 'Completá los requisitos pendientes antes de solicitar revisión' : undefined}
                         className="w-full md:w-auto px-5 py-3 bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-500/10 active:scale-98 cursor-pointer rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 disabled:bg-slate-700 disabled:text-slate-400 disabled:shadow-none disabled:cursor-not-allowed"
                       >
                         <span>Pedir Revisión al Manager</span>
                         <ChevronRight className="w-4 h-4" />
                       </button>
                       <span className="text-[9px] text-slate-400 block">
-                        {validation.isValid ? 'Notificará a tu Manager asignado' : 'Disponible al completar los requisitos pendientes'}
+                        {submissionValidation.isValid ? 'Notificará a tu Manager asignado' : 'Disponible al completar los requisitos pendientes'}
                       </span>
                     </div>
                   )}
