@@ -521,6 +521,7 @@ export default function App() {
   // Render Main Layout
   return (
     <div className="flex h-screen w-screen bg-slate-50 overflow-hidden font-sans">
+      {operationNotice && <div role="status" className="fixed bottom-5 right-5 z-[100] max-w-sm rounded-xl border border-indigo-500/40 bg-slate-900 text-white shadow-2xl px-4 py-3 text-sm flex items-center gap-3"><span>{operationNotice}</span><button onClick={() => setOperationNotice(null)} className="text-indigo-300 font-bold">Cerrar</button></div>}
       {/* 1. Sidebar Nav */}
       <Sidebar
         currentUser={currentUser}
