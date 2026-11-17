@@ -2401,7 +2401,7 @@ app.get('/api/confecciones', async (c) => {
   if (!confeccionesRoles.includes(auth.user.role)) return c.json({ error: 'No autorizado.' }, 403);
   await ensureConfecciones(c.env.DB);
   const rows = await c.env.DB.prepare(`SELECT f.*, cs.code AS case_code, cs.title AS case_title
-    FROM confecciones f JOIN cases cs ON cs.id = f.case_id ORDER BY f.updated_at DESC`).all();
+    FROM confecciones f JOIN cases cs ON cs.id = f.case_id WHERE (? != 'MANAGER' OR cs.assigned_manager_id = ?) ORDER BY f.updated_at DESC`).bind(auth.user.role, auth.user.id).all();
   return c.json(rows.results || []);
 });
 app.post('/api/confecciones', async (c) => {
