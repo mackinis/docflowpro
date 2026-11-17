@@ -52,7 +52,7 @@ interface CaseDetailProps {
   uploadRequests?: UploadRequest[];
   loadState?: () => Promise<void>;
   onBack: () => void;
-  onUploadDoc: (stageId: string, reqId: string, reqName: string, fileName: string, fileSize: number, file?: File) => void | Promise<void>;
+  onUploadDoc: (stageId: string, reqId: string, reqName: string, fileName: string, fileSize: number, file?: File, onProgress?: (percent: number) => void) => void | Promise<void>;
   onReviewDoc: (docId: string, status: 'approved' | 'rejected', observationText?: string, allowedRoles?: string[]) => void;
   onToggleTask: (taskId: string, status: 'pending' | 'completed') => void;
   onSubmitForm: (reqId: string, values: Record<string, string | number | boolean>) => void;
@@ -156,6 +156,8 @@ export default function CaseDetail({
   const [submittingReview, setSubmittingReview] = useState(false);
   const [sharedDocs, setSharedDocs] = useState<any[]>([]);
   const caseFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<Record<string, { percent: number; status: 'uploading' | 'confirming' | 'success' }>>({});
+  const uploadingRef = useRef<Set<string>>(new Set());
   const [pendingUploadContext, setPendingUploadContext] = useState<{
     reqId: string;
     reqName: string;
@@ -264,6 +266,7 @@ export default function CaseDetail({
 
   // Trigger real file picker for document requirement upload (with authorization check for ASESOR)
   const handleTriggerFileUpload = (reqId: string, reqName: string) => {
+    if (uploadingRef.current.has(reqId)) return;
     if (currentUser.role === 'ASESOR' && (caseObj.assignedAdvisorId !== currentUser.id || caseObj.isCurrentStageApproved)) return;
     setPendingUploadContext({ reqId, reqName });
     setTimeout(() => {
@@ -298,7 +301,27 @@ export default function CaseDetail({
       }
     }
 
-    await onUploadDoc(currentStage.id, ctx.reqId, ctx.reqName, file.name, file.size, file);
+    if (uploadingRef.current.has(ctx.reqId)) return;
+    uploadingRef.current.add(ctx.reqId);
+    setUploadProgress(prev => ({ ...prev, [ctx.reqId]: { percent: 0, status: 'uploading' } }));
+    try {
+      await onUploadDoc(currentStage.id, ctx.reqId, ctx.reqName, file.name, file.size, file, percent => {
+        setUploadProgress(prev => ({
+          ...prev,
+          [ctx.reqId]: { percent, status: percent >= 99 ? 'confirming' : 'uploading' }
+        }));
+      });
+      setUploadProgress(prev => ({ ...prev, [ctx.reqId]: { percent: 100, status: 'success' } }));
+    } catch (error) {
+      setUploadProgress(prev => {
+        const next = { ...prev };
+        delete next[ctx.reqId];
+        return next;
+      });
+      alert(error instanceof Error ? error.message : 'No se pudo cargar el archivo.');
+    } finally {
+      uploadingRef.current.delete(ctx.reqId);
+    }
   };
 
   const handleDownloadCaseDoc = async (docId: string, fileName: string, downloadUrl?: string) => {
@@ -1187,10 +1210,20 @@ export default function CaseDetail({
                                 <div className="flex items-center gap-1.5">
                                   <button
                                     onClick={() => handleTriggerFileUpload(req.id, req.name)}
-                                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold rounded-lg shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
+                                    disabled={uploadProgress[req.id]?.status === 'uploading' || uploadProgress[req.id]?.status === 'confirming'}
+                                    className={`relative overflow-hidden min-w-[124px] px-3 py-1.5 text-white text-[10px] font-bold rounded-lg shadow-sm flex items-center justify-center gap-1.5 transition-colors ${uploadProgress[req.id]?.status === 'success' ? 'bg-green-600 hover:bg-green-700' : 'bg-indigo-600 hover:bg-indigo-700'} disabled:cursor-wait cursor-pointer`}
                                   >
-                                    <Upload className="w-3.5 h-3.5" />
-                                    <span>{doc ? 'Reemplazar archivo' : 'Cargar Archivo'}</span>
+                                    {(uploadProgress[req.id]?.status === 'uploading' || uploadProgress[req.id]?.status === 'confirming') && (
+                                      <span
+                                        aria-hidden="true"
+                                        className="absolute inset-y-0 left-0 bg-green-600 transition-[width] duration-200 ease-out"
+                                        style={{ width: `${uploadProgress[req.id].percent}%` }}
+                                      />
+                                    )}
+                                    <span className="relative z-10 flex items-center gap-1.5">
+                                      {uploadProgress[req.id]?.status === 'success' ? <Check className="w-3.5 h-3.5" /> : <Upload className="w-3.5 h-3.5" />}
+                                      <span>{uploadProgress[req.id]?.status === 'success' ? 'Archivo cargado ✓' : uploadProgress[req.id]?.status === 'confirming' ? 'Confirmando...' : uploadProgress[req.id]?.status === 'uploading' ? `Subiendo ${uploadProgress[req.id].percent}%` : doc ? 'Reemplazar archivo' : 'Cargar Archivo'}</span>
+                                    </span>
                                   </button>
                                 </div>
                               )}
