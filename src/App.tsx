@@ -25,6 +25,7 @@ import SharedDocumentsManager from './components/SharedDocumentsManager';
 export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [operationNotice, setOperationNotice] = useState<string | null>(null);
   
   // Mobile responsive sidebar state
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -154,11 +155,11 @@ export default function App() {
       await loadState();
       
       if (successMsg) {
-        alert(successMsg);
+        setOperationNotice(successMsg);
       }
     } catch (err: any) {
       console.error(err);
-      alert(`Error en la operación: ${err.message}`);
+      setOperationNotice(`Error en la operación: ${err.message}`);
     }
   };
 
@@ -180,7 +181,7 @@ export default function App() {
       await loadState();
     } catch (err: any) {
       console.error(err);
-      alert(`Error al simular rol: ${err.message}`);
+      setOperationNotice(`Error al simular rol: ${err.message}`);
     }
   };
 
@@ -276,17 +277,20 @@ export default function App() {
   };
 
   // Review Document (Approve / Reject)
-  const handleReviewDoc = async (docId: string, status: 'approved' | 'rejected', observationText?: string, allowedRoles?: string[]) => {
-    if (!currentUser) return;
-    await syncOperation(`/api/documents/${docId}/review`, {
+  const handleReviewDoc = async (docId: string, status: 'approved' | 'rejected' | 'uploaded', observationText?: string, allowedRoles?: string[]) => {
+    if (!currentUser) throw new Error('Sesión no disponible.');
+    const response = await fetch(`/api/documents/${docId}/review`, {
       method: 'POST',
-      body: JSON.stringify({
-        status,
-        observationText,
-        reviewedBy: currentUser.id,
-        allowedRoles
-      })
-    }, status === 'approved' ? 'Documento aprobado correctamente.' : 'Documento rechazado. Se notificó al asesor.');
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status, observationText, allowedRoles })
+    });
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.error || 'No se pudo guardar el estado del documento.');
+    }
+    await loadState();
+    setOperationNotice(status === 'approved' ? 'Documento aprobado correctamente.' : status === 'uploaded' ? 'Aprobación revertida correctamente.' : 'Documento rechazado. Se notificó al asesor.');
   };
 
   // Complete/Toggle Task checklist
