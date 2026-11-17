@@ -171,15 +171,15 @@ export default function Confecciones({cases,templates,currentUser}:Props) {
             <div ref={highlightRef} aria-hidden="true" className="absolute inset-0 overflow-hidden pointer-events-none">
               <div className="p-6 md:p-9 text-sm leading-7 font-serif whitespace-pre-wrap text-slate-900 dark:text-slate-100" style={{overflowWrap:'anywhere'}}>
                 {content.split(/(\[CAMPO_\d+\*?\])/g).map((part,i)=>/^\[CAMPO_\d+\*?\]$/.test(part)
-                  ? <mark key={i} className="bg-amber-900/60 text-amber-200">{part}</mark>
+                  ? <mark key={i} className="rounded-sm bg-yellow-400 text-slate-950 font-bold" style={{boxDecorationBreak:'clone',WebkitBoxDecorationBreak:'clone'}}>{part}</mark>
                   : <React.Fragment key={i}>{part}</React.Fragment>)}
                 {'\n'}
               </div>
             </div>
             <textarea ref={editorRef} spellCheck={false} aria-label="Documento editable" readOnly={selected.status==='closed'} value={content} onChange={e=>changeContent(e.target.value)}
               onScroll={e=>{if(highlightRef.current){highlightRef.current.scrollTop=e.currentTarget.scrollTop;highlightRef.current.scrollLeft=e.currentTarget.scrollLeft;}}}
-              className="relative block w-full min-h-[68vh] resize-y p-6 md:p-9 bg-transparent text-transparent caret-indigo-400 selection:bg-indigo-500/40 leading-7 text-sm font-serif outline-none whitespace-pre-wrap"
-              style={{overflowWrap:'anywhere'}} />
+              className="relative z-10 block w-full min-h-[68vh] resize-y p-6 md:p-9 bg-transparent text-transparent caret-indigo-400 selection:bg-indigo-500/40 leading-7 text-sm font-serif outline-none whitespace-pre-wrap"
+              style={{overflowWrap:'anywhere',WebkitTextFillColor:'transparent',backgroundColor:'transparent'}} />
           </div>
         </section>
         <section className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-sm overflow-hidden xl:sticky xl:top-4">
