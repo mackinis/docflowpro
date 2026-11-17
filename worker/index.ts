@@ -2413,6 +2413,10 @@ async function ensureConfecciones(db: Env['DB']) {
     last_field_number INTEGER NOT NULL DEFAULT 0, created_by TEXT NOT NULL,
     created_at TEXT NOT NULL, updated_at TEXT NOT NULL, closed_at TEXT
   )`).run();
+  await db.prepare(`CREATE TABLE IF NOT EXISTS confeccion_chat (
+    id TEXT PRIMARY KEY, confeccion_id TEXT NOT NULL, sender TEXT NOT NULL,
+    message TEXT NOT NULL, created_at TEXT NOT NULL
+  )`).run();
 }
 const confeccionesRoles = ['SUPERADMIN', 'ADMIN', 'MANAGER'];
 app.get('/api/confecciones', async (c) => {
@@ -2422,6 +2426,18 @@ app.get('/api/confecciones', async (c) => {
   const rows = await c.env.DB.prepare(`SELECT f.*, cs.code AS case_code, cs.title AS case_title
     FROM confecciones f JOIN cases cs ON cs.id = f.case_id WHERE (? != 'MANAGER' OR cs.assigned_manager_id = ?) ORDER BY f.updated_at DESC`).bind(auth.user.role, auth.user.id).all();
   return c.json(rows.results || []);
+});
+app.get('/api/confecciones/:id/chat', async (c) => {
+  const auth=c.get('auth')!;
+  if (!confeccionesRoles.includes(auth.user.role)) return c.json({error:'No autorizado.'},403);
+  await ensureConfecciones(c.env.DB);
+  const row=await c.env.DB.prepare('SELECT case_id FROM confecciones WHERE id = ?').bind(c.req.param('id')).first<{case_id:string}>();
+  if (!row) return c.json({error:'Confección inexistente.'},404);
+  const caseObj=await getCaseById(c.env.DB,row.case_id);
+  if (!caseObj || (auth.user.role==='MANAGER' && caseObj.assignedManagerId!==auth.user.id)) return c.json({error:'No autorizado.'},403);
+  const rows=await c.env.DB.prepare('SELECT sender, message FROM confeccion_chat WHERE confeccion_id = ? ORDER BY created_at DESC, id DESC LIMIT 80')
+    .bind(c.req.param('id')).all<{sender:string;message:string}>();
+  return c.json((rows.results||[]).reverse().map(x=>({from:x.sender,text:x.message})));
 });
 app.post('/api/confecciones', async (c) => {
   const auth = c.get('auth')!;
@@ -2452,6 +2468,7 @@ app.delete('/api/confecciones/:id', async (c) => {
   if (!row) return c.json({ error: 'Confección no encontrada.' }, 404);
   const caseObj = await getCaseById(c.env.DB, row.case_id);
   if (auth.user.role === 'MANAGER' && caseObj?.assignedManagerId !== auth.user.id) return c.json({ error: 'No autorizado.' }, 403);
+  await c.env.DB.prepare('DELETE FROM confeccion_chat WHERE confeccion_id = ?').bind(id).run();
   await c.env.DB.prepare('DELETE FROM confecciones WHERE id = ?').bind(id).run();
   await createAudit(c.env.DB, auth.user.id, 'Eliminó definitivamente confección', 'Case', row.case_id, row.title);
   return c.json({ success: true });
@@ -2571,12 +2588,17 @@ app.post('/api/confecciones/:id/agent', async (c) => {
     const next=markers.find(m=>m!==field);
     return c.json({reply:'Registré una propuesta para '+field+'. Revisala y aplicala. '+(next?questionFor(next):'No quedan otros marcadores pendientes.'),replacements:[proposal],pendingFields:markers.length,coverage:coverage([proposal])});
   }
-  // Conversation is supplied by the editor, bounded and treated as untrusted task data.
-  const history = Array.isArray(conversation) ? conversation.slice(-24)
-    .filter((m:any) => (m?.from === 'user' || m?.from === 'agent') && typeof m.text === 'string')
-    .map((m:any) => ({role:m.from, text:m.text.slice(0,2000)})) : [];
-  // Build a separate evidence window for each field batch. The previous single
-  // JSON.slice(0, 14000) silently hid later attachments, even when relevant.
+  // Persist the conversation per confection, so confirmed operator answers survive
+  // navigation and later requests. Client-provided history is not trusted as evidence.
+  await c.env.DB.prepare('INSERT INTO confeccion_chat (id, confeccion_id, sender, message, created_at) VALUES (?, ?, ?, ?, ?)')
+    .bind(crypto.randomUUID(),id,'user',instruction.trim(),new Date().toISOString()).run();
+  const storedChat=await c.env.DB.prepare('SELECT sender, message FROM confeccion_chat WHERE confeccion_id = ? ORDER BY created_at DESC, id DESC LIMIT 40')
+    .bind(id).all<{sender:string;message:string}>();
+  const history=(storedChat.results||[]).reverse().map(m=>({role:m.sender,text:m.message.slice(0,2000)}));
+  const rememberReply = async (reply:string) => {
+    await c.env.DB.prepare('INSERT INTO confeccion_chat (id, confeccion_id, sender, message, created_at) VALUES (?, ?, ?, ?, ?)')
+      .bind(crypto.randomUUID(),id,'agent',reply.slice(0,3000),new Date().toISOString()).run();
+  };
   const baseEvidence = {
     code:caseObj.code, title:caseObj.title, description:caseObj.description,
     participants:caseObj.participants
@@ -2631,7 +2653,7 @@ Campos y contexto: ${JSON.stringify(batch.map(field => {
  return {field,label:entry?.label,actor:entry?.actor,contexts:positions};
 }))}
 Datos disponibles del legajo (pueden incluir contenido digitalizado; extractos identificados por posición): ${evidenceFor(batch)}
-Conversación reciente: ${JSON.stringify(history)}
+Conversación histórica de esta confección (las afirmaciones del operador son datos declarados; verificá el actor y pedí confirmación ante contradicciones): ${JSON.stringify(history)}
 Instrucción actual: ${instruction}`;
   const extractJson = (raw: string): any => {
     const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
@@ -2719,6 +2741,7 @@ Instrucción actual: ${instruction}`;
     const reply = valid.length
       ? 'Encontré '+valid.length+' propuestas verificables de '+markers.length+' campos. '+(unresolved.length ? 'Quedan '+unresolved.length+' pendientes. ' : 'No quedan marcadores pendientes de propuesta. ')+(replies[0]||'Revisá las propuestas y confirmá antes de aplicarlas.')
       : (failures === batches.length ? 'El servicio de IA falló en los '+batches.length+' lotes. '+(lastFailure?'Diagnóstico: '+lastFailure.slice(0,160)+'. ':'')+'No se modificó la plantilla. '+missingSummary() : (replies.find(r=>r.includes('¿')) || missingSummary()));
+    await rememberReply(reply);
     return c.json({reply, replacements:valid, pendingFields:markers.length, coverage:coverage(valid), partialFailure:failures>0, batches:batches.length, failedBatches:failures});
   } catch (error) {
     console.error('Confecciones AI service error:', error);
