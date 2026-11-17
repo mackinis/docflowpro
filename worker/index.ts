@@ -2548,13 +2548,29 @@ app.post('/api/confecciones/:id/agent', async (c) => {
   };
   const questionFor = (field:string):string => {
     const entry=fieldMap.find(f=>f.id===field);
-    const i=content.indexOf(field);
-    const before=(i>=0?content.slice(Math.max(0,i-190),i):'').replace(/\\s+/g,' ').trim();
-    const label=entry?.label && entry.label!=='Pendiente de identificar' ? entry.label : before.split(/[.;\\n]/).pop()?.trim().slice(-110);
-    return label ? '¿Cuál es el dato correspondiente a '+field+' ('+label+')?' : '¿Qué valor corresponde a '+field+'?';
+    const at=content.indexOf(field);
+    const preceding=at>=0?content.slice(Math.max(0,at-220),at):'';
+    const lastLine=preceding.split(/\r?\n/).pop() || '';
+    const suffix=lastLine.split(/[.;]/).pop()?.trim() || '';
+    const label=entry?.label && entry.label!=='Pendiente de identificar'
+      ? entry.label : (suffix.match(/(?:DNI|MAIL|EMAIL|ESTADO CIVIL|DOMICILIO|FECHA DE NACIMIENTO|NOMBRE Y APELLIDO|CUIT)\s*:?\s*$/i)?.[0] || suffix.slice(-45)).trim();
+    const role=/LOCATARIO/i.test(preceding) && preceding.lastIndexOf('LOCATARIO')>preceding.lastIndexOf('LOCADOR')?'locatario':'locador';
+    return '¿Me indicás '+(label||'el valor')+' del '+role+' para '+field+'? Podés responder "'+field+' = valor".';
   };
-  const missingSummary = () => 'No encontré datos verificables para completar los campos todavía. '+questionFor(markers[0])+' Podés responder acá y continuaré con los siguientes campos.';
+  const missingSummary = () => 'Vamos a completar la plantilla juntos. '+questionFor(markers[0]);
   if (!markers.length) return c.json({ reply: 'La plantilla no tiene campos pendientes para completar.', replacements: [], pendingFields: 0, coverage:coverage([]) });
+  // Deterministic operator entry: a confirmed field/value must not depend on AI availability.
+  const directMatch=instruction.match(/^\s*(\[?CAMPO_(\d+)(\*)?\]?)\s*(?:=|:|es\s+)\s*(.+?)\s*$/is);
+  if (directMatch) {
+    const field='[CAMPO_'+directMatch[2]+(directMatch[3]?'*':'')+']';
+    const value=directMatch[4].trim();
+    if (!markers.includes(field)) return c.json({reply:'Ese campo no está pendiente en esta plantilla.',replacements:[],pendingFields:markers.length,coverage:coverage([])});
+    if (!value || value.length>2000 || /\[CAMPO_\d+\*?\]/.test(value))
+      return c.json({reply:'Necesito un valor concreto para '+field+'. '+questionFor(field),replacements:[],pendingFields:markers.length,coverage:coverage([])});
+    const proposal={field,value,source:'Respuesta explícita del operador'};
+    const next=markers.find(m=>m!==field);
+    return c.json({reply:'Registré una propuesta para '+field+'. Revisala y aplicala. '+(next?questionFor(next):'No quedan otros marcadores pendientes.'),replacements:[proposal],pendingFields:markers.length,coverage:coverage([proposal])});
+  }
   // Conversation is supplied by the editor, bounded and treated as untrusted task data.
   const history = Array.isArray(conversation) ? conversation.slice(-24)
     .filter((m:any) => (m?.from === 'user' || m?.from === 'agent') && typeof m.text === 'string')
@@ -2567,7 +2583,7 @@ app.post('/api/confecciones/:id/agent', async (c) => {
   });
   // Process every marker in bounded batches instead of truncating the marker list.
   const batches: string[][] = [];
-  for (let i=0;i<markers.length;i+=12) batches.push(markers.slice(i,i+12));
+  for (let i=0;i<markers.length;i+=6) batches.push(markers.slice(i,i+6));
   const promptFor = (batch:string[], index:number) => `Sos un copiloto de confección documental inmobiliaria argentina.
 Tu tarea es completar todos los campos que tengan evidencia verificable y continuar preguntando al operador hasta terminar. No te detengas por datos faltantes: resolvé los que sí tengan datos.
 Respondé exclusivamente JSON {"reply":"mensaje breve o pregunta concreta","replacements":[{"field":"[CAMPO_1]","value":"valor","source":"origen concreto"}]}.
@@ -2579,7 +2595,7 @@ Campos y contexto: ${JSON.stringify(batch.map(field => {
  const positions=[...content.matchAll(/\[CAMPO_\d+\*?\]/g)].filter(m=>m[0]===field).slice(0,4).map(m=>content.slice(Math.max(0,(m.index||0)-220),Math.min(content.length,(m.index||0)+field.length+220)));
  return {field,label:entry?.label,actor:entry?.actor,contexts:positions};
 }))}
-Datos disponibles del legajo (pueden incluir contenido digitalizado): ${evidence.slice(0,50000)}
+Datos disponibles del legajo (pueden incluir contenido digitalizado): ${evidence.slice(0,14000)}
 Conversación reciente: ${JSON.stringify(history)}
 Instrucción actual: ${instruction}`;
   const extractJson = (raw: string): any => {
@@ -2607,15 +2623,16 @@ Instrucción actual: ${instruction}`;
     const valid: Array<{field:string;value:string;source:string}> = [];
     const replies: string[] = [];
     let failures = 0;
+    let lastFailure = '';
     for (let i=0;i<batches.length;i++) {
       try {
         const response = await (c.env.AI as any).run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', {
           messages: [{role:'system',content:'Devolvé exclusivamente JSON válido. No inventes información. Respondé como copiloto colaborativo.'},{role:'user',content:promptFor(batches[i],i)}],
-          temperature:0,max_tokens:2400
+          temperature:0,max_tokens:1000
         });
         const raw = typeof response?.response === 'string' ? response.response : typeof response === 'string' ? response : '';
         const parsed = extractJson(raw);
-        if (!parsed || typeof parsed !== 'object') {failures++;continue;}
+        if (!parsed || typeof parsed !== 'object') {failures++;console.warn('Confecciones AI invalid JSON',{batch:i,rawLength:raw.length,rawPrefix:raw.slice(0,180)});continue;}
         if (typeof parsed.reply === 'string' && parsed.reply.trim()) replies.push(parsed.reply.trim().slice(0,500));
         if (!Array.isArray(parsed.replacements)) continue;
         for (const x of parsed.replacements) {
@@ -2628,13 +2645,14 @@ Instrucción actual: ${instruction}`;
         }
       } catch (batchError) {
         failures++;
+        lastFailure = batchError instanceof Error ? batchError.message : String(batchError);
         console.error('Confecciones AI batch error', {batch:i,error:batchError});
       }
     }
     const unresolved = markers.filter(field=>!seen.has(field));
     const reply = valid.length
       ? 'Encontré '+valid.length+' propuestas verificables de '+markers.length+' campos. '+(unresolved.length ? 'Quedan '+unresolved.length+' pendientes. ' : 'No quedan marcadores pendientes de propuesta. ')+(replies[0]||'Revisá las propuestas y confirmá antes de aplicarlas.')
-      : (failures === batches.length ? 'No pude obtener una respuesta válida del modelo en ninguno de los '+batches.length+' lotes. No se modificó la plantilla. '+missingSummary() : (replies.find(r=>r.includes('¿')) || missingSummary()));
+      : (failures === batches.length ? 'El servicio de IA falló en los '+batches.length+' lotes. '+(lastFailure?'Diagnóstico: '+lastFailure.slice(0,160)+'. ':'')+'No se modificó la plantilla. '+missingSummary() : (replies.find(r=>r.includes('¿')) || missingSummary()));
     return c.json({reply, replacements:valid, pendingFields:markers.length, coverage:coverage(valid), partialFailure:failures>0, batches:batches.length, failedBatches:failures});
   } catch (error) {
     console.error('Confecciones AI service error:', error);
