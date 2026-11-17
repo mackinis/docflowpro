@@ -149,6 +149,9 @@ export default function CaseDetail({
   const [rejectingDoc, setRejectingDoc] = useState<{ id: string; name: string } | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [reviewError, setReviewError] = useState('');
+  const [localNotice, setLocalNotice] = useState<string | null>(null);
+  const [participantToDelete, setParticipantToDelete] = useState<string | null>(null);
+  const alert = (message: unknown) => setLocalNotice(String(message));
   const submitDocumentReview = async (id: string, status: 'approved' | 'rejected' | 'uploaded', reason?: string, roles?: string[]) => {
     if (reviewBusyDocId) return;
     setReviewError('');
@@ -887,9 +890,7 @@ export default function CaseDetail({
                         <button
                           type="button"
                           onClick={() => {
-                            if (window.confirm(`¿Está seguro de eliminar al actor "${p.name} {p.lastName}"?`)) {
-                              if (onRemoveParticipant) onRemoveParticipant(p.id);
-                            }
+                            setParticipantToDelete(p.id);
                           }}
                           className="text-slate-400 hover:text-red-600 p-0.5 rounded transition-colors cursor-pointer"
                           title="Eliminar Actor"
@@ -1899,6 +1900,8 @@ export default function CaseDetail({
         </div>
       )}
       {reviewError && !rejectingDoc && !approvingDoc && <div role="alert" className="fixed bottom-5 right-5 z-[80] bg-red-950 border border-red-500 text-white rounded-xl p-4 shadow-xl text-sm">{reviewError}<button onClick={() => setReviewError('')} className="ml-3 underline">Cerrar</button></div>}
+      {localNotice && <div role="status" className="fixed bottom-5 right-5 z-[100] max-w-sm rounded-xl border border-indigo-500/40 bg-slate-900 text-white shadow-xl p-4 flex items-center gap-3 text-sm"><span>{localNotice}</span><button onClick={() => setLocalNotice(null)} className="text-indigo-300 font-bold">Cerrar</button></div>}
+      {participantToDelete && <div className="fixed inset-0 z-[90] bg-slate-950/70 flex items-center justify-center p-4"><div className="bg-slate-800 border border-slate-600 rounded-2xl p-5 max-w-sm w-full text-white"><p className="text-sm mb-5">¿Está seguro de eliminar este actor?</p><div className="flex justify-end gap-3"><button onClick={() => setParticipantToDelete(null)} className="text-sm text-slate-300">Cancelar</button><button onClick={() => { onRemoveParticipant?.(participantToDelete); setParticipantToDelete(null); }} className="bg-red-700 px-4 py-2 rounded-lg text-sm font-semibold">Eliminar</button></div></div></div>}
       {/* Modal de Solicitud de Revisión de Etapa */}
       {resolvingObservationId && (
         <div className="fixed inset-0 z-[60] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) setResolvingObservationId(null); }}>
