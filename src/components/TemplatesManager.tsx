@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { 
   FolderKanban, 
   Sparkles, 
@@ -151,7 +151,6 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
   const [editStages, setEditStages] = useState<Stage[]>([]);
   const [editOriginalDocumentContent, setEditOriginalDocumentContent] = useState('');
   const [editFieldMap, setEditFieldMap] = useState<NonNullable<ProcessTemplate['fieldMap']>>([]);
-  const [visibleMapId,setVisibleMapId] = useState<string|null>(null);
   const [editReviewNotes, setEditReviewNotes] = useState<string[]>([]);
   const [editShowDocumentToAll, setEditShowDocumentToAll] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -180,7 +179,8 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
   }, [currentUser]);
 
   const toggleExpand = (id: string) => {
-    setExpandedTemplateId(expandedTemplateId === id ? null : id);
+    if(expandedTemplateId===id)closeDetails(id);
+    else setExpandedTemplateId(id);
   };
 
   const isSuperAdmin = currentUser.role === 'SUPERADMIN';
@@ -229,10 +229,32 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
   };
 
   const [inlineDrafts, setInlineDrafts] = useState<Record<string,string>>({});
+  const liveDrafts = useRef<Record<string,string>>({});
+  const [dirtyIds, setDirtyIds] = useState<Record<string,boolean>>({});
+  const closeDetails = (id:string) => {
+    if(dirtyIds[id]){
+      requestConfirmation('Cambios sin guardar','Hay cambios sin guardar. Si salís, se perderán. ¿Querés salir igualmente?',()=>{
+        delete liveDrafts.current[id];
+        setInlineDrafts(prev=>{const next={...prev};delete next[id];return next;});
+        setDirtyIds(prev=>({...prev,[id]:false}));
+        setExpandedTemplateId(null);
+      });
+    }else setExpandedTemplateId(null);
+  };
+  const readEditor = (root:HTMLElement) => {
+    const walk=(node:Node):string=>{
+      if(node.nodeType===Node.TEXT_NODE)return node.textContent||'';
+      if(node instanceof HTMLElement && node.dataset.marker)return node.dataset.marker;
+      if(node.nodeName==='BR')return '\n';
+      const children=Array.from(node.childNodes).map(walk).join('');
+      return node!==root && (node.nodeName==='DIV'||node.nodeName==='P')?children+'\n':children;
+    };
+    return Array.from(root.childNodes).map(walk).join('').replace(/\n$/,'');
+  };
   const [inlineSaving, setInlineSaving] = useState<string|null>(null);
   const saveInlineDocument = async (tpl: ProcessTemplate) => {
-    const draft = inlineDrafts[tpl.id];
-    if (draft === undefined) return;
+    const draft = liveDrafts.current[tpl.id] ?? inlineDrafts[tpl.id];
+    if (draft === undefined || draft === (tpl.originalDocumentContent||'')) return;
     setInlineSaving(tpl.id);
     try {
       const ordered = [...new Set(Array.from(draft.matchAll(/\[CAMPO_\d+\*?\]/g), m => m[0]))];
@@ -247,7 +269,9 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
         body:JSON.stringify({...tpl,originalDocumentContent:content,fieldMap,currentUserId:currentUser.id})
       });
       if(!response.ok)throw new Error((await response.json()).error||'No se pudo guardar');
+      delete liveDrafts.current[tpl.id];
       setInlineDrafts(prev=>{const next={...prev};delete next[tpl.id];return next;});
+      setDirtyIds(prev=>({...prev,[tpl.id]:false}));
       showToast('Documento digitalizado guardado correctamente','success');
       if(loadState)await loadState();
     } catch(error:any){showToast(error?.message||'Error al guardar documento','error');}
@@ -258,25 +282,26 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
     const content=inlineDrafts[tpl.id]??tpl.originalDocumentContent??'';
     const pieces=content.split(/(\[CAMPO_\d+\*?\])/g);
     return <div
-      key={tpl.id + (inlineDrafts[tpl.id]===undefined?'saved':'editing')}
+      key={tpl.id}
       contentEditable={canManageTemplates && inlineSaving!==tpl.id}
       suppressContentEditableWarning
       spellCheck={false}
       role="textbox"
       aria-label="Documento digitalizado editable"
       aria-multiline="true"
+      onInput={e=>{
+        if(!canManageTemplates)return;
+        const next=readEditor(e.currentTarget);
+        liveDrafts.current[tpl.id]=next;
+        const dirty=next!==(tpl.originalDocumentContent||'');
+        setDirtyIds(prev=>prev[tpl.id]===dirty?prev:{...prev,[tpl.id]:dirty});
+      }}
       onBlur={e=>{
         if(!canManageTemplates)return;
-        const root=e.currentTarget;
-        const walk=(node:Node):string=>{
-          if(node.nodeType===Node.TEXT_NODE)return node.textContent||'';
-          if(node instanceof HTMLElement && node.dataset.marker)return node.dataset.marker;
-          if(node.nodeName==='BR')return '\n';
-          const children=Array.from(node.childNodes).map(walk).join('');
-          return node!==root && (node.nodeName==='DIV'||node.nodeName==='P')?children+'\n':children;
-        };
-        const next=Array.from(root.childNodes).map(walk).join('').replace(/\n$/,'');
+        const next=readEditor(e.currentTarget);
+        liveDrafts.current[tpl.id]=next;
         if(next!==content)setInlineDrafts(prev=>({...prev,[tpl.id]:next}));
+        setDirtyIds(prev=>({...prev,[tpl.id]:next!==(tpl.originalDocumentContent||'')}));
       }}
       className="whitespace-pre-wrap leading-relaxed text-slate-800 font-serif text-xs md:text-sm min-h-32 outline-none rounded"
     >{pieces.map((part,i)=>{
@@ -813,31 +838,17 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
 
               {/* Extended Details Block */}
               {isExpanded && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/75 backdrop-blur-sm p-3 md:p-6" onClick={() => setExpandedTemplateId(null)}>
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/75 backdrop-blur-sm p-3 md:p-6" onClick={() => closeDetails(tpl.id)}>
                   <div className="w-full max-w-6xl max-h-[92vh] overflow-y-auto rounded-2xl bg-white border border-slate-200 shadow-2xl" onClick={(event) => event.stopPropagation()}>
                     <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-5 py-4 flex items-center justify-between gap-4">
                       <div><h3 className="text-base font-bold text-slate-900">{tpl.name}</h3><p className="text-xs text-slate-500">{tpl.industry} · Requisitos del proceso</p></div>
                       <div className="flex items-center gap-2">
                         {canManageTemplates && !isDigitalDoc && <button type="button" onClick={() => { setExpandedTemplateId(null); handleStartEdit(tpl, 'stages'); }} className="px-3 py-2 bg-indigo-600 text-white text-xs font-bold rounded-lg">Configurar requisitos</button>}
-                        {isDigitalDoc && <button type="button" onClick={() => setVisibleMapId(current => current === tpl.id ? null : tpl.id)} className="px-3 py-2 bg-amber-100 text-amber-950 border border-amber-300 text-xs font-bold rounded-lg">Mapa de campos</button>}
-                        <button type="button" aria-label="Cerrar detalles" onClick={() => setExpandedTemplateId(null)} className="p-2 rounded-lg hover:bg-slate-100 text-slate-700"><X className="w-5 h-5" /></button>
+                        {isDigitalDoc && canManageTemplates && dirtyIds[tpl.id] && <button type="button" disabled={inlineSaving===tpl.id} onClick={()=>saveInlineDocument(tpl)} className="px-3 py-2 bg-amber-500 text-slate-950 text-xs font-bold rounded-lg disabled:opacity-50">{inlineSaving===tpl.id?'Guardando...':'Guardar cambios'}</button>}
+                        <button type="button" aria-label="Cerrar detalles" onClick={() => closeDetails(tpl.id)} className="p-2 rounded-lg hover:bg-slate-100 text-slate-700"><X className="w-5 h-5" /></button>
                       </div>
                     </div>
                     <div className="p-5 md:p-7 space-y-6">
-                  {visibleMapId===tpl.id && <section className="rounded-xl border border-amber-300 bg-amber-50 p-4 space-y-3">
-                    <h4 className="font-bold text-slate-900">Mapa de campos de esta plantilla</h4>
-                    <p className="text-xs text-slate-700">Correspondencias guardadas en la plantilla. Los campos sin identificar requieren revisión antes de confiar en su autocompletado.</p>
-                    <div className="max-h-80 overflow-y-auto space-y-1">
-                      {[...new Set([...((tpl.originalDocumentContent||'').matchAll(/\[CAMPO_\d+\*?\]/g))].map(m=>m[0]))].map(field=>{
-                        const info=(tpl.fieldMap||[]).find(x=>x.id===field);
-                        return <div key={field} className="grid grid-cols-[105px_1fr_1fr] gap-2 bg-white border border-slate-200 rounded-lg p-2 text-xs text-slate-800">
-                          <code className="font-bold text-indigo-700">{field}</code>
-                          <span>{info?.label||'Sin significado identificado'}</span>
-                          <span>{info?.actor||'Actor no determinado'}{info?.review?' · Revisar':''}</span>
-                        </div>;
-                      })}
-                    </div>
-                  </section>}
                   {isDigitalDoc ? (
                     // Display ONLY the digitized document with its approval flow
                     <div className="bg-slate-100/60 p-4 rounded-2xl border border-slate-200/60 min-h-[400px] flex items-start justify-center">
@@ -849,13 +860,6 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                           </div>
                           
                           {renderInlineEditable(tpl)}
-                          {canManageTemplates && inlineDrafts[tpl.id] !== undefined && (
-                            <div className="mt-3 flex justify-end gap-2">
-                              <button type="button" onClick={()=>setInlineDrafts(prev=>{const next={...prev};delete next[tpl.id];return next;})} className="px-3 py-1.5 text-xs rounded-lg border border-slate-300">Descartar cambios</button>
-                              <button type="button" disabled={inlineSaving===tpl.id} onClick={()=>saveInlineDocument(tpl)} className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-500 text-slate-950 disabled:opacity-50">{inlineSaving===tpl.id?'Guardando...':'Guardar cambios'}</button>
-                            </div>
-                          )}
-
                           {/* Botón de Aprobación para pasar a DOCUMENTOS */}
                           {currentUser && ['SUPERADMIN', 'ADMIN', 'MANAGER'].includes(currentUser.role) && tpl.originalDocumentContent && (
                             <div className="mt-8 p-4 bg-emerald-950 border border-emerald-500 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
