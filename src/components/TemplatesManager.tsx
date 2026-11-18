@@ -114,7 +114,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
       const fields=data.fields as NonNullable<ProcessTemplate['fieldMap']>;
       setImportedFieldMap(fields);
       setSelectedDocumentContent(data.originalDocumentContent||'');
-      setManualDescription(fields.map(f=>f.actor+' — '+f.label+' ('+f.id+')'+(f.review?' [REVISAR]':'')).join('\n'));
+      setManualDescription(normalizedFields.map(f=>f.actor+' — '+f.label+' ('+f.id+')'+(f.review?' [REVISAR]':'')).join('\n'));
       if(!manualName.trim())setManualName(selected.name.replace(/\s*\(Digitalizado\)\s*$/i,''));
     }catch(error){alert(error instanceof Error?error.message:'Error al analizar campos');}
     finally{setImportingFields(false);}
@@ -188,6 +188,10 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
   const canManageTemplates = isSuperAdmin || (['ADMIN', 'MANAGER'].includes(currentUser.role) && allowAdminManager);
 
   // Display-only status: unresolved semantics are red; verified mappings remain yellow.
+  const isUnidentifiedField = (actor:string,label:string) =>
+    /^(dato por identificar|pendiente de identificar|sin significado identificado|dato sin identificar)$/i.test(label.trim()) ||
+    /^(no determinado|por identificar)$/i.test(actor.trim());
+
   const fieldNeedsReview = (field?: NonNullable<ProcessTemplate['fieldMap']>[number]) =>
     !field || Boolean(field.review) ||
     /^(dato por identificar|pendiente de identificar|sin significado identificado|dato sin identificar)$/i.test((field.label || '').trim()) ||
@@ -290,13 +294,22 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
       const fieldMap = ordered.map(id=>{
         const originalId=inlineOrigins.current[tpl.id]?.[id]||id;
         const prior=(tpl.fieldMap||[]).find(f=>f.id===originalId);
-        return prior ? {...prior,id:renumbered.get(id)!,...(inlineLabels.current[tpl.id]?.[id]||{})} : {id:renumbered.get(id)!,...(inlineLabels.current[tpl.id]?.[id]||{label:'Pendiente de identificar',actor:'No determinado'}),source:'manual' as const,confidence:'low' as const,review:true};
+        const edited=inlineLabels.current[tpl.id]?.[id];
+         const corrected=edited && !isUnidentifiedField(edited.actor,edited.label) && (!prior || edited.actor!==prior.actor || edited.label!==prior.label);
+         return prior ? {...prior,id:renumbered.get(id)!,...edited,...(corrected?{review:false}:{})} : {id:renumbered.get(id)!,...(edited||{label:'Pendiente de identificar',actor:'No determinado'}),source:'manual' as const,confidence:'low' as const,review:!corrected};
       });
       const response=await fetch(`/api/templates/${tpl.id}`,{
         method:'PUT',credentials:'include',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({...tpl,originalDocumentContent:content,fieldMap,currentUserId:currentUser.id})
       });
       if(!response.ok)throw new Error((await response.json()).error||'No se pudo guardar');
+       // Update the visible badges immediately after a successful save.
+       document.querySelectorAll<HTMLElement>('[data-marker]').forEach(element=>{
+         const saved=fieldMap.find(f=>f.id===element.dataset.marker);
+         if(!saved)return;
+         element.classList.remove('bg-red-100','text-red-900','border-red-400','bg-amber-100','text-amber-900','border-amber-300');
+         element.classList.add(...(fieldNeedsReview(saved)?['bg-red-100','text-red-900','border-red-400']:['bg-amber-100','text-amber-900','border-amber-300']));
+       });
       delete liveDrafts.current[tpl.id];
       delete inlineOrigins.current[tpl.id];
       setInlineDrafts(prev=>{const next={...prev};delete next[tpl.id];return next;});
