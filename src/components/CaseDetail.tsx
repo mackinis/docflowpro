@@ -57,12 +57,12 @@ interface CaseDetailProps {
   onUploadDoc: (stageId: string, reqId: string, reqName: string, fileName: string, fileSize: number, file?: File, onProgress?: (percent: number, loadedBytes?: number, totalBytes?: number) => void) => void | Promise<void>;
   onReviewDoc: (docId: string, status: 'approved' | 'rejected' | 'uploaded', observationText?: string, allowedRoles?: string[]) => Promise<void>;
   onToggleTask: (taskId: string, status: 'pending' | 'completed') => void;
-  onSubmitForm: (reqId: string, values: Record<string, string | number | boolean>) => void;
+  onSubmitForm: (reqId: string, values: Record<string, string | number | boolean>) => Promise<void>;
   onAddObservation: (stageId: string, reqId: string | undefined, text: string) => void;
   onResolveObservation: (obsId: string, response: string) => void | Promise<void>;
   onReopenObservation: (obsId: string) => void | Promise<void>;
-  onAdvanceStage: () => void;
-  onApproveStage: () => void;
+  onAdvanceStage: () => Promise<void>;
+  onApproveStage: () => Promise<void>;
   onReopenCase: (password: string) => Promise<void>;
   onAddParticipant: (participant: Participant) => void;
   onRemoveParticipant?: (participantId: string) => void;
@@ -116,6 +116,7 @@ export default function CaseDetail({
   // Active sub-tab inside current Stage view
   const [activeSubTab, setActiveSubTab] = useState<'docs' | 'forms' | 'tasks'>('docs');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [savingFormId, setSavingFormId] = useState<string | null>(null);
 
   // Form submission temp states
   const [formValues, setFormValues] = useState<Record<string, Record<string, string | number | boolean>>>({});
@@ -281,7 +282,8 @@ export default function CaseDetail({
   };
 
   // Submit form requirement
-  const handleFormSubmit = (reqId: string) => {
+  const handleFormSubmit = async (reqId: string) => {
+    if (savingFormId) return;
     const vals = formValues[reqId] || {};
     // Check required fields
     const req = currentStage?.requirements.find(r => r.id === reqId);
@@ -297,8 +299,15 @@ export default function CaseDetail({
       return;
     }
 
-    onSubmitForm(reqId, vals);
-    alert('Formulario guardado con éxito.');
+    setSavingFormId(reqId);
+    try {
+      await onSubmitForm(reqId, vals);
+      alert('Formulario guardado con éxito.');
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'No se pudo guardar el formulario.');
+    } finally {
+      setSavingFormId(null);
+    }
   };
 
   // Trigger real file picker for document requirement upload (with authorization check for ASESOR)
@@ -1454,10 +1463,11 @@ export default function CaseDetail({
                               <div className="flex justify-end pt-1">
                                 <button
                                   type="button"
-                                  onClick={() => handleFormSubmit(req.id)}
-                                  className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs rounded-lg shadow-xs transition-all"
+                                  onClick={() => void handleFormSubmit(req.id)}
+                                  disabled={savingFormId !== null}
+                                  className="px-4 py-1.5 disabled:opacity-50 disabled:cursor-wait bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs rounded-lg shadow-xs transition-all"
                                 >
-                                  Guardar Respuestas Formulario
+                                  {savingFormId === req.id ? 'Guardando…' : 'Guardar Respuestas Formulario'}
                                 </button>
                               </div>
                             )}
@@ -1732,12 +1742,16 @@ export default function CaseDetail({
                 <>
                   {!caseObj.isCurrentStageApproved ? (
                     <button
-                      onClick={() => {
+                      onClick={async () => {
+                        if (isAdvancing) return;
                         setIsAdvancing(true);
-                        setTimeout(() => {
-                          onApproveStage();
+                        try {
+                          await onApproveStage();
+                        } catch (error) {
+                          alert(error instanceof Error ? error.message : 'No se pudo completar la operación.');
+                        } finally {
                           setIsAdvancing(false);
-                        }, 800);
+                        }
                       }}
                       disabled={!validation.isValid || isAdvancing}
                       className={`w-full md:w-auto px-5 py-3 rounded-xl font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2 ${
@@ -1760,12 +1774,16 @@ export default function CaseDetail({
                     </button>
                   ) : (
                     <button
-                      onClick={() => {
+                      onClick={async () => {
+                        if (isAdvancing) return;
                         setIsAdvancing(true);
-                        setTimeout(() => {
-                          onAdvanceStage();
+                        try {
+                          await onAdvanceStage();
+                        } catch (error) {
+                          alert(error instanceof Error ? error.message : 'No se pudo completar la operación.');
+                        } finally {
                           setIsAdvancing(false);
-                        }, 800);
+                        }
                       }}
                       disabled={isAdvancing}
                       className="w-full md:w-auto px-5 py-3 bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-500/10 hover:scale-102 cursor-pointer active:scale-98 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2"
