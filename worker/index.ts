@@ -2864,7 +2864,36 @@ Instrucción actual: ${instruction}`;
       const expected=String(entry.actor||'').toLocaleLowerCase('es-AR');
       const declared=source.toLocaleLowerCase('es-AR');
       const spouse=/c[óo]nyuge|espos[ao]/i.test(expected);
-      if(!spouse)return true;
+      if(!spouse){
+        const kind=actorKind(String(entry.actor||''));
+        const property=propertyFor(String(entry.label||''));
+        if(kind && property){
+          const aliases:Record<string,string[]>={
+            dni:['dni','documentNumber','document_number'],
+            email:['email','mail'],birthDate:['birthDate','birth_date','dateOfBirth','fechaNacimiento'],
+            maritalStatus:['maritalStatus','marital_status','estadoCivil'],
+            address:['address','domicilio','domicilioActual'],
+            name:['fullName','name','nombreCompleto']
+          };
+          const matches=actors.filter(p=>actorKind(String(p.role||p.type||''))===kind);
+          if(matches.length>1)return false;
+          const normalizedValue=normalizeEvidence(value);
+          // If the value is a known attribute of a different actor, reject it.
+          const otherActors=actors.filter(p=>actorKind(String(p.role||p.type||''))!==kind);
+          if(otherActors.some(p=>(aliases[property]||[]).some(k=>
+            typeof p[k]==='string' && normalizeEvidence(p[k])===normalizedValue)))return false;
+          if(matches.length===1){
+            const known=(aliases[property]||[]).map(k=>matches[0][k])
+              .filter(v=>typeof v==='string'&&v.trim());
+            if(known.length && !known.some(v=>normalizeEvidence(v)===normalizedValue)){
+              // The operator can override contradictory structured data only
+              // through an explicit field assignment, not a model inference.
+              return false;
+            }
+          }
+        }
+        return true;
+      }
       // No spouse proposal can be based solely on the main participant's
       // record or generic case data, even if the literal value exists there.
       if(!/c[óo]nyuge|espos[ao]/i.test(declared))return false;
