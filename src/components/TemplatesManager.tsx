@@ -1094,16 +1094,16 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                               {type: 'form', label: 'Formularios de registro', icon: 'form'},
                               {type: 'task', label: 'Tareas del proceso', icon: 'task'}
                             ] as const).filter(group => stg.requirements.some(req => req.type === group.type)).map(group => (
-                              <div key={group.type} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                              <div key={group.type} className={`rounded-xl border border-slate-200 bg-white p-4 shadow-sm ${group.type === 'task' ? 'lg:col-span-2' : ''}`}>
                                 <h6 className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-900">
                                   {group.type === 'actor' ? <Users className="h-4 w-4 text-indigo-500" /> : group.type === 'document' ? <FileText className="h-4 w-4 text-indigo-500" /> : group.type === 'form' ? <FileSpreadsheet className="h-4 w-4 text-indigo-500" /> : <CheckSquare className="h-4 w-4 text-indigo-500" />}
                                   {group.label}
                                 </h6>
-                                <div className="space-y-2">
+                                <div className={group.type === 'task' ? 'grid grid-cols-1 lg:grid-cols-2 gap-2' : 'space-y-2'}>
                                   {stg.requirements.filter(req => req.type === group.type).map(req => (
-                                    <div key={req.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+                                    <div key={req.id} className="flex min-w-0 items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
                                       <div className="min-w-0 flex-1">
-                                        <p className="break-words text-sm font-semibold text-slate-900">{req.name}</p>
+                                        <p className="truncate whitespace-nowrap text-sm font-semibold text-slate-900" title={req.name}>{req.name}</p>
                                         {req.type === 'actor' && <p className="mt-1 text-xs text-slate-600">Cantidad mínima: {req.minQuantity || 1}</p>}
                                         {req.type === 'form' && !!req.formFields?.length && <p className="mt-1 text-xs text-slate-600">Campos: {req.formFields.map(f => f.label).join(', ')}</p>}
                                       </div>
