@@ -2,8 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import { 
   FolderKanban, 
   Sparkles, 
-  ChevronDown, 
-  ChevronUp, 
   Plus, 
   FileText, 
   Users,
@@ -69,7 +67,6 @@ interface TemplatesManagerProps {
 }
 
 export default function TemplatesManager({ templates, currentUser, systemSettings, onAddTemplate, loadState }: TemplatesManagerProps) {
-  const [expandedTemplateId, setExpandedTemplateId] = useState<string | null>(null);
   const [showAiModal, setShowAiModal] = useState(false);
   const [showProcessModal, setShowProcessModal] = useState(false);
 
@@ -256,11 +253,6 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
     fetchSharedDocs();
   }, [currentUser]);
 
-  const toggleExpand = (id: string) => {
-    if(expandedTemplateId===id)closeDetails(id);
-    else setExpandedTemplateId(id);
-  };
-
   const isSuperAdmin = currentUser.role === 'SUPERADMIN';
   const allowAdminManager = systemSettings?.allowAdminManagerTemplates !== false;
   const canManageTemplates = isSuperAdmin || (['ADMIN', 'MANAGER'].includes(currentUser.role) && allowAdminManager);
@@ -339,17 +331,6 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
       return !!match && (!prior || match[1].trim()!==prior.actor || match[2].trim()!==prior.label);
     });
   const [dirtyIds, setDirtyIds] = useState<Record<string,boolean>>({});
-  const closeDetails = (id:string) => {
-    if(dirtyIds[id]){
-      requestConfirmation('Cambios sin guardar','Hay cambios sin guardar. Si salís, se perderán. ¿Querés salir igualmente?',()=>{
-        delete liveDrafts.current[id];
-        delete inlineOrigins.current[id];
-        setInlineDrafts(prev=>{const next={...prev};delete next[id];return next;});
-        setDirtyIds(prev=>({...prev,[id]:false}));
-        setExpandedTemplateId(null);
-      });
-    }else setExpandedTemplateId(null);
-  };
   const readEditor = (root:HTMLElement) => {
     const walk=(node:Node):string=>{
       if(node.nodeType===Node.TEXT_NODE)return node.textContent||'';
@@ -698,7 +679,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
     setEditingTemplate(tpl);
     setEditMode(mode);
     setEditName(tpl.name);
-    setEditDescription(tpl.description);
+    setEditDescription(/\\(CAMPO_\\d+\\)/.test(tpl.description) ? 'Gestionar las etapas, los responsables y los requisitos para confeccionar el contrato de locación utilizando la hoja guía digitalizada.' : tpl.description);
     setEditIndustry(tpl.industry);
     setEditStages(JSON.parse(JSON.stringify(tpl.stages))); // Deep copy
     setEditOriginalDocumentContent(tpl.originalDocumentContent || '');
@@ -942,13 +923,12 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
       {/* Grid of Templates */}
       <div className="grid grid-cols-1 gap-4">
         {templates.filter(t => !t.id.startsWith('doc-')).map((tpl) => {
-          const isExpanded = expandedTemplateId === tpl.id;
           const isDigitalDoc = !!tpl.originalDocumentContent && tpl.originalDocumentContent.trim() !== '';
           return (
             <div key={tpl.id} className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden transition-all duration-200">
               {/* Summary Block */}
               <div 
-                onClick={() => toggleExpand(tpl.id)}
+                onClick={() => handleStartEdit(tpl, 'stages')}
                 className="p-5 flex items-center justify-between gap-4 hover:bg-slate-50/50 cursor-pointer transition-colors"
               >
                 <div className="flex items-center gap-4 min-w-0">
@@ -963,7 +943,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                         <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] font-semibold rounded uppercase tracking-wider">Plantilla de Documento</span>
                       )}
                     </div>
-                    <p className="text-xs text-slate-400 mt-0.5 truncate max-w-xl">{isDigitalDoc ? (tpl.digitizationReviewNotes?.length ? "Documento digitalizado · Revisar mapa de campos" : "Documento digitalizado · Mapa de campos disponible en el detalle") : tpl.description}</p>
+                    <p className="text-xs text-slate-400 mt-0.5 truncate max-w-xl">{isDigitalDoc ? (tpl.digitizationReviewNotes?.length ? "Documento digitalizado · Revisar mapa de campos" : "Documento digitalizado · Mapa de campos disponible en el detalle") : (/\\(CAMPO_\\d+\\)/.test(tpl.description) ? 'Gestionar las etapas, los responsables y los requisitos para confeccionar el contrato de locación utilizando la hoja guía digitalizada.' : tpl.description)}</p>
                   </div>
                 </div>
 
@@ -1007,124 +987,14 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                   )}
 
                   <button 
-                    onClick={() => toggleExpand(tpl.id)}
+                    onClick={() => handleStartEdit(tpl, 'stages')}
                     className="p-1.5 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
                   >
-                    {isExpanded ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
+                    <Layers className="w-5 h-5 text-slate-400" />
                   </button>
                 </div>
               </div>
 
-              {/* Extended Details Block */}
-              {isExpanded && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/75 backdrop-blur-sm p-3 md:p-6" onClick={() => closeDetails(tpl.id)}>
-                  <div className="w-full max-w-6xl max-h-[92vh] overflow-y-auto rounded-2xl bg-white border border-slate-200 shadow-2xl" onClick={(event) => event.stopPropagation()}>
-                    <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-5 py-4 flex items-center justify-between gap-4">
-                      <div><h3 className="text-base font-bold text-slate-900">{tpl.name}</h3><p className="text-xs text-slate-500">{tpl.industry} · Requisitos del proceso</p></div>
-                      <div className="flex items-center gap-2">
-                        {canManageTemplates && !isDigitalDoc && <button type="button" onClick={() => { setExpandedTemplateId(null); handleStartEdit(tpl, 'stages'); }} className="px-3 py-2 bg-indigo-600 text-white text-xs font-bold rounded-lg">Configurar requisitos</button>}
-                        {isDigitalDoc && canManageTemplates && dirtyIds[tpl.id] && <button type="button" disabled={inlineSaving===tpl.id} onClick={()=>saveInlineDocument(tpl)} className="px-3 py-2 bg-amber-500 text-slate-950 text-xs font-bold rounded-lg disabled:opacity-50">{inlineSaving===tpl.id?'Guardando...':'Guardar cambios'}</button>}
-                        <button type="button" aria-label="Cerrar detalles" onClick={() => closeDetails(tpl.id)} className="p-2 rounded-lg hover:bg-slate-100 text-slate-700"><X className="w-5 h-5" /></button>
-                      </div>
-                    </div>
-                    <div className="p-5 md:p-7 space-y-6">
-                  {isDigitalDoc ? (
-                    // Display ONLY the digitized document with its approval flow
-                    <div className="bg-slate-100/60 p-4 md:p-6 rounded-2xl border border-slate-200/60 min-h-[400px]">
-                      <div className="w-full min-w-0 flex flex-col justify-between">
-                        <div>
-                          <div className="flex items-center justify-between pb-4 mb-6 border-b border-slate-100 text-[10px] text-slate-400 font-mono">
-                            <span>PLANTILLA DIGITAL ORIGINAL ({tpl.industry.toUpperCase()})</span>
-                            <span>SOPORTE DE VARIABLES INTEGRADAS</span>
-                          </div>
-                          
-                          {renderInlineEditable(tpl)}
-                          {/* Botón de Aprobación para pasar a DOCUMENTOS */}
-                          {currentUser && ['SUPERADMIN', 'ADMIN', 'MANAGER'].includes(currentUser.role) && tpl.originalDocumentContent && (
-                            <div className="mt-8 p-4 bg-emerald-950 border border-emerald-500 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                              <div className="space-y-0.5 text-left">
-                                <p className="text-xs font-bold text-white">¿El documento digitalizado está correcto?</p>
-                                <p className="text-[10px] text-white">Aprobar este documento lo guardará y publicará automáticamente en la sección <strong>DOCUMENTOS</strong> para descarga y uso general.</p>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => handleStartApprove(tpl)}
-                                className="shrink-0 flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-xs transition-all cursor-pointer"
-                              >
-                                <CheckCircle className="w-4 h-4" />
-                                <span>Aprobar y pasar a DOCUMENTOS</span>
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                        
-                        <div className="mt-10 pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between text-[10px] text-slate-400 font-mono">
-                          <span>PLANTILLA ID: {tpl.id}</span>
-                          <span>DOCFLOW PRO DIGITAL ENGINE</span>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-6">
-                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4">
-                        <div>
-                          <h4 className="text-base font-bold text-slate-900">Requisitos del proceso</h4>
-                          <p className="text-sm text-slate-600 mt-1">Consultá todos los actores y documentos, sin listas recortadas.</p>
-                        </div>
-                        <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-700">{tpl.stages.length} {tpl.stages.length === 1 ? 'etapa' : 'etapas'}</span>
-                      </div>
-                      {tpl.stages.length === 0 ? (
-                        <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
-                          <p className="font-semibold text-slate-800">Todavía no hay requisitos configurados.</p>
-                          <p className="mt-2 text-sm text-slate-600">Utilizá «Configurar requisitos» para agregarlos.</p>
-                        </div>
-                      ) : tpl.stages.map((stg, sIdx) => (
-                        <section key={stg.id} className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4 md:p-6 space-y-5">
-                          <div className="flex items-start gap-3 border-b border-slate-200 pb-4">
-                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-600 text-sm font-bold text-white">{sIdx + 1}</span>
-                            <div>
-                              <h5 className="text-base font-bold text-slate-900">{stg.name}</h5>
-                              {stg.description && <p className="mt-1 text-sm leading-relaxed text-slate-600">{stg.description}</p>}
-                            </div>
-                          </div>
-                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                            {([
-                              {type: 'actor', label: 'Actores requeridos', icon: 'actor'},
-                              {type: 'document', label: 'Documentación solicitada', icon: 'document'},
-                              {type: 'form', label: 'Formularios de registro', icon: 'form'},
-                              {type: 'task', label: 'Tareas del proceso', icon: 'task'}
-                            ] as const).filter(group => stg.requirements.some(req => req.type === group.type)).map(group => (
-                              <div key={group.type} className={`rounded-xl border border-slate-200 bg-white p-4 shadow-sm ${group.type === 'task' ? 'lg:col-span-2' : ''}`}>
-                                <h6 className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-900">
-                                  {group.type === 'actor' ? <Users className="h-4 w-4 text-indigo-500" /> : group.type === 'document' ? <FileText className="h-4 w-4 text-indigo-500" /> : group.type === 'form' ? <FileSpreadsheet className="h-4 w-4 text-indigo-500" /> : <CheckSquare className="h-4 w-4 text-indigo-500" />}
-                                  {group.label}
-                                </h6>
-                                <div className={group.type === 'task' ? 'grid grid-cols-1 lg:grid-cols-2 gap-2' : 'space-y-2'}>
-                                  {stg.requirements.filter(req => req.type === group.type).map(req => (
-                                    <div key={req.id} className="flex min-w-0 items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
-                                      <div className="min-w-0 flex-1">
-                                        <p className="truncate whitespace-nowrap text-sm font-semibold text-slate-900" title={req.name}>{req.name}</p>
-                                        {req.type === 'actor' && <p className="mt-1 text-xs text-slate-600">Cantidad mínima: {req.minQuantity || 1}</p>}
-                                        {req.type === 'form' && !!req.formFields?.length && <p className="mt-1 text-xs text-slate-600">Campos: {req.formFields.map(f => f.label).join(', ')}</p>}
-                                      </div>
-                                      <span className={req.isRequired ? 'shrink-0 rounded-md bg-indigo-100 px-2.5 py-1 text-xs font-bold text-indigo-800' : 'shrink-0 rounded-md bg-slate-200 px-2.5 py-1 text-xs font-bold text-slate-700'}>
-                                        {req.isRequired ? 'Obligatorio' : 'Opcional'}
-                                      </span>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                          {stg.requirements.length === 0 && <p className="text-sm text-slate-600">Esta etapa no tiene requisitos asignados.</p>}
-                        </section>
-                      ))}
-                    </div>
-                  )}
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
           );
         })}
