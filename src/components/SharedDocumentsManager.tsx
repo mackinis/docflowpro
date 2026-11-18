@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User, SharedDocument } from '../types';
+import { cachedJson, invalidateCachedJson } from '../utils/requestCache';
 
 interface SharedDocumentsProps {
   currentUser: User;
@@ -37,8 +38,7 @@ export default function SharedDocumentsManager({ currentUser, users, onAddAudit 
   useEffect(() => {
     let active = true;
     setDocumentActions({ view: false, download: false, edit: false, create: false, delete: false });
-    fetch('/api/permissions/me', { credentials: 'include' })
-      .then(res => { if (!res.ok) throw new Error('Permisos no disponibles'); return res.json(); })
+    cachedJson<{documents: typeof documentActions}>(`permissions:${currentUser.id}:${currentUser.role}`, '/api/permissions/me')
       .then(data => { if (active) setDocumentActions(data.documents); })
       .catch(() => { /* Fail closed until permissions can be verified. */ });
     return () => { active = false; };
@@ -198,7 +198,8 @@ export default function SharedDocumentsManager({ currentUser, users, onAddAudit 
 
       setSuccess(`Documento "${editNameField}" actualizado con éxito.`);
       setEditingDoc(null);
-      loadDocuments();
+      invalidateCachedJson('shared-documents:');
+      await loadDocuments();
     } catch (err: any) {
       setError(err.message || 'Error al guardar los cambios.');
     } finally {
@@ -270,7 +271,8 @@ export default function SharedDocumentsManager({ currentUser, users, onAddAudit 
 
       setSuccess(`Documento "${editDocName}" actualizado con éxito.`);
       setEditingPermissionsDoc(null);
-      loadDocuments();
+      invalidateCachedJson('shared-documents:');
+      await loadDocuments();
     } catch (err: any) {
       setError(err.message || 'Error al actualizar permisos.');
     } finally {
@@ -283,11 +285,7 @@ export default function SharedDocumentsManager({ currentUser, users, onAddAudit 
     try {
       setLoading(true);
       setError(null);
-      const res = await fetch(`/api/shared-documents?userId=${currentUser.id}&role=${currentUser.role}`, {
-        credentials: 'include'
-      });
-      if (!res.ok) throw new Error('Error al cargar la biblioteca de documentos.');
-      const data = await res.json();
+      const data = await cachedJson<SharedDocument[]>(`shared-documents:${currentUser.id}:${currentUser.role}`, `/api/shared-documents?userId=${currentUser.id}&role=${currentUser.role}`);
       setDocuments(data);
     } catch (err: any) {
       setError(err.message || 'Error al conectar con la biblioteca.');
@@ -298,7 +296,7 @@ export default function SharedDocumentsManager({ currentUser, users, onAddAudit 
 
   useEffect(() => {
     loadDocuments();
-  }, [currentUser]);
+  }, [currentUser.id, currentUser.role]);
 
   // Format File Size
   const formatBytes = (bytes: number) => {
