@@ -971,7 +971,7 @@ export default function CasesList({
                     <label className="text-[10px] font-semibold text-slate-500">Apellido *</label>
                     <input type="text" value={pLastName} onChange={(e) => setPLastName(e.target.value)} placeholder="Ej. Méndez" className="w-full text-[11px] p-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500" />
                   </div>
-                  {(!mappedActorFields.length || roleFields.some(item => /fecha de nacimiento/.test(normalizedActor(item.field.label)))) && (
+                  {(!mappedActorFields.length || roleFields.some(item => !/conyuge/.test(normalizedActor(item.field.actor)) && /fecha de nacimiento/.test(normalizedActor(item.field.label)))) && (
                   <div className="space-y-1">
                     <label className="text-[10px] font-semibold text-slate-500">Fecha de Nacimiento</label>
                     <input type="date" aria-label="Fecha de nacimiento: abrir calendario" value={pBirthDate} onChange={(e) => setPBirthDate(e.target.value)} className="legajo-birth-date w-full text-[11px] p-2 pr-3 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500" />
@@ -981,19 +981,19 @@ export default function CasesList({
                     <label className="text-[10px] font-semibold text-slate-500">DNI *</label>
                     <input type="text" value={pDni} onChange={(e) => setPDni(e.target.value)} placeholder="Ej. 32.145.980" className="w-full text-[11px] p-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500" />
                   </div>
-                  {(!mappedActorFields.length || roleFields.some(item => /cuit|cuil/.test(normalizedActor(item.field.label)))) && (
+                  {(!mappedActorFields.length || roleFields.some(item => !/conyuge/.test(normalizedActor(item.field.actor)) && /cuit|cuil/.test(normalizedActor(item.field.label)))) && (
                   <div className="space-y-1">
                     <label className="text-[10px] font-semibold text-slate-500">CUIT/CUIL</label>
                     <input type="text" value={pCuit} onChange={(e) => setPCuit(e.target.value)} onBlur={() => setPCuit(current => formatCuitCuil(current))} inputMode="numeric" placeholder="Ej. 20-32145980-4" className="w-full text-[11px] p-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500" />
                   </div>
                   )}
-                  {(!mappedActorFields.length || roleFields.some(item => /mail|correo|e-mail/.test(normalizedActor(item.field.label)))) && (
+                  {(!mappedActorFields.length || roleFields.some(item => !/conyuge/.test(normalizedActor(item.field.actor)) && /mail|correo|e-mail/.test(normalizedActor(item.field.label)))) && (
                   <div className="space-y-1">
                     <label className="text-[10px] font-semibold text-slate-500">Email</label>
                     <input type="email" value={pEmail} onChange={(e) => setPEmail(e.target.value)} placeholder="Ej. mendez@email.com" className="w-full text-[11px] p-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500" />
                   </div>
                   )}
-                  {(!mappedActorFields.length || roleFields.some(item => /telefono|celular/.test(normalizedActor(item.field.label)))) && (
+                  {(!mappedActorFields.length || roleFields.some(item => !/conyuge/.test(normalizedActor(item.field.actor)) && /telefono|celular/.test(normalizedActor(item.field.label)))) && (
                   <div className="space-y-1">
                     <label className="text-[10px] font-semibold text-slate-500">Teléfono/Celular</label>
                     <input type="tel" value={pPhone} onChange={(e) => setPPhone(e.target.value)} onFocus={(e) => { if (!pPhone.trim()) { setPPhone('+54'); requestAnimationFrame(() => { e.target.setSelectionRange(3, 3); }); } }} placeholder="Ej. +54 11 4432-8761" className="w-full text-[11px] p-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500" />
