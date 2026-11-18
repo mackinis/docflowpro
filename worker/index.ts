@@ -1802,7 +1802,7 @@ app.post('/api/templates', async (c) => {
   const newTemplate: ProcessTemplate = {
     id: `tmpl-${Date.now()}-${crypto.randomUUID().slice(0, 4)}`,
     name: body.name,
-    description: body.description || '',
+    description: body.sharedDocumentId ? 'Organizar las etapas, responsables y requisitos del proceso «' + String(body.name || 'operativo') + '», utilizando el documento previamente digitalizado.' : (body.description || ''),
     industry: body.industry || 'Inmobiliaria',
     stages: parsedStages,
     originalDocumentContent: body.sharedDocumentId ? '' : (body.originalDocumentContent || ''),
