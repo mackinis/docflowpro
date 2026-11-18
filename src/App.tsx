@@ -59,9 +59,11 @@ export default function App() {
   }, [activeTab, activeCaseId, currentUser?.id]);
 
   // Load backend state via Cloudflare Worker session cookie
-  const loadState = async () => {
+  const loadState = async (refreshOnly = false) => {
     try {
       setError(null);
+      let bootstrapData: { user?: User; realUser?: User; needsSetup?: boolean; turnstileSiteKey?: string; turnstileEnabled?: boolean; publicRegistrationEnabled?: boolean } | null = null;
+      if (!refreshOnly) {
       const bootstrapRes = await fetch('/api/auth/bootstrap-status', {
         credentials: 'include',
         signal: AbortSignal.timeout(15000)
@@ -69,13 +71,13 @@ export default function App() {
       if (!bootstrapRes.ok) {
         throw new Error('No se pudo conectar con el servidor Cloudflare Worker.');
       }
-      const bootstrapData = await bootstrapRes.json();
-      setNeedsSetup(Boolean(bootstrapData.needsSetup));
-      setTurnstileSiteKey(bootstrapData.turnstileSiteKey || '');
-      setTurnstileEnabled(Boolean(bootstrapData.turnstileEnabled));
-      setPublicRegistrationEnabled(bootstrapData.publicRegistrationEnabled !== false);
+      bootstrapData = await bootstrapRes.json();
+      setNeedsSetup(Boolean(bootstrapData!.needsSetup));
+      setTurnstileSiteKey(bootstrapData!.turnstileSiteKey || '');
+      setTurnstileEnabled(Boolean(bootstrapData!.turnstileEnabled));
+      setPublicRegistrationEnabled(bootstrapData!.publicRegistrationEnabled !== false);
 
-      if (!bootstrapData.user) {
+      if (!bootstrapData!.user) {
         sessionStorage.removeItem('docflow_user');
         sessionStorage.removeItem('docflow_real_user');
         setCurrentUser(null);
@@ -84,6 +86,7 @@ export default function App() {
         return;
       }
 
+      }
       // D1 initialization and transient Cloudflare errors can briefly return 503.
       // Retry the state request without showing a misleading connection-error page.
       let response: Response | null = null;
@@ -115,12 +118,14 @@ export default function App() {
       const data: AppDataState = await response.json();
       setState(data);
 
-      const sessionUser: User = bootstrapData.user;
-      const sessionRealUser: User = bootstrapData.realUser || bootstrapData.user;
+      if (!refreshOnly) {
+      const sessionUser: User = bootstrapData!.user!;
+      const sessionRealUser: User = bootstrapData!.realUser || bootstrapData!.user!;
       setCurrentUser(sessionUser);
       setRealUser(sessionRealUser);
       sessionStorage.setItem('docflow_user', JSON.stringify(sessionUser));
       sessionStorage.setItem('docflow_real_user', JSON.stringify(sessionRealUser));
+      }
     } catch (err: any) {
       console.error(err);
       setError(err?.name === 'TimeoutError' ? 'El servidor tardó demasiado en responder. Intente nuevamente.' : (err.message || 'Error de conexión con el servidor Cloudflare Worker.'));
@@ -153,7 +158,7 @@ export default function App() {
       }
       
       // Reload state after success to capture audit logs & notifications
-      await loadState();
+      await loadState(true);
       
       if (successMsg) {
         setOperationNotice(successMsg);
@@ -331,15 +336,15 @@ export default function App() {
 
     if (!stageId) return;
 
-    await syncOperation('/api/forms/submit', {
-      method: 'POST',
-      body: JSON.stringify({
-        caseId: activeCaseId,
-        stageId,
-        requirementId: reqId,
-        values
-      })
+    const response = await fetch('/api/forms/submit', {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ caseId: activeCaseId, stageId, requirementId: reqId, values })
     });
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.error || 'No se pudo guardar el formulario.');
+    }
+    await loadState(true);
   };
 
   // Create manual Observation
@@ -374,21 +379,31 @@ export default function App() {
   // Advance Stage (Validated)
   const handleAdvanceStage = async () => {
     if (!activeCaseId) return;
-    await syncOperation(`/api/cases/${activeCaseId}/advance`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    const response = await fetch(`/api/cases/${activeCaseId}/advance`, {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId: currentUser.id })
-    }, '¡Etapa avanzada exitosamente! El legajo avanzó de nivel.');
+    });
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.error || 'No se pudo completar la operación.');
+    }
+    await loadState(true);
+    setOperationNotice('¡Etapa avanzada exitosamente! El legajo avanzó de nivel.');
   };
 
   // Approve Stage (Manager only)
   const handleApproveStage = async () => {
     if (!activeCaseId) return;
-    await syncOperation(`/api/cases/${activeCaseId}/approve-stage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    const response = await fetch(`/api/cases/${activeCaseId}/approve-stage`, {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId: currentUser.id })
-    }, '¡Etapa aprobada correctamente!');
+    });
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.error || 'No se pudo completar la operación.');
+    }
+    await loadState(true);
+    setOperationNotice('¡Etapa aprobada correctamente!');
   };
 
   const handleReopenCase = async (password: string): Promise<void> => {
