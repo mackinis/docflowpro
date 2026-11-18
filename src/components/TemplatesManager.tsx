@@ -1704,7 +1704,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
       {/* Configuración del proceso: las obligaciones nacen aquí, no en la digitalización. */}
       {showProcessModal && (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-xl max-h-[90vh] flex flex-col overflow-hidden">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
             <div className="p-4 border-b border-slate-100 bg-indigo-50 flex items-center justify-between">
               <h4 className="text-sm font-bold text-indigo-900">Crear proceso operativo</h4>
               <button type="button" onClick={() => setShowProcessModal(false)} aria-label="Cerrar" className="p-1 text-indigo-700"><X className="w-5 h-5"/></button>
