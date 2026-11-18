@@ -746,7 +746,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                     <h4 className="font-bold text-slate-900">Mapa de campos de esta plantilla</h4>
                     <p className="text-xs text-slate-700">Correspondencias guardadas en la plantilla. Los campos sin identificar requieren revisión antes de confiar en su autocompletado.</p>
                     <div className="max-h-80 overflow-y-auto space-y-1">
-                      {[...new Set([...((tpl.originalDocumentContent||'').matchAll(/\\[CAMPO_\\d+\\*?\\]/g))].map(m=>m[0]))].map(field=>{
+                      {[...new Set([...((tpl.originalDocumentContent||'').matchAll(/\[CAMPO_\d+\*?\]/g))].map(m=>m[0]))].map(field=>{
                         const info=(tpl.fieldMap||[]).find(x=>x.id===field);
                         return <div key={field} className="grid grid-cols-[105px_1fr_1fr] gap-2 bg-white border border-slate-200 rounded-lg p-2 text-xs text-slate-800">
                           <code className="font-bold text-indigo-700">{field}</code>
