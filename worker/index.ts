@@ -1766,7 +1766,28 @@ app.post('/api/templates', async (c) => {
   const body = await c.req.json();
   let parsedStages: ProcessTemplate['stages'];
   try {
-    if(Array.isArray(body.stages) && body.stages.length) parsedStages=body.stages;
+    if(body.sharedDocumentId) {
+      // A process references the already published document; never re-publish or copy its text.
+      const doc=await c.env.DB.prepare('SELECT * FROM shared_documents WHERE id = ?').bind(String(body.sharedDocumentId)).first<any>();
+      if(!doc)return c.json({error:'El documento digitalizado asociado no existe.'},404);
+      const roles:string[]=doc.allowed_roles_json?JSON.parse(doc.allowed_roles_json):[];
+      const users:string[]=doc.allowed_user_ids_json?JSON.parse(doc.allowed_user_ids_json):[];
+      if(auth.user.role!=='SUPERADMIN'&&!roles.includes(auth.user.role)&&!users.includes(auth.user.id))
+        return c.json({error:'No tenés acceso al documento digitalizado.'},403);
+      const metadataObj=await c.env.R2_BUCKET.get(doc.r2_key+'.fieldmap.json');
+      if(!metadataObj)return c.json({error:'El documento no tiene un mapa de campos publicado.'},409);
+      const metadata=await metadataObj.json() as {originalDocumentContent?:string;fieldMap?:any[]};
+      const fields=metadata.fieldMap;
+      if(!Array.isArray(fields)||!fields.length)return c.json({error:'El mapa de campos publicado está vacío.'},409);
+      const requirements=fields.map((f:any)=>({
+        id:'req-'+crypto.randomUUID(),name:String(f.actor)+' — '+String(f.label)+' ('+String(f.id)+')',
+        type:'task' as const,description:'Dato a recopilar para completar '+String(f.id),
+        linkedSharedDocumentId:String(body.sharedDocumentId),
+        isRequired:!f.review
+      }));
+      parsedStages=[{id:'stage-'+crypto.randomUUID(),name:'Recolección de datos de la plantilla',description:'Verificar los campos identificados antes de confeccionar el documento',requirements}];
+    }
+    else if(Array.isArray(body.stages) && body.stages.length) parsedStages=body.stages;
     else if(Array.isArray(body.fieldMap) && body.fieldMap.length && body.originalDocumentContent) {
       const sourceFields=body.fieldMap.filter((f:any)=>typeof f.id==='string' && typeof f.label==='string' && typeof f.actor==='string');
       const requirements=sourceFields.map((f:any)=>({
@@ -1784,10 +1805,10 @@ app.post('/api/templates', async (c) => {
     description: body.description || '',
     industry: body.industry || 'Inmobiliaria',
     stages: parsedStages,
-    originalDocumentContent: body.originalDocumentContent || '',
-    fieldMap: Array.isArray(body.fieldMap) ? body.fieldMap : [],
+    originalDocumentContent: body.sharedDocumentId ? '' : (body.originalDocumentContent || ''),
+    fieldMap: body.sharedDocumentId ? [] : (Array.isArray(body.fieldMap) ? body.fieldMap : []),
     digitizationReviewNotes: [],
-    showDocumentToAll: body.showDocumentToAll !== undefined ? body.showDocumentToAll : true,
+    showDocumentToAll: body.sharedDocumentId ? false : (body.showDocumentToAll !== undefined ? body.showDocumentToAll : true),
     sharedViewMode: body.sharedViewMode || 'both',
   };
 
