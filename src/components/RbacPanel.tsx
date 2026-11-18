@@ -27,7 +27,19 @@ export default function RbacPanel({ users, selectedUserId }: { users: User[]; se
       return {...previous, [scope === 'role' ? 'roles' : 'users']:{...group,[target]:next}};
     });
   };
-  const save=async()=>{setBusy(true);setStatus('');try{const r=await fetch('/api/admin/rbac',{method:'PUT',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({matrix})});if(!r.ok)throw Error((await r.json()).error||'Error al guardar');setStatus('Permisos guardados correctamente.');}catch(e){setStatus(e instanceof Error?e.message:'Error inesperado');}finally{setBusy(false);}};
+  const save=async()=>{setBusy(true);setStatus('');try{
+    // Discard stale permissions that were previously stored as enabled but cannot be delegated.
+    const cleaned: RbacMatrix = {roles:{},users:{}};
+    for(const role of ROLES){
+      const entries=Object.entries(matrix.roles[role] || {}).filter(([key,value])=>!(value && isNonDelegablePermission(role,key as PermissionKey)));
+      if(entries.length)cleaned.roles[role]=Object.fromEntries(entries) as Partial<Record<PermissionKey,boolean>>;
+    }
+    for(const [id,overrides] of Object.entries(matrix.users)){
+      const role=users.find(u=>u.id===id)?.role;
+      if(!role)continue;
+      cleaned.users[id]=Object.fromEntries(Object.entries(overrides).filter(([key,value])=>!(value && isNonDelegablePermission(role,key as PermissionKey)))) as Partial<Record<PermissionKey,boolean>>;
+    }
+    const r=await fetch('/api/admin/rbac',{method:'PUT',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({matrix:cleaned})});if(!r.ok)throw Error((await r.json()).error||'Error al guardar');setMatrix(cleaned);setStatus('Permisos guardados correctamente.');}catch(e){setStatus(e instanceof Error?e.message:'Error inesperado');}finally{setBusy(false);}};
   return <section className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-5 space-y-5">
     <div><h2 className="text-lg font-bold text-slate-900 dark:text-white">Matriz granular RBAC</h2><p className="text-sm text-slate-500 dark:text-slate-300">Solo el Superadmin administra permisos por rol y excepciones individuales. El Superadmin conserva acceso completo.</p></div>
     <div className="flex flex-wrap gap-3 items-end">
