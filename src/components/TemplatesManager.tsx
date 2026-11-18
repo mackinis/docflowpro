@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { cachedJson } from '../utils/requestCache';
+import { cachedJson, invalidateCachedJson } from '../utils/requestCache';
 import { 
   FolderKanban, 
   Sparkles, 
@@ -860,17 +860,15 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
 
       const data = await response.json();
       if (response.ok && data.id) {
-        alert(`¡Documento "${tpl.name} (Digitalizado)" aprobado y guardado en la sección DOCUMENTOS exitosamente con los permisos seleccionados! Además, se eliminó de Plantillas de Procesos.`);
-        
-        try {
-          await fetch(`/api/templates/${tpl.id}?currentUserId=${currentUser.id}`, {
-            method: 'DELETE',
-            credentials: 'include'
-          });
-        } catch (delErr) {
-          console.error('Error al eliminar plantilla después de ser aprobada:', delErr);
+        invalidateCachedJson('shared-documents:');
+        const deletion = await fetch(`/api/templates/${tpl.id}?currentUserId=${currentUser.id}`, {
+          method: 'DELETE', credentials: 'include'
+        }).catch(() => null);
+        if (!deletion?.ok) {
+          alert('El documento se publicó correctamente, pero no se pudo eliminar la plantilla original. Verificá Plantillas antes de volver a publicarla.');
+        } else {
+          alert(`¡Documento "${tpl.name} (Digitalizado)" aprobado y guardado en DOCUMENTOS! La plantilla original fue eliminada.`);
         }
-
         setApprovingTemplate(null);
         if (loadState) {
           await loadState();
