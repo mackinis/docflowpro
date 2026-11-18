@@ -337,7 +337,6 @@ export default function CasesList({
             birthDate: pBirthDate || undefined,
             role: pType,
             comments: `${pType}: ${pComments}`.trim(),
-        fieldValues: valuesForParticipant(),
             fieldValues: valuesForParticipant()
           };
         }
@@ -355,7 +354,8 @@ export default function CasesList({
         phone: pPhone,
         birthDate: pBirthDate || undefined,
         role: pType,
-        comments: `${pType}: ${pComments}`.trim()
+        comments: `${pType}: ${pComments}`.trim(),
+        fieldValues: valuesForParticipant()
       };
       setParticipants([...participants, newPart]);
       setActorFiles(prev => ({ ...prev, [newPart.id]: prev[draftKey] || {} }));
@@ -436,7 +436,7 @@ export default function CasesList({
       const advisorId = currentUser.role === 'ASESOR' ? currentUser.id : (newAdvisorId || users.find(u => u.role === 'ASESOR')?.id || '');
       const response = await fetch('/api/cases', {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: newTitle, description: newDescription, templateId: newTemplateId, assignedAdvisorId: advisorId, assignedManagerId: currentUser.role === 'ASESOR' ? '' : currentUser.id, participants: [...participants, {id:'__operation__',name:'',lastName:'',dni:'',cuitCuil:'',email:'',phone:'',fieldValues:generalFieldValues}], pendingDocumentNames: pendingDocs, documentContent: customDocumentContent || undefined })
+        body: JSON.stringify({ title: newTitle, description: newDescription, templateId: newTemplateId, assignedAdvisorId: advisorId, assignedManagerId: currentUser.role === 'ASESOR' ? '' : currentUser.id, participants, generalFieldValues, pendingDocumentNames: pendingDocs, documentContent: customDocumentContent || undefined })
       });
       const created = await response.json();
       if (!response.ok) throw new Error(created.error || 'No se pudo crear el legajo.');
