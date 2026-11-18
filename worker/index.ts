@@ -2765,7 +2765,8 @@ app.post('/api/confecciones/:id/agent', async (c) => {
     await c.env.DB.prepare('INSERT INTO confeccion_chat (id, confeccion_id, sender, message, created_at) VALUES (?, ?, ?, ?, ?)')
       .bind(crypto.randomUUID(),id,'agent',reply.slice(0,3000),new Date().toISOString()).run();
   };
-  const baseEvidence = {\n    semanticFieldMap:fieldMap,
+  const baseEvidence = {
+    semanticFieldMap:fieldMap,
     code:caseObj.code, title:caseObj.title, description:caseObj.description,
     participants:caseObj.participants
   };
