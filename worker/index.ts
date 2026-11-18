@@ -207,7 +207,7 @@ app.use('/api/*', async (c, next) => {
         const form = await c.req.raw.clone().formData();
         caseId = String(form.get('caseId') || '') || null;
       } else {
-        const body = await c.req.raw.clone().json().catch(() => ({}));
+        const body = await c.req.raw.clone().json().catch(() => ({})) as {caseId?: string};
         caseId = body.caseId || null;
       }
     } else {
