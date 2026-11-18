@@ -28,6 +28,10 @@ import { ProcessTemplate, User, Stage, Requirement, RequirementType, FormField }
 // La igualdad estricta solo ignora espacios: conserva tildes, signos, mayúsculas y caracteres.
 const withoutSpaces = (value: string) => value.replace(/\\s+/gu, '');
 const comparable = (value: string) => value.normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLocaleLowerCase('es').replace(/[^a-z0-9]+/g, ' ').trim();
+// Legacy processes stored all imported CAMPO requirements as the process description.
+// Detect the identifier regardless of the surrounding brackets (e.g. [CAMPO_1], (CAMPO_1)).
+const isImportedFieldListDescription = (description: string): boolean => /CAMPO[_\s-]*\d+/i.test(description || '');
+
 const similarity = (a: string, b: string): number => {
   const x = comparable(a), y = comparable(b);
   if (x === y) return 1;
@@ -679,7 +683,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
     setEditingTemplate(tpl);
     setEditMode(mode);
     setEditName(tpl.name);
-    setEditDescription(/\(CAMPO_\d+\)/.test(tpl.description) ? 'Organizar las etapas, responsables y requisitos del proceso «' + tpl.name + '», utilizando el documento previamente digitalizado.' : tpl.description);
+    setEditDescription(isImportedFieldListDescription(tpl.description) ? 'Organizar las etapas, responsables y requisitos del proceso «' + tpl.name + '», utilizando el documento previamente digitalizado.' : tpl.description);
     setEditIndustry(tpl.industry);
     setEditStages(JSON.parse(JSON.stringify(tpl.stages))); // Deep copy
     setEditOriginalDocumentContent(tpl.originalDocumentContent || '');
@@ -943,7 +947,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                         <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] font-semibold rounded uppercase tracking-wider">Plantilla de Documento</span>
                       )}
                     </div>
-                    <p className="text-xs text-slate-400 mt-0.5 truncate max-w-xl">{isDigitalDoc ? (tpl.digitizationReviewNotes?.length ? "Documento digitalizado · Revisar mapa de campos" : "Documento digitalizado · Mapa de campos disponible en el detalle") : (/\(CAMPO_\d+\)/.test(tpl.description) ? 'Organizar las etapas, responsables y requisitos del proceso «' + tpl.name + '», utilizando el documento previamente digitalizado.' : tpl.description)}</p>
+                    <p className="text-xs text-slate-400 mt-0.5 truncate max-w-xl">{isDigitalDoc ? (tpl.digitizationReviewNotes?.length ? "Documento digitalizado · Revisar mapa de campos" : "Documento digitalizado · Mapa de campos disponible en el detalle") : (isImportedFieldListDescription(tpl.description) ? 'Organizar las etapas, responsables y requisitos del proceso «' + tpl.name + '», utilizando el documento previamente digitalizado.' : tpl.description)}</p>
                   </div>
                 </div>
 
