@@ -217,6 +217,17 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
     );
   };
 
+  // Renumber only machine markers, preserving their field identities and metadata.
+  const updateDigitizedText = (nextText: string) => {
+    const ordered = [...new Set(Array.from(nextText.matchAll(/\[CAMPO_\d+\*?\]/g), m => m[0]))];
+    const renumbered = new Map(ordered.map((id, i) => [id, `[CAMPO_${i + 1}${id.endsWith('*]') ? '*' : ''}]`]));
+    setEditOriginalDocumentContent(nextText.replace(/\[CAMPO_\d+\*?\]/g, id => renumbered.get(id) || id));
+    setEditFieldMap(previous => ordered.map(id => {
+      const prior = previous.find(f => f.id === id);
+      return prior ? {...prior, id: renumbered.get(id)!} : {id:renumbered.get(id)!, label:'Pendiente de identificar', actor:'No determinado', source:'manual' as const, confidence:'low' as const, review:true};
+    }));
+  };
+
   // AI-Powered Template Digitization (100% Digitalization of existing documents)
   const handleDigitizeTemplate = async (e?: React.FormEvent | React.MouseEvent) => {
     if (e && typeof e.preventDefault === 'function') {
@@ -778,6 +789,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                             <span>SOPORTE DE VARIABLES INTEGRADAS</span>
                           </div>
                           
+                          {canManageTemplates && <div className="mb-3 flex justify-end"><button type="button" onClick={() => handleStartEdit(tpl, 'digital_doc')} className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-100 text-amber-900 border border-amber-300 hover:bg-amber-200 cursor-pointer">Editar documento digitalizado</button></div>}
                           <div className="prose prose-slate max-w-none text-xs text-slate-700 leading-relaxed whitespace-pre-wrap">
                             {renderDocumentWithHighlights(tpl.originalDocumentContent || '', tpl.fieldMap || [])}
                           </div>
@@ -975,7 +987,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
 
                   <textarea
                     value={editOriginalDocumentContent}
-                    onChange={(e) => setEditOriginalDocumentContent(e.target.value)}
+                    onChange={(e) => updateDigitizedText(e.target.value)}
                     placeholder="Aquí se encuentra el texto digitalizado original completo. Los campos entre corchetes [Variables] se autocompletarán de forma automática..."
                     className="w-full h-40 p-3 text-xs font-mono bg-white border border-amber-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 leading-relaxed resize-y"
                   />
