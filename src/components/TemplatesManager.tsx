@@ -114,7 +114,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
       const fields=data.fields as NonNullable<ProcessTemplate['fieldMap']>;
       setImportedFieldMap(fields);
       setSelectedDocumentContent(data.originalDocumentContent||'');
-      setManualDescription(normalizedFields.map(f=>f.actor+' — '+f.label+' ('+f.id+')'+(f.review?' [REVISAR]':'')).join('\n'));
+      setManualDescription(fields.map(f=>f.actor+' — '+f.label+' ('+f.id+')'+(f.review?' [REVISAR]':'')).join('\n'));
       if(!manualName.trim())setManualName(selected.name.replace(/\s*\(Digitalizado\)\s*$/i,''));
     }catch(error){alert(error instanceof Error?error.message:'Error al analizar campos');}
     finally{setImportingFields(false);}
