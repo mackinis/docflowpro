@@ -25,6 +25,16 @@ export async function ensureDatabaseReady(db: D1Database): Promise<void> {
         }
         await db.prepare('INSERT OR IGNORE INTO app_schema_migrations (name, applied_at) VALUES (?, ?)').bind(migration.name, new Date().toISOString()).run();
       }
+      // Separate from operational cases: drafts never enter the case workflow.
+      await db.prepare(`CREATE TABLE IF NOT EXISTS case_drafts (
+        id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, payload_json TEXT NOT NULL,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+      )`).run();
+      await db.prepare('CREATE INDEX IF NOT EXISTS idx_case_drafts_owner ON case_drafts(owner_id)').run();
+      await db.prepare(`CREATE TABLE IF NOT EXISTS case_field_values (
+        case_id TEXT NOT NULL, participant_id TEXT NOT NULL, field_id TEXT NOT NULL,
+        value TEXT NOT NULL, PRIMARY KEY(case_id, participant_id, field_id)
+      )`).run();
       // Database-level append-only protection. These triggers also apply to SQL
       // issued outside the HTTP API, unlike application-only authorization checks.
       await db.prepare(`CREATE TRIGGER IF NOT EXISTS audit_logs_no_update
