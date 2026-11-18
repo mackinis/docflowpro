@@ -292,7 +292,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
   // Recover pasted/edited descriptive placeholders as actual protected field badges.
   // Brackets alone are not enough: require the DocFlow CAMPO_N signature.
   const recoverInlineMarkers = (root:HTMLElement, tpl:ProcessTemplate) => {
-    const pattern=/\\[([^\\]\\n]*?)\\s*\\(CAMPO_(\\d+)(\\*)?\\)\\s*\\]/g;
+    const pattern=/\[([^\]\n]*?)\s*\(CAMPO_(\d+)(\*)?\)\s*\]/g;
     const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
     const nodes:Text[]=[];
     while(walker.nextNode()){
