@@ -278,7 +278,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
         const next=Array.from(root.childNodes).map(walk).join('').replace(/\n$/,'');
         if(next!==content)setInlineDrafts(prev=>({...prev,[tpl.id]:next}));
       }}
-      className="whitespace-pre-wrap leading-relaxed text-slate-800 font-serif text-xs md:text-sm min-h-32 outline-none focus:ring-1 focus:ring-amber-400 rounded"
+      className="whitespace-pre-wrap leading-relaxed text-slate-800 font-serif text-xs md:text-sm min-h-32 outline-none rounded"
     >{pieces.map((part,i)=>{
       const info=(tpl.fieldMap||[]).find(f=>f.id===part);
       return /^\[CAMPO_\d+\*?\]$/.test(part)
