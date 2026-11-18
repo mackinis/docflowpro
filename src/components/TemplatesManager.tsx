@@ -87,8 +87,17 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
   const [approveRoles, setApproveRoles] = useState<string[]>(['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR']);
 
   // States for manual creation
+  const descriptionOverlayRef = useRef<HTMLDivElement>(null);
+  const resetProcessForm = () => {
+    setManualName('');
+    setManualDescription('');
+    setSelectedDigitalTemplateId('');
+    setImportedFieldMap([]);
+    setSelectedDocumentContent('');
+    setManualIndustry('Inmobiliaria');
+  };
   const [manualName, setManualName] = useState('');
-  const [manualDescription, setManualDescription] = useState("Locador\nLocatario\nGarante mínimo 2\nEscribano\nDNI del locador\nDNI del locatario\nDNI de los garantes\nCopia de escritura\nBoleta de servicios");
+  const [manualDescription, setManualDescription] = useState('');
   const [manualIndustry, setManualIndustry] = useState<ProcessTemplate['industry']>('Inmobiliaria');
   const [selectedDigitalTemplateId,setSelectedDigitalTemplateId] = useState('');
   const [importedFieldMap,setImportedFieldMap] = useState<NonNullable<ProcessTemplate['fieldMap']>>([]);
@@ -555,7 +564,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
         setSelectedDigitalTemplateId('');
         setImportedFieldMap([]);
         setSelectedDocumentContent('');
-        setManualDescription("Locador\nLocatario\nGarante mínimo 2\nEscribano\nDNI del locador\nDNI del locatario\nDNI de los garantes\nCopia de escritura\nBoleta de servicios");
+        setManualDescription('');
         setManualIndustry('Inmobiliaria');
         if (loadState) {
           await loadState();
@@ -862,6 +871,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
           <div className="flex items-center gap-2">
             <button
               onClick={() => {
+                resetProcessForm();
                 setShowProcessModal(true);
               }}
               className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs rounded-xl shadow-md shadow-indigo-500/10 hover:shadow-indigo-500/20 transition-all cursor-pointer"
@@ -1711,8 +1721,14 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                 <input required value={manualName} onChange={e => setManualName(e.target.value)} placeholder="Ej.: Reserva de contrato de locación" className="mt-1 w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg"/>
               </label>
               <label className="block text-xs font-bold text-slate-700">Descripción / Objetivo *
-                {manualDescription.split('\\n').filter(line=>line.includes('[REVISAR]')).map((line,i)=><div key={i} className="mt-1 px-2 py-1 bg-rose-100 border-l-4 border-rose-500 text-rose-900 text-xs break-words">{line}</div>)}
-                <textarea required rows={9} value={manualDescription} onChange={e => updateProcessDescription(e.target.value)} onBlur={() => void persistFieldReviews()} className="mt-1 w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg"/>
+                <div className="relative mt-1">
+                  <div ref={descriptionOverlayRef} aria-hidden="true" className="absolute inset-0 overflow-hidden pointer-events-none rounded-lg border border-transparent">
+                    <div className="p-2.5 whitespace-pre-wrap break-words text-sm font-normal leading-normal text-slate-900">
+                      {manualDescription.split('\\n').map((line,i)=><React.Fragment key={i}>{i>0?'\\n':null}<span className={line.includes('[REVISAR]')?'bg-rose-100 text-rose-900':''}>{line||' '}</span></React.Fragment>)}
+                    </div>
+                  </div>
+                  <textarea required rows={9} value={manualDescription} onChange={e => updateProcessDescription(e.target.value)} onBlur={() => void persistFieldReviews()} onScroll={e=>{if(descriptionOverlayRef.current)descriptionOverlayRef.current.scrollTop=e.currentTarget.scrollTop;}} className="relative w-full p-2.5 bg-transparent text-transparent caret-slate-900 border border-slate-200 rounded-lg text-sm leading-normal resize-y" style={{WebkitTextFillColor:'transparent'}}/>
+                </div>
                 <span className="block mt-1 text-[11px] font-normal text-slate-500">Los actores, sus mínimos y los documentos indicados se convierten en requisitos del proceso. Escribí cada obligación en una línea.</span>
               </label>
               <label className="block text-xs font-bold text-slate-700">Rubro Comercial / Industria *
