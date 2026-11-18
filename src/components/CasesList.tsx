@@ -365,6 +365,46 @@ export default function CasesList({
     setActorFiles(prev => { const next = { ...prev }; delete next[id]; return next; });
   };
 
+  const startNewCase = () => {
+    setEditingDraftId(null); setNewTitle(''); setNewDescription(''); setNewTemplateId('');
+    setParticipants([]); setGeneralFieldValues({}); setActorFieldValues({});
+    setPName(''); setPLastName(''); setPDni(''); setPCuit(''); setPEmail(''); setPPhone(''); setPBirthDate(''); setPComments('');
+    setEditingParticipantId(null); setEscribanoADesignar(false); setActorFiles({});
+    setCustomDocumentContent(''); setUploadedFileName(''); setShowCreateModal(true);
+  };
+  const resumeDraft = (draft: DraftRecord) => {
+    setEditingDraftId(draft.id); setNewTitle(draft.title || ''); setNewDescription(draft.description || '');
+    setNewTemplateId(draft.templateId || ''); setNewAdvisorId(draft.advisorId || '');
+    setParticipants(draft.participants || []); setGeneralFieldValues(draft.fieldValues || {});
+    setActorFieldValues(draft.pendingActor?.fieldValues ? JSON.parse(draft.pendingActor.fieldValues) : {});
+    setPType((draft.pendingActor?.role || 'Vendedor') as ParticipantType);
+    setPName(draft.pendingActor?.name || ''); setPLastName(draft.pendingActor?.lastName || '');
+    setPDni(draft.pendingActor?.dni || ''); setPCuit(draft.pendingActor?.cuit || '');
+    setPEmail(draft.pendingActor?.email || ''); setPPhone(draft.pendingActor?.phone || '');
+    setPBirthDate(draft.pendingActor?.birthDate || ''); setPComments(draft.pendingActor?.comments || '');
+    setEditingParticipantId(draft.pendingActor?.editingId || null);
+    setCustomDocumentContent(draft.documentContent || ''); setEscribanoADesignar(!!draft.escribano);
+    setActorFiles({}); setShowCreateModal(true);
+  };
+  const saveDraft = async () => {
+    if (draftBusy || savingCase) return;
+    setDraftBusy(true);
+    try {
+      const id = editingDraftId || 'draft-' + crypto.randomUUID();
+      const payload = {
+        title:newTitle,description:newDescription,templateId:newTemplateId,advisorId:newAdvisorId,
+        participants,fieldValues:generalFieldValues,documentContent:customDocumentContent,escribano:escribanoADesignar,
+        pendingActor:{role:pType,name:pName,lastName:pLastName,dni:pDni,cuit:pCuit,email:pEmail,phone:pPhone,birthDate:pBirthDate,comments:pComments,editingId:editingParticipantId || '',fieldValues:JSON.stringify(actorFieldValues)}
+      };
+      const response = await fetch('/api/case-drafts/'+id,{method:'PUT',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      if (!response.ok) throw new Error((await response.json()).error || 'No se pudo guardar el borrador');
+      setEditingDraftId(id);
+      await refreshDrafts(); setShowCreateModal(false);
+      if (Object.values(actorFiles).some(files => Object.keys(files).length)) alert('Borrador guardado. Los archivos seleccionados todavía no fueron subidos y deberán adjuntarse al retomarlo.');
+    } catch (error:any) { alert(error?.message || 'Error al guardar el borrador'); }
+    finally {setDraftBusy(false);}
+  };
+
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitAttempted(true);
@@ -397,6 +437,10 @@ export default function CasesList({
         data.append('file', file);
         const upload = await fetch('/api/documents/upload', { method: 'POST', credentials: 'include', body: data });
         if (!upload.ok) { const detail = await upload.json().catch(() => ({})); throw new Error(detail.error || 'Error al almacenar ' + req.name + ' en R2.'); }
+      }
+      if (editingDraftId) {
+        await fetch('/api/case-drafts/'+editingDraftId,{method:'DELETE',credentials:'include'});
+        await refreshDrafts(); setEditingDraftId(null);
       }
       await loadState?.();
       setNewTitle(''); setNewDescription(''); setParticipants([]); setActorFiles({});
@@ -455,7 +499,7 @@ export default function CasesList({
           <p className="text-sm text-slate-500">Visualiza, busca y administra todos los procesos activos de la oficina.</p>
         </div>
         <button
-          onClick={() => setShowCreateModal(true)}
+          onClick={startNewCase}
           className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm rounded-xl shadow-md shadow-indigo-500/10 hover:shadow-indigo-500/20 active:scale-98 transition-all"
         >
           <Plus className="w-4 h-4" />
@@ -524,6 +568,24 @@ export default function CasesList({
           })}
         </div>
       </div>
+
+      {drafts.length > 0 && (
+        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 space-y-3">
+          <h3 className="font-bold text-amber-900">Borradores ({drafts.length})</h3>
+          {drafts.map(draft => <div key={draft.id} className="flex items-center justify-between gap-3 rounded-xl bg-white border border-amber-200 p-3">
+            <button type="button" onClick={() => resumeDraft(draft)} className="text-left min-w-0 flex-1">
+              <span className="text-xs font-bold text-amber-700 mr-2">BORRADOR</span>
+              <span className="text-sm font-semibold text-slate-800">{draft.title || 'Sin título'}</span>
+              <p className="text-xs text-slate-500">Último guardado: {new Date(draft.updatedAt).toLocaleString('es-AR')} · Continuar carga</p>
+            </button>
+            <button type="button" className="text-xs text-rose-700 hover:underline" onClick={async () => {
+              if (!window.confirm('¿Eliminar este borrador?')) return;
+              const response = await fetch('/api/case-drafts/'+draft.id,{method:'DELETE',credentials:'include'});
+              if (response.ok) await refreshDrafts(); else alert('No se pudo eliminar el borrador');
+            }}>Eliminar</button>
+          </div>)}
+        </section>
+      )}
 
       {/* Grid of Cases / Table */}
       <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
@@ -712,7 +774,7 @@ export default function CasesList({
             {/* Header */}
             <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
               <div>
-                <h3 className="text-lg font-bold text-slate-800">Crear Nuevo Legajo</h3>
+                <h3 className="text-lg font-bold text-slate-800">{editingDraftId ? 'Continuar borrador' : 'Crear Nuevo Legajo'}</h3>
                 <p className="text-xs text-slate-400 mt-0.5">Define el proceso, asigna asesores y carga participantes.</p>
               </div>
               <button onClick={() => setShowCreateModal(false)} className="p-1 text-slate-400 hover:text-slate-600 rounded">
@@ -991,6 +1053,9 @@ export default function CasesList({
                 className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold rounded-xl"
               >
                 Cancelar
+              </button>
+              <button type="button" disabled={draftBusy || savingCase} onClick={() => void saveDraft()} className="px-4 py-2 rounded-xl border border-amber-300 bg-amber-100 text-amber-900 text-xs font-bold disabled:opacity-50">
+                {draftBusy ? 'Guardando borrador…' : 'Guardar borrador'}
               </button>
               <button
                 type="button"
