@@ -679,7 +679,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
     setEditingTemplate(tpl);
     setEditMode(mode);
     setEditName(tpl.name);
-    setEditDescription(/\\(CAMPO_\\d+\\)/.test(tpl.description) ? 'Gestionar las etapas, los responsables y los requisitos para confeccionar el contrato de locación utilizando la hoja guía digitalizada.' : tpl.description);
+    setEditDescription(/\(CAMPO_\d+\)/.test(tpl.description) ? 'Gestionar las etapas, los responsables y los requisitos para confeccionar el contrato de locación utilizando la hoja guía digitalizada.' : tpl.description);
     setEditIndustry(tpl.industry);
     setEditStages(JSON.parse(JSON.stringify(tpl.stages))); // Deep copy
     setEditOriginalDocumentContent(tpl.originalDocumentContent || '');
@@ -943,7 +943,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                         <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] font-semibold rounded uppercase tracking-wider">Plantilla de Documento</span>
                       )}
                     </div>
-                    <p className="text-xs text-slate-400 mt-0.5 truncate max-w-xl">{isDigitalDoc ? (tpl.digitizationReviewNotes?.length ? "Documento digitalizado · Revisar mapa de campos" : "Documento digitalizado · Mapa de campos disponible en el detalle") : (/\\(CAMPO_\\d+\\)/.test(tpl.description) ? 'Gestionar las etapas, los responsables y los requisitos para confeccionar el contrato de locación utilizando la hoja guía digitalizada.' : tpl.description)}</p>
+                    <p className="text-xs text-slate-400 mt-0.5 truncate max-w-xl">{isDigitalDoc ? (tpl.digitizationReviewNotes?.length ? "Documento digitalizado · Revisar mapa de campos" : "Documento digitalizado · Mapa de campos disponible en el detalle") : (/\(CAMPO_\d+\)/.test(tpl.description) ? 'Gestionar las etapas, los responsables y los requisitos para confeccionar el contrato de locación utilizando la hoja guía digitalizada.' : tpl.description)}</p>
                   </div>
                 </div>
 
