@@ -51,3 +51,11 @@ DocFlow Pro: aplicación de gestión documental y expedientes/legajos con planti
 - **Despliegue y confirmación del usuario:** pendientes.
 - **Riesgos / pendientes:** verificar visualmente en producción después del despliegue. El foco del editor ya no tendrá ese contorno visible.
 - **Próximo paso para la siguiente instancia:** comprobar comportamiento de edición directa y guardado; no reintroducir borde global amarillo.
+
+### 2026-11-17 — Guardado visible al modificar, salida protegida y mapa oculto — `1e5e44a17d3b505a5e26416c49ccef75022d5176`
+- **Pedido/intención del usuario:** quitar botón y sección visibles «Mapa de campos», manteniendo intactos los metadatos semánticos internos; mostrar «Guardar cambios» en la cabecera únicamente ante la mínima edición; advertir con diálogo «Aceptar» (salir sin guardar) y «Cancelar» si intenta cerrar con cambios pendientes; sin aviso si no editó.
+- **Hechos comprobados:** `src/components/TemplatesManager.tsx` tenía mapa visible controlado por `visibleMapId`, guardado al pie solo después de `onBlur`, y cierre sin protección. Se inspeccionó el archivo vigente.
+- **Cambios:** se eliminó estado/botón/sección visual del mapa; se conservó `tpl.fieldMap` y la lógica de persistencia; captura de cambios con `onInput` y `useRef`, botón contextual de guardado en cabecera, confirmación de salida a través del modal existente, sin añadir editor alternativo.
+- **Riesgos:** no se compiló ni probó en navegador; verificar que el editor mantenga el cursor al escribir, que la confirmación solo aparezca con cambios, que guardar persista correctamente y que los marcadores no se alteren. El mapa semántico interno no fue eliminado.
+- **Despliegue/confirmación:** no verificados.
+- **Próximo paso:** probar funcionalmente; no reintroducir mapa visual ni un segundo botón de guardado.
