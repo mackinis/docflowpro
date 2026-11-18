@@ -188,7 +188,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
 
   // Sub-tabs inside expanded templates to view either flow or 100% digitized document
 
-  const renderDocumentWithHighlights = (text: string) => {
+  const renderDocumentWithHighlights = (text: string, fieldMap: NonNullable<ProcessTemplate['fieldMap']> = []) => {
     if (!text) {
       return (
         <p className="text-slate-400 italic text-center py-8 font-sans text-xs">
@@ -206,7 +206,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                 key={index} 
                 className="bg-amber-100 text-amber-900 border border-amber-250 rounded px-1.5 py-0.5 mx-0.5 font-mono text-[11px] font-bold shadow-2xs"
               >
-                {part}
+                {(() => { const info=fieldMap.find(f=>f.id===part); return info ? `[${info.actor} — ${info.label} (${part.slice(1,-1)})]` : part; })()}
               </span>
             );
           }
@@ -767,7 +767,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                           </div>
                           
                           <div className="prose prose-slate max-w-none text-xs text-slate-700 leading-relaxed whitespace-pre-wrap">
-                            {renderDocumentWithHighlights(tpl.originalDocumentContent || '')}
+                            {renderDocumentWithHighlights(tpl.originalDocumentContent || '', tpl.fieldMap || [])}
                           </div>
 
                           {/* Botón de Aprobación para pasar a DOCUMENTOS */}
