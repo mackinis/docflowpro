@@ -306,11 +306,18 @@ export async function findTemplateOrVirtualById(
 }
 
 export async function getAllCases(db: D1Database): Promise<Case[]> {
-  const [casesRes, partsRes] = await Promise.all([
+  const [casesRes, partsRes, valuesRes] = await Promise.all([
     db.prepare('SELECT * FROM cases ORDER BY created_at DESC').all<any>(),
     db.prepare('SELECT * FROM case_participants').all<any>(),
+    db.prepare('SELECT * FROM case_field_values').all<any>(),
   ]);
 
+  const valuesByCase = new Map<string, Record<string,Record<string,string>>>();
+  for (const v of valuesRes.results || []) {
+    const byParticipant = valuesByCase.get(v.case_id) || {};
+    byParticipant[v.participant_id] = {...(byParticipant[v.participant_id] || {}),[v.field_id]:v.value};
+    valuesByCase.set(v.case_id,byParticipant);
+  }
   const partsByCase = new Map<string, Participant[]>();
   for (const p of partsRes.results || []) {
     const arr = partsByCase.get(p.case_id) || [];
@@ -325,6 +332,7 @@ export async function getAllCases(db: D1Database): Promise<Case[]> {
       birthDate: p.birth_date || undefined,
       role: (p.role || 'Vendedor') as Participant['role'],
       comments: p.comments || '',
+      fieldValues: valuesByCase.get(p.case_id)?.[p.id] || {},
     });
     partsByCase.set(p.case_id, arr);
   }
@@ -340,6 +348,7 @@ export async function getAllCases(db: D1Database): Promise<Case[]> {
     assignedAdvisorId: c.assigned_advisor_id || '',
     assignedManagerId: c.assigned_manager_id || '',
     participants: partsByCase.get(c.id) || [],
+    generalFieldValues: valuesByCase.get(c.id)?.['__operation__'] || {},
     createdAt: c.created_at,
     updatedAt: c.updated_at,
     documentContent: c.document_content || '',
@@ -352,6 +361,9 @@ export async function getAllCases(db: D1Database): Promise<Case[]> {
 export async function getCaseById(db: D1Database, caseId: string): Promise<Case | null> {
   const c = await db.prepare('SELECT * FROM cases WHERE id = ?').bind(caseId).first<any>();
   if (!c) return null;
+  const valuesRes = await db.prepare('SELECT participant_id, field_id, value FROM case_field_values WHERE case_id = ?').bind(caseId).all<any>();
+  const valuesByParticipant: Record<string,Record<string,string>> = {};
+  for (const v of valuesRes.results || []) valuesByParticipant[v.participant_id] = {...(valuesByParticipant[v.participant_id] || {}),[v.field_id]:v.value};
   const partsRes = await db
     .prepare('SELECT * FROM case_participants WHERE case_id = ?')
     .bind(caseId)
@@ -378,7 +390,9 @@ export async function getCaseById(db: D1Database, caseId: string): Promise<Case 
       birthDate: p.birth_date || undefined,
       role: (p.role || 'Vendedor') as Participant['role'],
       comments: p.comments || '',
+      fieldValues: valuesByParticipant[p.id] || {},
     })),
+    generalFieldValues: valuesByParticipant['__operation__'] || {},
     createdAt: c.created_at,
     updatedAt: c.updated_at,
     documentContent: c.document_content || '',
