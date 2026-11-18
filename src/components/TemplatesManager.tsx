@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { cachedJson } from '../utils/requestCache';
 import { 
   FolderKanban, 
   Sparkles, 
@@ -241,21 +242,18 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
 
 
   React.useEffect(() => {
+    let active = true;
     const fetchSharedDocs = async () => {
       try {
-        const res = await fetch(`/api/shared-documents?userId=${currentUser.id}&role=${currentUser.role}`, {
-          credentials: 'include'
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setSharedDocs(data);
-        }
+        const data = await cachedJson<any[]>(`shared-documents:${currentUser.id}:${currentUser.role}`, `/api/shared-documents?userId=${currentUser.id}&role=${currentUser.role}`);
+        if (active) setSharedDocs(data);
       } catch (err) {
         console.error('Error fetching shared docs:', err);
       }
     };
-    fetchSharedDocs();
-  }, [currentUser]);
+    void fetchSharedDocs();
+    return () => { active = false; };
+  }, [currentUser.id, currentUser.role]);
 
   const isSuperAdmin = currentUser.role === 'SUPERADMIN';
   const allowAdminManager = systemSettings?.allowAdminManagerTemplates !== false;
