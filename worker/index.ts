@@ -2626,7 +2626,15 @@ app.post('/api/confecciones/:id/agent', async (c) => {
     documentEvidence.push(entry);
   }
   const template = await findTemplateOrVirtualById(c.env, row.template_id);
-  const storedFieldMap = (template?.fieldMap || []).filter(f => content.includes(f.id));
+  // A confección may use a digitized document while the case belongs to an
+  // operational process. Prefer the process's reviewed semantic map ONLY when
+  // both documents share the exact marker meanings (same original text).
+  const processTemplate = caseObj.templateId ? await findTemplateOrVirtualById(c.env,caseObj.templateId) : null;
+  const sameSource = Boolean(processTemplate?.originalDocumentContent &&
+    processTemplate.originalDocumentContent === template?.originalDocumentContent);
+  const authoritativeMap = sameSource && processTemplate?.fieldMap?.length
+    ? processTemplate.fieldMap : (template?.fieldMap || []);
+  const storedFieldMap = authoritativeMap.filter(f => content.includes(f.id));
   const markers = [...new Set(Array.from(content.matchAll(/\[CAMPO_\d+\*?\]/g), m => m[0]))];
   // Infer each marker's meaning from the original template itself, even when
   // legacy digitizations have no semantic fieldMap.
@@ -2662,6 +2670,51 @@ app.post('/api/confecciones/:id/agent', async (c) => {
       label:stored?.label && !/^(pendiente de identificar|sin significado identificado|dato sin identificar)$/i.test(stored.label)?stored.label:inferred.label,
       actor:stored?.actor && !/^(no determinado|por identificar)$/i.test(stored.actor)?stored.actor:inferred.actor};
   });
+  // Fill structured actor attributes without an LLM. The semantic map is the
+  // source of truth; never substitute a different participant or spouse.
+  const normalizeRole = (value:string) => value.toLocaleLowerCase('es-AR').normalize('NFD')
+    .replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'');
+  const actorKind = (actor:string):string => {
+    const a=normalizeRole(actor);
+    if(/conyuge|espos/.test(a))return 'spouse';
+    if(/locatario|inquilino/.test(a))return 'locatario';
+    if(/locador|propietario/.test(a))return 'locador';
+    if(/garante|fiador/.test(a))return 'garante';
+    return '';
+  };
+  const propertyFor = (label:string):string => {
+    const v=normalizeRole(label);
+    if(/\bdni\b|documentodeidentidad/.test(v))return 'dni';
+    if(/\bmail\b|correo|email/.test(v))return 'email';
+    if(/fechadenacimiento|nacimiento|fnac/.test(v))return 'birthDate';
+    if(/estadocivil/.test(v))return 'maritalStatus';
+    if(/domicilioactual|direccion/.test(v))return 'address';
+    if(/nombreyapellido|nombrecompleto/.test(v))return 'name';
+    return '';
+  };
+  const structuredProposals:Array<{field:string;value:string;source:string}> = [];
+  const actors=Array.isArray(caseObj.participants)?caseObj.participants as any[]:[];
+  for(const entry of fieldMap){
+    const kind=actorKind(String(entry.actor||''));
+    const property=propertyFor(String(entry.label||''));
+    if(!kind || kind==='spouse' || !property)continue;
+    const matching=actors.filter(p=>actorKind(String(p.role||p.type||''))===kind);
+    // Multiple actors of the same role require explicit disambiguation.
+    if(matching.length!==1)continue;
+    const actor=matching[0];
+    const keys:Record<string,string[]>={
+      dni:['dni','documentNumber','document_number'],
+      email:['email','mail'],birthDate:['birthDate','birth_date','dateOfBirth','fechaNacimiento'],
+      maritalStatus:['maritalStatus','marital_status','estadoCivil'],
+      address:['address','domicilio','domicilioActual'],
+      name:['fullName','name','nombreCompleto']
+    };
+    const values=(keys[property]||[]).map(k=>actor[k]).filter(v=>typeof v==='string'&&v.trim());
+    if(values.length!==1)continue;
+    const value=String(values[0]).trim();
+    if(value.length>2000 || /\[CAMPO_\d+\*?\]/.test(value))continue;
+    structuredProposals.push({field:entry.id,value,source:'Dato estructurado del legajo · '+kind+' · '+property});
+  }
   const coverage = (proposed: Array<{field:string;value:string;source:string}>) => {
     const matched = new Set(proposed.map(p => p.field));
     const unresolved = markers.filter(field => !matched.has(field)).map(field => {
@@ -2678,10 +2731,10 @@ app.post('/api/confecciones/:id/agent', async (c) => {
     const suffix=lastLine.split(/[.;]/).pop()?.trim() || '';
     const label=entry?.label && entry.label!=='Pendiente de identificar'
       ? entry.label : (suffix.match(/(?:DNI|MAIL|EMAIL|ESTADO CIVIL|DOMICILIO|FECHA DE NACIMIENTO|NOMBRE Y APELLIDO|CUIT)\s*:?\s*$/i)?.[0] || suffix.slice(-45)).trim();
-    const role=/LOCATARIO/i.test(preceding) && preceding.lastIndexOf('LOCATARIO')>preceding.lastIndexOf('LOCADOR')?'locatario':'locador';
-    return '¿Me indicás '+(label||'el valor')+' del '+role+' para '+field+'? Podés responder "'+field+' = valor".';
+    const role=entry?.actor || 'actor correspondiente';
+    return '¿Me indicás '+(label||'el valor')+' de '+role+' para '+field+'? Podés responder "'+field+' = valor".';
   };
-  const missingSummary = () => 'Vamos a completar la plantilla juntos. '+questionFor(markers[0]);
+  const missingSummary = () => 'Vamos a completar la plantilla juntos. '+questionFor(markers.find(m=>!structuredProposals.some(p=>p.field===m))||markers[0]);
   if (!markers.length) return c.json({ reply: 'La plantilla no tiene campos pendientes para completar.', replacements: [], pendingFields: 0, coverage:coverage([]) });
   // Deterministic operator entry: a confirmed field/value must not depend on AI availability.
   const directMatch=instruction.match(/^\s*(\[?CAMPO_(\d+)(\*)?\]?)\s*(?:=|:|es\s+)\s*(.+?)\s*$/is);
@@ -2712,7 +2765,7 @@ app.post('/api/confecciones/:id/agent', async (c) => {
     await c.env.DB.prepare('INSERT INTO confeccion_chat (id, confeccion_id, sender, message, created_at) VALUES (?, ?, ?, ?, ?)')
       .bind(crypto.randomUUID(),id,'agent',reply.slice(0,3000),new Date().toISOString()).run();
   };
-  const baseEvidence = {
+  const baseEvidence = {\n    semanticFieldMap:fieldMap,
     code:caseObj.code, title:caseObj.title, description:caseObj.description,
     participants:caseObj.participants
   };
@@ -2790,7 +2843,7 @@ Instrucción actual: ${instruction}`;
   };
   try {
     const seen = new Set<string>();
-    const valid: Array<{field:string;value:string;source:string}> = [];
+    const valid: Array<{field:string;value:string;source:string}> = [...structuredProposals];\n    structuredProposals.forEach(p=>seen.add(p.field));
     // A model's claim of a source is not proof. Only propose literal values
     // actually found in the case evidence or explicitly supplied by the operator.
     const normalizeEvidence=(v:string)=>v.toLocaleLowerCase('es-AR').normalize('NFD')
@@ -2862,7 +2915,7 @@ Instrucción actual: ${instruction}`;
       }
       throw new Error(lastError||'Los modelos no devolvieron una respuesta válida');
     };
-    for (let i=0;i<batches.length;i++) {
+    for (let i=0;i<batches.length;i++) {\n      if(batches[i].every(field=>seen.has(field)))continue;
       try {
         const parsed = await runAgentBatch(batches[i],i);
         if (typeof parsed.reply === 'string' && parsed.reply.trim()) replies.push(parsed.reply.trim().slice(0,500));
