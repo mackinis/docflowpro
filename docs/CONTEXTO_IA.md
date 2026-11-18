@@ -72,3 +72,10 @@ DocFlow Pro: aplicación de gestión documental y expedientes/legajos con planti
 - **Implementación:** en `src/components/TemplatesManager.tsx`, la envoltura externa mantiene borde, fondo y padding; el panel interior pierde `max-w-2xl`, fondo, borde, sombra y padding propio, pasando a `w-full min-w-0 flex flex-col justify-between`. Encabezado, editor, aprobación y pie comparten el nuevo ancho. No se cambiaron sus handlers.
 - **Validación pendiente:** comprobar visualmente en navegador y tamaños de pantalla, y que el despliegue incorpore el commit; no se ejecutaron pruebas ni se confirmó producción.
 - **Regla de oro / breadcrumb:** leer esta bitácora y commits anteriores antes de actuar; preservar lo existente y registrar decisiones, riesgos y verificaciones pendientes.
+
+### 2026-11-18 — Campos pendientes en rojo (`440c327`)
+- **Pedido:** mostrar en rojo, en lugar de amarillo, las etiquetas de campos que dicen «Dato por identificar» o cuyo significado/actor todavía necesita revisión. Los campos reconocidos deben seguir amarillos.
+- **Cambio:** en `src/components/TemplatesManager.tsx` se agregó `fieldNeedsReview` (campo ausente, `review`, etiquetas genéricas o actor no determinado) y se aplicó el estilo condicional a las dos representaciones de campos: vista con resaltados y editor inline.
+- **Invariantes:** no modificar marcadores, numeración, metadatos, guardado, mapa de campos, flujo de aprobación ni confecciones. La evaluación de color se realiza solo al renderizar.
+- **Pendiente:** validar en navegador que las etiquetas pendientes aparezcan rojas y las confirmadas amarillas; no se verificó despliegue ni pruebas de compilación.
+- **Regla de oro / breadcrumb:** revisar `docs/CONTEXTO_IA.md` y commits antes de intervenir, registrar cambios y preservar lo existente.
