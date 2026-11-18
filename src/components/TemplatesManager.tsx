@@ -150,6 +150,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
   const [editStages, setEditStages] = useState<Stage[]>([]);
   const [editOriginalDocumentContent, setEditOriginalDocumentContent] = useState('');
   const [editFieldMap, setEditFieldMap] = useState<NonNullable<ProcessTemplate['fieldMap']>>([]);
+  const [visibleMapId,setVisibleMapId] = useState<string|null>(null);
   const [editReviewNotes, setEditReviewNotes] = useState<string[]>([]);
   const [editShowDocumentToAll, setEditShowDocumentToAll] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -736,10 +737,25 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                       <div><h3 className="text-base font-bold text-slate-900">{tpl.name}</h3><p className="text-xs text-slate-500">{tpl.industry} · Requisitos del proceso</p></div>
                       <div className="flex items-center gap-2">
                         {canManageTemplates && !isDigitalDoc && <button type="button" onClick={() => { setExpandedTemplateId(null); handleStartEdit(tpl, 'stages'); }} className="px-3 py-2 bg-indigo-600 text-white text-xs font-bold rounded-lg">Configurar requisitos</button>}
+                        {Boolean(tpl.originalDocumentContent?.match(/\\[CAMPO_\\d+\\*?\\]/)) && <button type="button" onClick={() => setVisibleMapId(current => current === tpl.id ? null : tpl.id)} className="px-3 py-2 bg-amber-100 text-amber-950 border border-amber-300 text-xs font-bold rounded-lg">Mapa de campos</button>}
                         <button type="button" aria-label="Cerrar detalles" onClick={() => setExpandedTemplateId(null)} className="p-2 rounded-lg hover:bg-slate-100 text-slate-700"><X className="w-5 h-5" /></button>
                       </div>
                     </div>
                     <div className="p-5 md:p-7 space-y-6">
+                  {visibleMapId===tpl.id && <section className="rounded-xl border border-amber-300 bg-amber-50 p-4 space-y-3">
+                    <h4 className="font-bold text-slate-900">Mapa de campos de esta plantilla</h4>
+                    <p className="text-xs text-slate-700">Correspondencias guardadas en la plantilla. Los campos sin identificar requieren revisión antes de confiar en su autocompletado.</p>
+                    <div className="max-h-80 overflow-y-auto space-y-1">
+                      {[...new Set([...((tpl.originalDocumentContent||'').matchAll(/\\[CAMPO_\\d+\\*?\\]/g))].map(m=>m[0]))].map(field=>{
+                        const info=(tpl.fieldMap||[]).find(x=>x.id===field);
+                        return <div key={field} className="grid grid-cols-[105px_1fr_1fr] gap-2 bg-white border border-slate-200 rounded-lg p-2 text-xs text-slate-800">
+                          <code className="font-bold text-indigo-700">{field}</code>
+                          <span>{info?.label||'Sin significado identificado'}</span>
+                          <span>{info?.actor||'Actor no determinado'}{info?.review?' · Revisar':''}</span>
+                        </div>;
+                      })}
+                    </div>
+                  </section>}
                   {isDigitalDoc ? (
                     // Display ONLY the digitized document with its approval flow
                     <div className="bg-slate-100/60 p-4 rounded-2xl border border-slate-200/60 min-h-[400px] flex items-start justify-center">
@@ -756,10 +772,10 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
 
                           {/* Botón de Aprobación para pasar a DOCUMENTOS */}
                           {currentUser && ['SUPERADMIN', 'ADMIN', 'MANAGER'].includes(currentUser.role) && tpl.originalDocumentContent && (
-                            <div className="mt-8 p-4 bg-emerald-50 border border-emerald-100 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div className="mt-8 p-4 bg-emerald-950 border border-emerald-500 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                               <div className="space-y-0.5 text-left">
-                                <p className="text-xs font-bold text-emerald-950">¿El documento digitalizado está correcto?</p>
-                                <p className="text-[10px] text-emerald-700">Aprobar este documento lo guardará y publicará automáticamente en la sección <strong>DOCUMENTOS</strong> para descarga y uso general.</p>
+                                <p className="text-sm font-extrabold text-white">¿El documento digitalizado está correcto?</p>
+                                <p className="text-xs font-medium text-emerald-50">Aprobar este documento lo guardará y publicará automáticamente en la sección <strong>DOCUMENTOS</strong> para descarga y uso general.</p>
                               </div>
                               <button
                                 type="button"
