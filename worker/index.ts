@@ -1724,7 +1724,9 @@ app.post('/api/templates/analyze-fields', async (c) => {
 app.post('/api/templates/confirm-field-review', async (c) => {
   const auth=c.get('auth')!;
   if (!(await canUserManageTemplates(c.env.DB,auth.user.id))) return c.json({error:'No autorizado.'},403);
-  const {sharedDocumentId,fieldId}=await c.req.json() as {sharedDocumentId?:string;fieldId?:string};
+  const {sharedDocumentId,fieldId,review,expectedReview}=await c.req.json() as {sharedDocumentId?:string;fieldId?:string;review?:boolean;expectedReview?:boolean};
+  const targetReview=typeof review==='boolean'?review:false;
+  if(typeof expectedReview!=='boolean')return c.json({error:'Falta el estado previo del campo.'},400);
   if(!sharedDocumentId || !/^\[CAMPO_\d+\*?\]$/.test(String(fieldId||''))) return c.json({error:'Identificador de campo inválido.'},400);
   const doc=await c.env.DB.prepare('SELECT * FROM shared_documents WHERE id = ?').bind(sharedDocumentId).first<any>();
   if(!doc)return c.json({error:'Documento no encontrado.'},404);
@@ -1745,15 +1747,16 @@ app.post('/api/templates/confirm-field-review', async (c) => {
   if(/^(dato por identificar|pendiente de identificar|sin significado identificado|dato sin identificar)$/i.test(String(field.label||'').trim()) ||
      /^(no determinado|por identificar)$/i.test(String(field.actor||'').trim()))
     return c.json({error:'Primero corregí el significado del campo en la digitalización.'},409);
-  if(field.review!==true)return c.json({fieldId,review:false});
-  const next={...metadata,fieldMap:metadata.fieldMap.map(f=>f.id===fieldId?{...f,review:false}:f)};
+  if(Boolean(field.review)!==expectedReview)return c.json({error:'El campo cambió en otra sesión. Volvé a cargarlo.'},409);
+  if(Boolean(field.review)===targetReview)return c.json({fieldId,review:targetReview});
+  const next={...metadata,fieldMap:metadata.fieldMap.map(f=>f.id===fieldId?{...f,review:targetReview}:f)};
   await c.env.R2_BUCKET.put(key,JSON.stringify(next),{httpMetadata:{contentType:'application/json'}});
   const check=await c.env.R2_BUCKET.get(key);
   const persisted=check?await check.json() as typeof next:null;
-  if(!persisted?.fieldMap?.some(f=>f.id===fieldId && f.review===false))
+  if(!persisted?.fieldMap?.some(f=>f.id===fieldId && f.review===targetReview))
     return c.json({error:'No se pudo confirmar la persistencia de la corrección.'},500);
-  await createAudit(c.env.DB,auth.user.id,'Confirmó revisión de '+fieldId,'SharedDocument',doc.id,doc.name);
-  return c.json({fieldId,review:false});
+  await createAudit(c.env.DB,auth.user.id,(targetReview?'Marcó para revisión ':'Confirmó revisión de ')+fieldId,'SharedDocument',doc.id,doc.name);
+  return c.json({fieldId,review:targetReview});
 });
 app.post('/api/templates', async (c) => {
   const auth = c.get('auth')!;
