@@ -388,7 +388,8 @@ export default function SharedDocumentsManager({ currentUser, users, onAddAudit 
       setAudienceType('all');
       setAllowedRoles(['ADMIN', 'MANAGER', 'ASESOR']);
       setAllowedUserIds([]);
-      loadDocuments();
+      invalidateCachedJson('shared-documents:');
+      await loadDocuments();
     } catch (err: any) {
       setError(err.message || 'Error al subir documento.');
     } finally {
@@ -450,7 +451,8 @@ export default function SharedDocumentsManager({ currentUser, users, onAddAudit 
       }
       setSuccess(`Documento "${deleteDoc.name}" eliminado correctamente.`);
       setDeleteDoc(null);
-      loadDocuments();
+      invalidateCachedJson('shared-documents:');
+      await loadDocuments();
     } catch (err: any) {
       setError(err.message || 'Error al eliminar documento.');
     } finally { setDeleting(false); }
