@@ -228,6 +228,65 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
     }));
   };
 
+  const [inlineDrafts, setInlineDrafts] = useState<Record<string,string>>({});
+  const [inlineSaving, setInlineSaving] = useState<string|null>(null);
+  const saveInlineDocument = async (tpl: ProcessTemplate) => {
+    const draft = inlineDrafts[tpl.id];
+    if (draft === undefined) return;
+    setInlineSaving(tpl.id);
+    try {
+      const ordered = [...new Set(Array.from(draft.matchAll(/\[CAMPO_\d+\*?\]/g), m => m[0]))];
+      const renumbered = new Map(ordered.map((id,i)=>[id,`[CAMPO_${i+1}${id.endsWith('*]')?'*':''}]`]));
+      const content = draft.replace(/\[CAMPO_\d+\*?\]/g,id=>renumbered.get(id)||id);
+      const fieldMap = ordered.map(id=>{
+        const prior=(tpl.fieldMap||[]).find(f=>f.id===id);
+        return prior ? {...prior,id:renumbered.get(id)!} : {id:renumbered.get(id)!,label:'Pendiente de identificar',actor:'No determinado',source:'manual' as const,confidence:'low' as const,review:true};
+      });
+      const response=await fetch(`/api/templates/${tpl.id}`,{
+        method:'PUT',credentials:'include',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({...tpl,originalDocumentContent:content,fieldMap,currentUserId:currentUser.id})
+      });
+      if(!response.ok)throw new Error((await response.json()).error||'No se pudo guardar');
+      setInlineDrafts(prev=>{const next={...prev};delete next[tpl.id];return next;});
+      showToast('Documento digitalizado guardado correctamente','success');
+      if(loadState)await loadState();
+    } catch(error:any){showToast(error?.message||'Error al guardar documento','error');}
+    finally{setInlineSaving(null);}
+  };
+
+  const renderInlineEditable = (tpl:ProcessTemplate) => {
+    const content=inlineDrafts[tpl.id]??tpl.originalDocumentContent??'';
+    const pieces=content.split(/(\[CAMPO_\d+\*?\])/g);
+    return <div
+      key={tpl.id + (inlineDrafts[tpl.id]===undefined?'saved':'editing')}
+      contentEditable={canManageTemplates && inlineSaving!==tpl.id}
+      suppressContentEditableWarning
+      spellCheck={false}
+      role="textbox"
+      aria-label="Documento digitalizado editable"
+      aria-multiline="true"
+      onBlur={e=>{
+        if(!canManageTemplates)return;
+        const root=e.currentTarget;
+        const walk=(node:Node):string=>{
+          if(node.nodeType===Node.TEXT_NODE)return node.textContent||'';
+          if(node instanceof HTMLElement && node.dataset.marker)return node.dataset.marker;
+          if(node.nodeName==='BR')return '\n';
+          const children=Array.from(node.childNodes).map(walk).join('');
+          return node!==root && (node.nodeName==='DIV'||node.nodeName==='P')?children+'\n':children;
+        };
+        const next=Array.from(root.childNodes).map(walk).join('').replace(/\n$/,'');
+        if(next!==content)setInlineDrafts(prev=>({...prev,[tpl.id]:next}));
+      }}
+      className="whitespace-pre-wrap leading-relaxed text-slate-800 font-serif text-xs md:text-sm min-h-32 outline-none focus:ring-1 focus:ring-amber-400 rounded"
+    >{pieces.map((part,i)=>{
+      const info=(tpl.fieldMap||[]).find(f=>f.id===part);
+      return /^\[CAMPO_\d+\*?\]$/.test(part)
+        ? <span key={i} data-marker={part} contentEditable={false} className="bg-amber-100 text-amber-900 border border-amber-300 rounded px-1 py-0.5 mx-0.5 font-mono text-[11px] font-bold">{info?`[${info.actor} — ${info.label} (${part.slice(1,-1)})]`:part}</span>
+        : <React.Fragment key={i}>{part}</React.Fragment>;
+    })}</div>;
+  };
+
   // AI-Powered Template Digitization (100% Digitalization of existing documents)
   const handleDigitizeTemplate = async (e?: React.FormEvent | React.MouseEvent) => {
     if (e && typeof e.preventDefault === 'function') {
@@ -789,10 +848,13 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                             <span>SOPORTE DE VARIABLES INTEGRADAS</span>
                           </div>
                           
-                          {canManageTemplates && <div className="mb-3 flex justify-end"><button type="button" onClick={() => handleStartEdit(tpl, 'digital_doc')} className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-100 text-amber-900 border border-amber-300 hover:bg-amber-200 cursor-pointer">Editar documento digitalizado</button></div>}
-                          <div className="prose prose-slate max-w-none text-xs text-slate-700 leading-relaxed whitespace-pre-wrap">
-                            {renderDocumentWithHighlights(tpl.originalDocumentContent || '', tpl.fieldMap || [])}
-                          </div>
+                          {renderInlineEditable(tpl)}
+                          {canManageTemplates && inlineDrafts[tpl.id] !== undefined && (
+                            <div className="mt-3 flex justify-end gap-2">
+                              <button type="button" onClick={()=>setInlineDrafts(prev=>{const next={...prev};delete next[tpl.id];return next;})} className="px-3 py-1.5 text-xs rounded-lg border border-slate-300">Descartar cambios</button>
+                              <button type="button" disabled={inlineSaving===tpl.id} onClick={()=>saveInlineDocument(tpl)} className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-500 text-slate-950 disabled:opacity-50">{inlineSaving===tpl.id?'Guardando...':'Guardar cambios'}</button>
+                            </div>
+                          )}
 
                           {/* Botón de Aprobación para pasar a DOCUMENTOS */}
                           {currentUser && ['SUPERADMIN', 'ADMIN', 'MANAGER'].includes(currentUser.role) && tpl.originalDocumentContent && (
