@@ -59,3 +59,10 @@ DocFlow Pro: aplicación de gestión documental y expedientes/legajos con planti
 - **Riesgos:** no se compiló ni probó en navegador; verificar que el editor mantenga el cursor al escribir, que la confirmación solo aparezca con cambios, que guardar persista correctamente y que los marcadores no se alteren. El mapa semántico interno no fue eliminado.
 - **Despliegue/confirmación:** no verificados.
 - **Próximo paso:** probar funcionalmente; no reintroducir mapa visual ni un segundo botón de guardado.
+
+### 2026-11-18 — Renumeración consecutiva de campos editados — `61cb271`, `72b1cd3`
+- **Problema observado por el usuario:** al borrar el marcador [CAMPO_1], el primer marcador visible seguía siendo [CAMPO_2]; se requiere reordenamiento en tiempo real y, como mínimo, al guardar.
+- **Causa en código:** el editor de `TemplatesManager.tsx` solo normalizaba identificadores en `saveInlineDocument`; la edición visible no los reenumeraba. La edición previa también requería conservar metadatos por identidad original.
+- **Cambio:** `normalizeInlineMarkers` actualiza badges y `data-marker` consecutivamente en `onInput` y `onBlur`, mantiene `data-origin` y `inlineOrigins` para preservar la identidad del mapa de actores/etiquetas hasta guardar; `saveInlineDocument` asocia cada campo normalizado a su identidad anterior. El mapa sigue oculto al usuario. No se agregaron botones ni ventanas.
+- **Advertencia:** no se ejecutaron compilación ni pruebas funcionales; comprobar borrar primero/intermedio, insertar campo, guardar y reabrir, y que actor/etiqueta no se desplacen. Revisar también efectos en procesos ya creados antes de editar la plantilla.
+- **Regla de oro / continuidad:** consultar esta bitácora y commits antes de modificar; preservar lo que funciona y dejar decisiones y riesgos en cada intervención.
