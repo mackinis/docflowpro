@@ -331,15 +331,15 @@ export default function App() {
 
     if (!stageId) return;
 
-    await syncOperation('/api/forms/submit', {
-      method: 'POST',
-      body: JSON.stringify({
-        caseId: activeCaseId,
-        stageId,
-        requirementId: reqId,
-        values
-      })
+    const response = await fetch('/api/forms/submit', {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ caseId: activeCaseId, stageId, requirementId: reqId, values })
     });
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.error || 'No se pudo guardar el formulario.');
+    }
+    await loadState();
   };
 
   // Create manual Observation
@@ -374,21 +374,31 @@ export default function App() {
   // Advance Stage (Validated)
   const handleAdvanceStage = async () => {
     if (!activeCaseId) return;
-    await syncOperation(`/api/cases/${activeCaseId}/advance`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    const response = await fetch(`/api/cases/${activeCaseId}/advance`, {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId: currentUser.id })
-    }, '¡Etapa avanzada exitosamente! El legajo avanzó de nivel.');
+    });
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.error || 'No se pudo completar la operación.');
+    }
+    await loadState();
+    setOperationNotice('¡Etapa avanzada exitosamente! El legajo avanzó de nivel.');
   };
 
   // Approve Stage (Manager only)
   const handleApproveStage = async () => {
     if (!activeCaseId) return;
-    await syncOperation(`/api/cases/${activeCaseId}/approve-stage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    const response = await fetch(`/api/cases/${activeCaseId}/approve-stage`, {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId: currentUser.id })
-    }, '¡Etapa aprobada correctamente!');
+    });
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.error || 'No se pudo completar la operación.');
+    }
+    await loadState();
+    setOperationNotice('¡Etapa aprobada correctamente!');
   };
 
   const handleReopenCase = async (password: string): Promise<void> => {
