@@ -192,11 +192,11 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
     }
   };
   useEffect(()=>{
-    if(!selectedDigitalTemplateId || !importedFieldMap.length)return;
+    if(!selectedDigitalTemplateId || !importedFieldMap.length || reviewSaveStatus==='error')return;
     if(reviewSaveTimer.current)clearTimeout(reviewSaveTimer.current);
     reviewSaveTimer.current=setTimeout(()=>{void persistFieldReviews();},650);
     return ()=>{if(reviewSaveTimer.current)clearTimeout(reviewSaveTimer.current);};
-  },[manualDescription,importedFieldMap,selectedDigitalTemplateId,confirmingFieldReview]);
+  },[manualDescription,importedFieldMap,selectedDigitalTemplateId,confirmingFieldReview,reviewSaveStatus]);
   const [isCreatingManual, setIsCreatingManual] = useState(false);
 
   // Custom toast notifications
