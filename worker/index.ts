@@ -1782,6 +1782,7 @@ app.post('/api/templates', async (c) => {
       const requirements=fields.map((f:any)=>({
         id:'req-'+crypto.randomUUID(),name:String(f.actor)+' — '+String(f.label)+' ('+String(f.id)+')',
         type:'task' as const,description:'Dato a recopilar para completar '+String(f.id),
+        linkedSharedDocumentId:String(body.sharedDocumentId),
         isRequired:!f.review
       }));
       parsedStages=[{id:'stage-'+crypto.randomUUID(),name:'Recolección de datos de la plantilla',description:'Verificar los campos identificados antes de confeccionar el documento',requirements}];
