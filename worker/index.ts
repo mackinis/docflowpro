@@ -2526,7 +2526,7 @@ app.post('/api/confecciones', async (c) => {
   const originalContent = template.originalDocumentContent;
   const participants = Array.isArray(caseObj.participants) ? caseObj.participants as any[] : [];
   const normalized = (v:string) => v.toLocaleLowerCase('es-AR').normalize('NFD')
-    .replace(/[\\u0300-\\u036f]/g,'').replace(/[^a-z0-9]/g,'');
+    .replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'');
   const roleFor = (v:string):string => {
     const x=normalized(v);
     if(/conyuge|espos/.test(x))return 'spouse';
@@ -2556,10 +2556,10 @@ app.post('/api/confecciones', async (c) => {
     const values=[...new Set(keys.map(k=>candidates[0][k]).filter(v=>typeof v==='string'&&v.trim()))];
     if(values.length!==1)continue;
     const value=String(values[0]).trim();
-    if(value.length>2000 || /\\[CAMPO_\\d+\\*?\\]/.test(value))continue;
+    if(value.length>2000 || /\[CAMPO_\d+\*?\]/.test(value))continue;
     content=content.split(field.id).join(value);
   }
-  const lastField = Math.max(0, ...Array.from(originalContent.matchAll(/\\[CAMPO_(\\d+)\\*?\\]/g), m => Number(m[1])));
+  const lastField = Math.max(0, ...Array.from(originalContent.matchAll(/\[CAMPO_(\d+)\*?\]/g), m => Number(m[1])));
   await ensureConfecciones(c.env.DB);
   const id = crypto.randomUUID(), now = new Date().toISOString();
   await c.env.DB.prepare(`INSERT INTO confecciones
