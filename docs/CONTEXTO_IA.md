@@ -1,0 +1,43 @@
+# BITÁCORA DE CONTINUIDAD IA — DocFlow Pro
+
+> **REGLA DE ORO / BREADCRUMB:** Leer `AGENTS.md` antes de intervenir. En cada commit de trabajo dejar `Continuidad-IA: docs/CONTEXTO_IA.md`; actualizar aquí intención, cambios, fallos, pruebas y siguiente paso. Esta bitácora está escrita para la siguiente instancia de ChatGPT.
+
+## Para recuperar el contexto en un chat nuevo
+1. Leer `AGENTS.md` y este archivo completos.
+2. Consultar **todos los commits nuevos desde la última entrada**, y ampliar al historial anterior cuando haga falta; contrastar con el código vigente.
+3. Identificar diferencias entre lo pedido, lo implementado, lo probado, lo desplegado y lo confirmado por el usuario.
+4. Preguntar solo por ambigüedades reales; no inventar estado ni dar por resueltos bugs no verificados.
+
+## Arquitectura e intención de producto
+DocFlow Pro: aplicación de gestión documental y expedientes/legajos con plantillas digitalizadas, procesos operativos y Confecciones. Stack conocido en conversaciones previas: React/TypeScript y Cloudflare Workers/Hono, D1, R2 y Workers AI. Verificar vigencia en código.
+
+**Decisión fundamental del usuario:** la digitalización es el punto de origen y autoridad del mapa semántico. Identifica cada campo, su actor y significado, lo numera consecutivamente y persiste el mapa. Procesos, Legajos y Confecciones deben consumir esa misma definición, sin repetir la inferencia. El mapa debe estar asociado a la versión exacta de la plantilla; la numeración aislada no es identidad semántica suficiente. Evitar autocompletar con datos inferidos sin evidencia/confirmación.
+
+## Preferencias y restricciones explícitas
+- Cambios mínimos y precisos; no romper flujos que ya funcionan.
+- Respetar el aspecto original salvo que se solicite cambiarlo.
+- No crear editores paralelos, botones ni pasos extra cuando se pide edición directa.
+- Reconocer errores y documentar intentos rechazados.
+- No afirmar éxito de producción sin compilación, despliegue y prueba correspondientes.
+
+## Entrada inicial — 2026-11-17 — Institución de la regla de oro
+**Solicitud:** el usuario quiere que GitHub funcione como bitácora **para otra instancia de ChatGPT** al cambiar de chat, con una pista permanente en cada intervención y commit.
+
+**Acción:** se incorporan `AGENTS.md` y `docs/CONTEXTO_IA.md` con instrucciones explícitas de lectura, actualización y breadcrumb. Esta es la primera entrada; el historial previo sigue en GitHub y debe revisarse cuando corresponda.
+
+**Contexto reciente de alto riesgo:** se trabajó en la digitalización de una hoja guía de contrato de locación, la identificación de campos y su visualización. El usuario rechazó un editor adicional y exigió edición directamente en la vista del documento digitalizado. Commit previo conocido: `0028c6b656213d42a3c9f00590d1314d1e4a1abe`, que intentó implementar edición inline. **No consta compilación ni prueba en producción de ese commit.** Inspeccionar código y comportamiento antes de afirmar que funciona. Se han observado fallos previos en detección de campos innecesarios, numeración y conservación de marcadores al publicar en Documentos; no asumir que estén solucionados.
+
+**Pruebas:** creación de estos archivos de continuidad; no se ha compilado ni desplegado la aplicación como parte de esta intervención.
+
+**Pendiente inmediato:** en la siguiente tarea técnica, inspeccionar el estado real de edición inline, guardado, numeración y mapa; ejecutar validaciones antes de afirmar solución. Registrar cada resultado aquí.
+
+## Formato de las próximas entradas
+### AAAA-MM-DD — Tema — commits
+- **Pedido/intención del usuario:**
+- **Hechos comprobados antes del cambio:**
+- **Archivos y cambios:**
+- **Errores o enfoques rechazados:**
+- **Pruebas ejecutadas y resultado:**
+- **Despliegue y confirmación del usuario:**
+- **Riesgos / pendientes:**
+- **Próximo paso para la siguiente instancia:**
