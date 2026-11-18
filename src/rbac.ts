@@ -42,9 +42,15 @@ export function isRbacKey(key: string): key is PermissionKey {
   const [module, action, extra] = key.split('.');
   return !extra && RBAC_MODULES.includes(module as RbacModule) && RBAC_ACTIONS.includes(action as RbacAction);
 }
+// Hard server-side boundaries. These permissions cannot be delegated through RBAC.
+export function isNonDelegablePermission(role: RbacRole, key: PermissionKey): boolean {
+  if (role === 'SUPERADMIN') return false;
+  if (key === 'cases.delete') return true;
+  return role === 'ASESOR' && isForbiddenForAsesor(key);
+}
 export function hasRbacPermission(matrix: RbacMatrix | null | undefined, role: RbacRole, userId: string, key: PermissionKey): boolean {
   if (role === 'SUPERADMIN') return true;
-  if (role === 'ASESOR' && isForbiddenForAsesor(key)) return false;
+  if (isNonDelegablePermission(role, key)) return false;
   const userOverride = matrix?.users?.[userId]?.[key];
   if (typeof userOverride === 'boolean') return userOverride;
   const roleOverride = matrix?.roles?.[role]?.[key];
