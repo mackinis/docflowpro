@@ -41,3 +41,13 @@ DocFlow Pro: aplicación de gestión documental y expedientes/legajos con planti
 - **Despliegue y confirmación del usuario:**
 - **Riesgos / pendientes:**
 - **Próximo paso para la siguiente instancia:**
+
+### 2026-11-17 — Eliminar borde amarillo de foco del editor inline — `900fa9025e8540ea66181c9f412e52dff4476991`
+- **Pedido/intención del usuario:** quitar el recuadro amarillo alrededor de todo el texto en la vista editable de plantilla, conservando edición directa y resaltado de marcadores.
+- **Hechos comprobados antes del cambio:** `src/components/TemplatesManager.tsx`, `renderInlineEditable`, aplicaba `focus:ring-1 focus:ring-amber-400` al contenedor `contentEditable`.
+- **Archivos y cambios:** se quitaron únicamente esas dos clases de foco; no se modificaron campos, contenido, numeración ni persistencia.
+- **Errores o enfoques rechazados:** no añadir modales, botones ni otra modalidad de edición.
+- **Pruebas ejecutadas y resultado:** revisión textual de la clase y sustitución única; sin compilación, navegador ni despliegue verificados.
+- **Despliegue y confirmación del usuario:** pendientes.
+- **Riesgos / pendientes:** verificar visualmente en producción después del despliegue. El foco del editor ya no tendrá ese contorno visible.
+- **Próximo paso para la siguiente instancia:** comprobar comportamiento de edición directa y guardado; no reintroducir borde global amarillo.
