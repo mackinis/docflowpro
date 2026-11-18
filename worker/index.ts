@@ -2844,7 +2844,8 @@ Instrucción actual: ${instruction}`;
   };
   try {
     const seen = new Set<string>();
-    const valid: Array<{field:string;value:string;source:string}> = [...structuredProposals];\n    structuredProposals.forEach(p=>seen.add(p.field));
+    const valid: Array<{field:string;value:string;source:string}> = [...structuredProposals];
+    structuredProposals.forEach(p=>seen.add(p.field));
     // A model's claim of a source is not proof. Only propose literal values
     // actually found in the case evidence or explicitly supplied by the operator.
     const normalizeEvidence=(v:string)=>v.toLocaleLowerCase('es-AR').normalize('NFD')
@@ -2945,7 +2946,8 @@ Instrucción actual: ${instruction}`;
       }
       throw new Error(lastError||'Los modelos no devolvieron una respuesta válida');
     };
-    for (let i=0;i<batches.length;i++) {\n      if(batches[i].every(field=>seen.has(field)))continue;
+    for (let i=0;i<batches.length;i++) {
+      if(batches[i].every(field=>seen.has(field)))continue;
       try {
         const parsed = await runAgentBatch(batches[i],i);
         if (typeof parsed.reply === 'string' && parsed.reply.trim()) replies.push(parsed.reply.trim().slice(0,500));
