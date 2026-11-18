@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { cachedJson, invalidateCachedJson } from '../utils/requestCache';
 import { 
   FolderKanban, 
   Sparkles, 
@@ -241,21 +242,18 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
 
 
   React.useEffect(() => {
+    let active = true;
     const fetchSharedDocs = async () => {
       try {
-        const res = await fetch(`/api/shared-documents?userId=${currentUser.id}&role=${currentUser.role}`, {
-          credentials: 'include'
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setSharedDocs(data);
-        }
+        const data = await cachedJson<any[]>(`shared-documents:${currentUser.id}:${currentUser.role}`, `/api/shared-documents?userId=${currentUser.id}&role=${currentUser.role}`);
+        if (active) setSharedDocs(data);
       } catch (err) {
         console.error('Error fetching shared docs:', err);
       }
     };
-    fetchSharedDocs();
-  }, [currentUser]);
+    void fetchSharedDocs();
+    return () => { active = false; };
+  }, [currentUser.id, currentUser.role]);
 
   const isSuperAdmin = currentUser.role === 'SUPERADMIN';
   const allowAdminManager = systemSettings?.allowAdminManagerTemplates !== false;
@@ -862,17 +860,15 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
 
       const data = await response.json();
       if (response.ok && data.id) {
-        alert(`¡Documento "${tpl.name} (Digitalizado)" aprobado y guardado en la sección DOCUMENTOS exitosamente con los permisos seleccionados! Además, se eliminó de Plantillas de Procesos.`);
-        
-        try {
-          await fetch(`/api/templates/${tpl.id}?currentUserId=${currentUser.id}`, {
-            method: 'DELETE',
-            credentials: 'include'
-          });
-        } catch (delErr) {
-          console.error('Error al eliminar plantilla después de ser aprobada:', delErr);
+        invalidateCachedJson('shared-documents:');
+        const deletion = await fetch(`/api/templates/${tpl.id}?currentUserId=${currentUser.id}`, {
+          method: 'DELETE', credentials: 'include'
+        }).catch(() => null);
+        if (!deletion?.ok) {
+          alert('El documento se publicó correctamente, pero no se pudo eliminar la plantilla original. Verificá Plantillas antes de volver a publicarla.');
+        } else {
+          alert(`¡Documento "${tpl.name} (Digitalizado)" aprobado y guardado en DOCUMENTOS! La plantilla original fue eliminada.`);
         }
-
         setApprovingTemplate(null);
         if (loadState) {
           await loadState();

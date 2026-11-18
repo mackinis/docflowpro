@@ -1,3 +1,4 @@
+import { invalidateCachedJson } from './utils/requestCache';
 import React, { useState, useEffect } from 'react';
 import { 
   Loader2, 
@@ -78,6 +79,7 @@ export default function App() {
       setPublicRegistrationEnabled(bootstrapData!.publicRegistrationEnabled !== false);
 
       if (!bootstrapData!.user) {
+        invalidateCachedJson();
         sessionStorage.removeItem('docflow_user');
         sessionStorage.removeItem('docflow_real_user');
         setCurrentUser(null);
@@ -104,6 +106,7 @@ export default function App() {
       }
       if (!response) throw new Error('No se recibió respuesta del servidor.');
       if (response.status === 401) {
+        invalidateCachedJson();
         sessionStorage.removeItem('docflow_user');
         sessionStorage.removeItem('docflow_real_user');
         setCurrentUser(null);
@@ -158,6 +161,7 @@ export default function App() {
       }
       
       // Reload state after success to capture audit logs & notifications
+      invalidateCachedJson('statistics:');
       await loadState(true);
       
       if (successMsg) {
@@ -182,6 +186,7 @@ export default function App() {
         const errData = await response.json().catch(() => ({}));
         throw new Error(errData.error || 'No se pudo cambiar de usuario.');
       }
+      invalidateCachedJson();
       setActiveTab('dashboard');
       setActiveCaseId(null);
       await loadState();
@@ -521,6 +526,7 @@ export default function App() {
           // Do not render the authenticated application before the full state is loaded.
           // A transient state-fetch failure must not display a misleading connection error
           // after a successful login; keep the login form available for retry.
+          invalidateCachedJson();
           setActiveTab('dashboard');
           setActiveCaseId(null);
           setLoading(true);

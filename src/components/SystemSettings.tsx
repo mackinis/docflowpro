@@ -1,3 +1,4 @@
+import { cachedJson, invalidateCachedJson } from '../utils/requestCache';
 import React, { useState } from 'react';
 import AiAgentSettings from './AiAgentSettings';
 import { 
@@ -40,12 +41,10 @@ export default function SystemSettings({
   const [delegatedUserCreators, setDelegatedUserCreators] = useState<string[]>([]);
   React.useEffect(() => {
     if (currentUser.role !== 'SUPERADMIN') return;
-    fetch('/api/admin/registration-policy', { credentials: 'include' })
-      .then(async res => { if (!res.ok) throw new Error('No se pudo consultar el registro público.'); return res.json(); })
+    cachedJson<{enabled:boolean}>('settings:registration', '/api/admin/registration-policy')
       .then(data => setPublicRegistrationEnabled(data.enabled === true))
       .catch(err => setErrorMsg(err.message));
-    fetch('/api/admin/user-creators', { credentials: 'include' })
-      .then(r => r.ok ? r.json() : { ids: [] })
+    cachedJson<{ids:string[]}>('settings:user-creators', '/api/admin/user-creators')
       .then(d => setDelegatedUserCreators(d.ids || []))
       .catch(err => setErrorMsg(err.message));
   }, [currentUser.role]);
@@ -386,6 +385,7 @@ export default function SystemSettings({
                 const res = await fetch('/api/admin/registration-policy', { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: !publicRegistrationEnabled }) });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'No se pudo guardar la política.');
+                invalidateCachedJson('settings:registration');
                 setPublicRegistrationEnabled(data.enabled);
                 setSuccessMsg('Política de registro actualizada.');
               } catch (err: any) { setErrorMsg(err.message); }
@@ -410,6 +410,7 @@ export default function SystemSettings({
                   const res = await fetch('/api/admin/user-creators', { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: delegatedUserCreators }) });
                   const data = await res.json();
                   if (!res.ok) throw new Error(data.error || 'No se pudo guardar la delegación.');
+                  invalidateCachedJson('settings:user-creators');
                   setDelegatedUserCreators(data.ids); setSuccessMsg('Permisos de creación actualizados.');
                 } catch (err: any) { setErrorMsg(err.message); }
                 finally { setLoading(false); }
