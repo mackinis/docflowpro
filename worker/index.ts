@@ -1700,7 +1700,16 @@ app.post('/api/templates/analyze-fields', async (c) => {
   // digitizations already assign consecutive IDs at their source.
   const unique=[...new Set(matches.map(m=>m[0]))];
   if(!unique.length)return c.json({error:'La plantilla no tiene campos amarillos.'},400);
-  const fields=identifyDigitizedFields(source);
+  // Reuse the reviewed map saved when the document was digitized.
+  // Exact source matching prevents using meanings from another marker version.
+  const original=await c.env.DB.prepare(
+    'SELECT id FROM process_templates WHERE original_document_content = ? ORDER BY created_at DESC LIMIT 1'
+  ).bind(source).first<{id:string}>();
+  if(!original)return c.json({error:'No se encontró el mapa original de esta digitalización. Revisá la plantilla antes de crear el proceso.'},409);
+  const saved=await findTemplateOrVirtualById(c.env,original.id);
+  const fields=(saved?.fieldMap||[]).filter(f=>unique.includes(f.id));
+  if(fields.length!==unique.length)
+    return c.json({error:'El mapa de digitalización está incompleto. Revisá la plantilla antes de crear el proceso.'},409);
   return c.json({fields,originalDocumentContent:source});
 });
 app.post('/api/templates', async (c) => {
