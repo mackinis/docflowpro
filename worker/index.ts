@@ -1694,12 +1694,20 @@ app.post('/api/templates/analyze-fields', async (c) => {
     return c.json({error:'Seleccioná un documento digitalizado de texto.'},400);
   const object=await c.env.R2_BUCKET.get(doc.r2_key);
   if(!object)return c.json({error:'El archivo del documento no está disponible en R2.'},404);
-  const source=await object.text();
+  const publishedText=await object.text();
+  const metadataObject=await c.env.R2_BUCKET.get(doc.r2_key+'.fieldmap.json');
+  const metadata=metadataObject ? await metadataObject.json() as {originalDocumentContent?:string;fieldMap?:any[]} : null;
+  const source=metadata?.originalDocumentContent || publishedText;
   const matches=[...source.matchAll(/\[CAMPO_\d+\*?\]/g)];
   // Keep process requirements in the document's natural order. New
   // digitizations already assign consecutive IDs at their source.
   const unique=[...new Set(matches.map(m=>m[0]))];
   if(!unique.length)return c.json({error:'La plantilla no tiene campos amarillos.'},400);
+  if (metadata?.fieldMap?.length) {
+    const fields=metadata.fieldMap.filter((f:any)=>unique.includes(f.id));
+    if(fields.length!==unique.length)return c.json({error:'El mapa de campos publicado está incompleto.'},409);
+    return c.json({fields,originalDocumentContent:source});
+  }
   // Reuse the reviewed map saved when the document was digitized.
   // Exact source matching prevents using meanings from another marker version.
   const original=await c.env.DB.prepare(
@@ -3245,6 +3253,8 @@ app.post('/api/shared-documents', async (c) => {
   let fileBytes: Uint8Array | null = null;
   let allowedRoles: string[] = ['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR'];
   let allowedUserIds: string[] = [];
+  let digitizationSource: string | null = null;
+  let digitizationFieldMap: any[] | null = null;
 
   if (contentType.includes('multipart/form-data')) {
     const form = await c.req.formData();
@@ -3267,6 +3277,10 @@ app.post('/api/shared-documents', async (c) => {
     fileSize = body.fileSize || 0;
     allowedRoles = body.allowedRoles || allowedRoles;
     allowedUserIds = body.allowedUserIds || [];
+    if (typeof body.digitizationSource === 'string' && Array.isArray(body.digitizationFieldMap)) {
+      digitizationSource = body.digitizationSource;
+      digitizationFieldMap = body.digitizationFieldMap;
+    }
     if (body.fileBase64) {
       const decoded = decodeDataUrl(body.fileBase64, guessMimeType(fileName));
       fileBytes = decoded.bytes;
@@ -3282,6 +3296,9 @@ app.post('/api/shared-documents', async (c) => {
   const docId = `sh-doc-${Date.now()}-${crypto.randomUUID().slice(0, 4)}`;
   const r2Key = `shared/${docId}/${sanitizeFileName(fileName)}`;
   await c.env.R2_BUCKET.put(r2Key, fileBytes, { httpMetadata: { contentType: mimeType } });
+  if (digitizationSource !== null && digitizationFieldMap !== null) {
+    await c.env.R2_BUCKET.put(r2Key + '.fieldmap.json', JSON.stringify({originalDocumentContent:digitizationSource,fieldMap:digitizationFieldMap}), {httpMetadata:{contentType:'application/json'}});
+  }
 
   const uploadedByLabel = `${auth.user.name} ${auth.user.lastName} (${auth.user.role})`;
   const now = new Date().toISOString();
