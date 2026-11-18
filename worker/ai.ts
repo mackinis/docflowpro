@@ -333,16 +333,16 @@ Máximo 80 campos e inserciones por fragmento.`;
   // "NOMBRES Y APELLIDOS COMPLETOS: COPIA DE DNI".
   // These are document-specific form labels, not free-form prose.
   const adjacentLabels = [
-    {re:/\\bFECHA\\s+DE\\s+NACIMIENTO\\s*:?/gi,label:'Fecha de nacimiento'},
-    {re:/\\bNOMBRES?\\s+Y\\s+APELLIDOS?\\s+COMPLETOS\\s*:/gi,label:'Nombres y apellidos completos'},
+    {re:/\bFECHA\s+DE\s+NACIMIENTO\s*:?/gi,label:'Fecha de nacimiento'},
+    {re:/\bNOMBRES?\s+Y\s+APELLIDOS?\s+COMPLETOS\s*:/gi,label:'Nombres y apellidos completos'},
   ];
-  const nextLabel=/^(?:COPIA\\s+(?:DE\\s+)?DNI|DOMICILIO\\s+ACTUAL|DNI\\s*:|MAIL\\s*:|ESTADO\\s+CIVIL\\s*:|NOMBRE\\s+Y\\s+APELLIDO\\s+C[ÓO]NYUGE\\s*:|LOCATARIO\\/S\\s*:|LOCADOR\\/S\\s*:|FIADORES?\\s*:|GARANTES?\\s*:)/i;
+  const nextLabel=/^(?:COPIA\s+(?:DE\s+)?DNI|DOMICILIO\s+ACTUAL|DNI\s*:|MAIL\s*:|ESTADO\s+CIVIL\s*:|NOMBRE\s+Y\s+APELLIDO\s+C[ÓO]NYUGE\s*:|LOCATARIO\/S\s*:|LOCADOR\/S\s*:|FIADORES?\s*:|GARANTES?\s*:)/i;
   const pendingInsertions: Array<{at:number;label:string}> = [];
   for(const slot of adjacentLabels) {
     for(const match of content.matchAll(slot.re)) {
       const at=(match.index||0)+match[0].length;
       const tail=content.slice(at);
-      if(/^\\s*\\[CAMPO_\\d+\\*?\\]/.test(tail))continue;
+      if(/^\s*\[CAMPO_\d+\*?\]/.test(tail))continue;
       // Only a new known form label or explicit next instruction, never a supplied value.
       if(!nextLabel.test(tail.trimStart()))continue;
       // "NOMBRES Y APELLIDOS COMPLETOS" is also used as a section
