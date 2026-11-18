@@ -279,9 +279,23 @@ export default function CasesList({
 
   const isManagerOrAdmin = ['SUPERADMIN', 'ADMIN', 'MANAGER'].includes(currentUser.role);
 
+  const valuesForParticipant = () => {
+    const values = {...actorFieldValues};
+    for (const item of roleFields) {
+      const label = normalizedActor(item.field.label);
+      if (/^dni$|documento de identidad/.test(label)) values[item.field.id] = pDni;
+      else if (/mail|correo|e-mail/.test(label)) values[item.field.id] = pEmail;
+      else if (/fecha de nacimiento/.test(label)) values[item.field.id] = pBirthDate;
+      else if (/cuit|cuil/.test(label)) values[item.field.id] = pCuit;
+      else if (/telefono|celular/.test(label)) values[item.field.id] = pPhone;
+      else if (/nombre y apellido/.test(label) && !/conyuge/.test(normalizedActor(item.field.actor))) values[item.field.id] = (pName+' '+pLastName).trim();
+    }
+    return values;
+  };
   const handleStartEditParticipant = (p: Participant) => {
     setMissingActorDocsWarning(false);
     setEditingParticipantId(p.id);
+    setActorFieldValues(p.fieldValues || {});
     setPName(p.name);
     setPLastName(p.lastName);
     setPDni(p.dni || '');
@@ -302,8 +316,8 @@ export default function CasesList({
 
   const handleAddParticipant = (confirmedMissingDocuments = false) => {
     if (!editingParticipantId && !availableRoles.includes(pType)) { alert('No quedan roles pendientes de carga para este proceso.'); return; }
-    if (!pName || !pLastName || !pDni || !pCuit || !pBirthDate || !pEmail || !pPhone) {
-      alert('Favor de completar todos los campos obligatorios del actor (Nombre, Apellido, Fecha de Nacimiento, DNI, CUIT/CUIL, Email, Teléfono/Celular).');
+    if (!pName || !pLastName || !pDni) {
+      alert('Completá el nombre, apellido y DNI del actor. Los demás datos se solicitan según la plantilla.');
       return;
     }
 
@@ -322,7 +336,9 @@ export default function CasesList({
             phone: pPhone,
             birthDate: pBirthDate || undefined,
             role: pType,
-            comments: `${pType}: ${pComments}`.trim()
+            comments: `${pType}: ${pComments}`.trim(),
+        fieldValues: valuesForParticipant(),
+            fieldValues: valuesForParticipant()
           };
         }
         return p;
@@ -353,7 +369,7 @@ export default function CasesList({
     setPEmail('');
     setPPhone('');
     setPBirthDate('');
-    setPComments('');
+    setPComments(''); setActorFieldValues({});
     setMissingActorDocsWarning(false);
   };
 
@@ -420,7 +436,7 @@ export default function CasesList({
       const advisorId = currentUser.role === 'ASESOR' ? currentUser.id : (newAdvisorId || users.find(u => u.role === 'ASESOR')?.id || '');
       const response = await fetch('/api/cases', {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: newTitle, description: newDescription, templateId: newTemplateId, assignedAdvisorId: advisorId, assignedManagerId: currentUser.role === 'ASESOR' ? '' : currentUser.id, participants, pendingDocumentNames: pendingDocs, documentContent: customDocumentContent || undefined })
+        body: JSON.stringify({ title: newTitle, description: newDescription, templateId: newTemplateId, assignedAdvisorId: advisorId, assignedManagerId: currentUser.role === 'ASESOR' ? '' : currentUser.id, participants: [...participants, {id:'__operation__',name:'',lastName:'',dni:'',cuitCuil:'',email:'',phone:'',fieldValues:generalFieldValues}], pendingDocumentNames: pendingDocs, documentContent: customDocumentContent || undefined })
       });
       const created = await response.json();
       if (!response.ok) throw new Error(created.error || 'No se pudo crear el legajo.');
@@ -876,6 +892,15 @@ export default function CasesList({
                 </div>
               </div>
 
+              {mappedGeneralFields.length > 0 && <section className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+                <h4 className="text-sm font-bold text-slate-800">Datos de la operación según la hoja digitalizada</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {mappedGeneralFields.map(item => <label key={item.field.id} className="text-xs font-semibold text-slate-600">
+                    {item.field.label} ({item.field.id})
+                    <input type="text" value={generalFieldValues[item.field.id] || ''} onChange={e => setGeneralFieldValues(prev => ({...prev,[item.field.id]:e.target.value}))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white p-2 text-xs" />
+                  </label>)}
+                </div>
+              </section>}
               {/* Actores Cantidad Requerida Section */}
               <div className="border-t border-slate-100 pt-5 space-y-3 font-sans">
                 <div className="flex items-center gap-2">
@@ -959,16 +984,28 @@ export default function CasesList({
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-semibold text-slate-500">Email *</label>
-                    <input required type="email" value={pEmail} onChange={(e) => setPEmail(e.target.value)} placeholder="Ej. mendez@email.com" className="w-full text-[11px] p-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                    <input type="email" value={pEmail} onChange={(e) => setPEmail(e.target.value)} placeholder="Ej. mendez@email.com" className="w-full text-[11px] p-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500" />
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-semibold text-slate-500">Teléfono/Celular *</label>
-                    <input required type="tel" value={pPhone} onChange={(e) => setPPhone(e.target.value)} onFocus={(e) => { if (!pPhone.trim()) { setPPhone('+54'); requestAnimationFrame(() => { e.target.setSelectionRange(3, 3); }); } }} placeholder="Ej. +54 11 4432-8761" className="w-full text-[11px] p-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                    <input type="tel" value={pPhone} onChange={(e) => setPPhone(e.target.value)} onFocus={(e) => { if (!pPhone.trim()) { setPPhone('+54'); requestAnimationFrame(() => { e.target.setSelectionRange(3, 3); }); } }} placeholder="Ej. +54 11 4432-8761" className="w-full text-[11px] p-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500" />
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-semibold text-slate-500">Observaciones del Actor</label>
                     <input type="text" value={pComments} onChange={(e) => setPComments(e.target.value)} placeholder="Comentarios, facultades..." className="w-full text-[11px] p-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500" />
                   </div>
+                  {roleFields.length > 0 && <div className="sm:col-span-3 rounded-lg border border-indigo-100 bg-white p-3 space-y-3">
+                    <p className="text-xs font-bold text-indigo-800">Datos de {pType} según la hoja digitalizada</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {roleFields.filter(item => !/^(dni|mail|correo|fecha de nacimiento|cuit|cuil|telefono|celular)$/i.test(normalizedActor(item.field.label))).map(item => (
+                        <label key={item.field.id} className="block text-[11px] font-semibold text-slate-600">
+                          {item.field.actor} — {item.field.label} ({item.field.id})
+                          <input type="text" value={actorFieldValues[item.field.id] || ''} onChange={e => setActorFieldValues(prev => ({...prev,[item.field.id]:e.target.value}))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white p-2 text-xs" />
+                        </label>
+                      ))}
+                    </div>
+                    <p className="text-[10px] text-slate-500">DNI, correo, fecha de nacimiento y otros datos comunes se vinculan automáticamente con su CAMPO correspondiente.</p>
+                  </div>}
                   {missingActorDocsWarning && <div role="alertdialog" aria-label="Documentos pendientes del actor" className="sm:col-span-3 rounded-xl border border-amber-300 bg-amber-50 p-4 space-y-2">
                     <p className="text-sm font-bold text-amber-900">Documentos pendientes</p>
                     <p className="text-xs text-amber-900">No cargaste: {missingDraftDocs.map(r => r.name).join(', ')}. Podés continuar agregando actores. Si faltan documentos al crear el legajo, el sistema aplicará la política configurada por el administrador: permitirlo como OBSERVADO o impedir su creación.</p>
