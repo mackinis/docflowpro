@@ -759,11 +759,13 @@ export default function CaseDetail({
 
           {isSuperAdmin && (
             <button
+              type="button"
               onClick={() => setShowDeleteConfirm(true)}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-lg transition-colors shadow-xs cursor-pointer animate-pulse"
+              title="Eliminar legajo"
+              aria-label={`Eliminar legajo ${caseObj.code}: ${caseObj.title}`}
+              className="p-2 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-600 hover:text-rose-800 transition-colors cursor-pointer"
             >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>Eliminar Legajo</span>
+              <Trash2 className="w-4 h-4" aria-hidden="true" />
             </button>
           )}
         </div>
