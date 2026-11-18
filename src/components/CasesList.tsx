@@ -17,6 +17,28 @@ import {
 } from 'lucide-react';
 import { Case, ProcessTemplate, User as UserType, Participant, ParticipantType } from '../types';
 
+type DraftRecord = {
+  id: string; title: string; description: string; templateId: string; advisorId: string;
+  participants: Participant[]; fieldValues: Record<string,string>; pendingActor: Record<string,string>;
+  documentContent: string; escribano: boolean; updatedAt: string;
+};
+const normalizedActor = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+const roleForField = (actor: string): ParticipantType | null => {
+  const a = normalizedActor(actor);
+  if (/locador/.test(a)) return 'Locador';
+  if (/locatario/.test(a)) return 'Locatario';
+  if (/garante/.test(a)) return 'Garante';
+  if (/vendedor/.test(a)) return 'Vendedor';
+  if (/comprador/.test(a)) return 'Comprador';
+  if (/titular/.test(a)) return 'Titular';
+  if (/apoderado/.test(a)) return 'Apoderado';
+  return null;
+};
+const importedField = (name: string) => {
+  const match = name.match(/^(.*?)\s+—\s+(.*?)\s+\(\[?(CAMPO_\d+)\]?\)/i);
+  return match ? { actor: match[1].trim(), label: match[2].trim(), id: match[3].toUpperCase() } : null;
+};
+
 interface CasesListProps {
   cases: Case[];
   templates: ProcessTemplate[];
@@ -49,6 +71,17 @@ export default function CasesList({
   loadState
 }: CasesListProps) {
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [drafts, setDrafts] = useState<DraftRecord[]>([]);
+  const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
+  const [generalFieldValues, setGeneralFieldValues] = useState<Record<string,string>>({});
+  const [actorFieldValues, setActorFieldValues] = useState<Record<string,string>>({});
+  const [draftBusy, setDraftBusy] = useState(false);
+  const refreshDrafts = async () => {
+    const response = await fetch('/api/case-drafts', {credentials:'include'});
+    if (!response.ok) throw new Error('No se pudieron cargar los borradores');
+    setDrafts(await response.json());
+  };
+  React.useEffect(() => { void refreshDrafts().catch(console.error); }, [currentUser.id]);
   const [caseToDelete, setCaseToDelete] = useState<Case | null>(null);
   const [pendingCreationDocs, setPendingCreationDocs] = useState<string[] | null>(null);
   const isTemplateRequired = true;
@@ -95,7 +128,7 @@ export default function CasesList({
   
   React.useEffect(() => {
     const isTemplateRequired = systemSettings?.processTemplateRequired !== false;
-    if (showCreateModal && templates.length > 0) {
+    if (showCreateModal && templates.length > 0 && !newTemplateId) {
       setNewTemplateId(isTemplateRequired ? (templates.find(t => !t.id.startsWith('doc-') && !t.id.startsWith('tmpl-dig-') && !t.originalDocumentContent)?.id || '') : '');
     }
   }, [showCreateModal, templates, systemSettings]);
@@ -139,6 +172,11 @@ export default function CasesList({
     return n.includes(r);
   };
   const draftKey = editingParticipantId || pType + ':' + pDni.replace(/\D/g, '');
+  const mappedFields = process?.stages.flatMap(stage => stage.requirements).map(req => ({ req, field: importedField(req.name) })).filter((item): item is {req: typeof item.req; field: NonNullable<typeof item.field>} => !!item.field) || [];
+  const mappedActorFields = mappedFields.filter(item => roleForField(item.field.actor));
+  const mappedGeneralFields = mappedFields.filter(item => !roleForField(item.field.actor));
+  const roleFields = mappedActorFields.filter(item => roleForField(item.field.actor) === pType);
+  const inferredRoles = Array.from(new Set(mappedActorFields.map(item => roleForField(item.field.actor)).filter((role): role is ParticipantType => !!role)));
   const actorRulesForForm = process?.stages.flatMap(s => s.requirements).filter(r => r.type === 'actor' && r.isRequired) || [];
   // Mostrar únicamente los roles cuya cantidad mínima todavía no se completó.
   // Si se requieren varios actores del mismo rol, conservarlo hasta alcanzar ese mínimo.
@@ -147,6 +185,9 @@ export default function CasesList({
     const role = rule.actorRole as ParticipantType | undefined;
     if (!role || role === 'Escribano') continue;
     requiredCountByRole.set(role, Math.max(requiredCountByRole.get(role) || 0, Math.max(1, Number(rule.minQuantity) || 1)));
+  }
+  for (const role of inferredRoles) {
+    if (!requiredCountByRole.has(role)) requiredCountByRole.set(role, 1);
   }
   const expectedActores = [...requiredCountByRole.entries()].filter(([role]) => role !== 'Garante').reduce((sum, [, count]) => sum + count, 0);
   const expectedGarantes = requiredCountByRole.get('Garante') || 0;
@@ -199,6 +240,10 @@ export default function CasesList({
       if (count < minimum) errors.push(`Faltan ${minimum - count} ${rule.actorRole || rule.name} (mínimo ${minimum}).`);
     }
 
+    for (const role of inferredRoles) {
+      if (!participants.some(p => p.role === role && p.name.trim() && p.lastName.trim() && p.dni.trim())) errors.push('Falta cargar el actor requerido: ' + role);
+    }
+
     // Los documentos exigidos se resumen en una sola línea, sin repetir el listado en otro panel.
     // Su carga y aprobación se realizan en el legajo, donde se vinculan a cada requisito.
     const requiredDocuments = selectedProcess?.stages.flatMap(st => st.requirements)
@@ -234,9 +279,24 @@ export default function CasesList({
 
   const isManagerOrAdmin = ['SUPERADMIN', 'ADMIN', 'MANAGER'].includes(currentUser.role);
 
+  const valuesForParticipant = () => {
+    const values = {...actorFieldValues};
+    for (const item of roleFields) {
+      const label = normalizedActor(item.field.label);
+      if (/conyuge/.test(normalizedActor(item.field.actor))) continue; // Spouse values must never inherit the primary actor's identity.
+      if (/^dni$|documento de identidad/.test(label)) values[item.field.id] = pDni;
+      else if (/mail|correo|e-mail/.test(label)) values[item.field.id] = pEmail;
+      else if (/fecha de nacimiento/.test(label)) values[item.field.id] = pBirthDate;
+      else if (/cuit|cuil/.test(label)) values[item.field.id] = pCuit;
+      else if (/telefono|celular/.test(label)) values[item.field.id] = pPhone;
+      else if (/nombre y apellido/.test(label) && !/conyuge/.test(normalizedActor(item.field.actor))) values[item.field.id] = (pName+' '+pLastName).trim();
+    }
+    return values;
+  };
   const handleStartEditParticipant = (p: Participant) => {
     setMissingActorDocsWarning(false);
     setEditingParticipantId(p.id);
+    setActorFieldValues(p.fieldValues || {});
     setPName(p.name);
     setPLastName(p.lastName);
     setPDni(p.dni || '');
@@ -257,8 +317,8 @@ export default function CasesList({
 
   const handleAddParticipant = (confirmedMissingDocuments = false) => {
     if (!editingParticipantId && !availableRoles.includes(pType)) { alert('No quedan roles pendientes de carga para este proceso.'); return; }
-    if (!pName || !pLastName || !pDni || !pCuit || !pBirthDate || !pEmail || !pPhone) {
-      alert('Favor de completar todos los campos obligatorios del actor (Nombre, Apellido, Fecha de Nacimiento, DNI, CUIT/CUIL, Email, Teléfono/Celular).');
+    if (!pName || !pLastName || !pDni) {
+      alert('Completá el nombre, apellido y DNI del actor. Los demás datos se solicitan según la plantilla.');
       return;
     }
 
@@ -277,7 +337,8 @@ export default function CasesList({
             phone: pPhone,
             birthDate: pBirthDate || undefined,
             role: pType,
-            comments: `${pType}: ${pComments}`.trim()
+            comments: `${pType}: ${pComments}`.trim(),
+            fieldValues: valuesForParticipant()
           };
         }
         return p;
@@ -294,7 +355,8 @@ export default function CasesList({
         phone: pPhone,
         birthDate: pBirthDate || undefined,
         role: pType,
-        comments: `${pType}: ${pComments}`.trim()
+        comments: `${pType}: ${pComments}`.trim(),
+        fieldValues: valuesForParticipant()
       };
       setParticipants([...participants, newPart]);
       setActorFiles(prev => ({ ...prev, [newPart.id]: prev[draftKey] || {} }));
@@ -308,7 +370,7 @@ export default function CasesList({
     setPEmail('');
     setPPhone('');
     setPBirthDate('');
-    setPComments('');
+    setPComments(''); setActorFieldValues({});
     setMissingActorDocsWarning(false);
   };
 
@@ -318,6 +380,46 @@ export default function CasesList({
     }
     setParticipants(participants.filter(p => p.id !== id));
     setActorFiles(prev => { const next = { ...prev }; delete next[id]; return next; });
+  };
+
+  const startNewCase = () => {
+    setEditingDraftId(null); setNewTitle(''); setNewDescription(''); setNewTemplateId('');
+    setParticipants([]); setGeneralFieldValues({}); setActorFieldValues({});
+    setPName(''); setPLastName(''); setPDni(''); setPCuit(''); setPEmail(''); setPPhone(''); setPBirthDate(''); setPComments('');
+    setEditingParticipantId(null); setEscribanoADesignar(false); setActorFiles({});
+    setCustomDocumentContent(''); setUploadedFileName(''); setShowCreateModal(true);
+  };
+  const resumeDraft = (draft: DraftRecord) => {
+    setEditingDraftId(draft.id); setNewTitle(draft.title || ''); setNewDescription(draft.description || '');
+    setNewTemplateId(draft.templateId || ''); setNewAdvisorId(draft.advisorId || '');
+    setParticipants(draft.participants || []); setGeneralFieldValues(draft.fieldValues || {});
+    setActorFieldValues(draft.pendingActor?.fieldValues ? JSON.parse(draft.pendingActor.fieldValues) : {});
+    setPType((draft.pendingActor?.role || 'Vendedor') as ParticipantType);
+    setPName(draft.pendingActor?.name || ''); setPLastName(draft.pendingActor?.lastName || '');
+    setPDni(draft.pendingActor?.dni || ''); setPCuit(draft.pendingActor?.cuit || '');
+    setPEmail(draft.pendingActor?.email || ''); setPPhone(draft.pendingActor?.phone || '');
+    setPBirthDate(draft.pendingActor?.birthDate || ''); setPComments(draft.pendingActor?.comments || '');
+    setEditingParticipantId(draft.pendingActor?.editingId || null);
+    setCustomDocumentContent(draft.documentContent || ''); setEscribanoADesignar(!!draft.escribano);
+    setActorFiles({}); setShowCreateModal(true);
+  };
+  const saveDraft = async () => {
+    if (draftBusy || savingCase) return;
+    setDraftBusy(true);
+    try {
+      const id = editingDraftId || 'draft-' + crypto.randomUUID();
+      const payload = {
+        title:newTitle,description:newDescription,templateId:newTemplateId,advisorId:newAdvisorId,
+        participants,fieldValues:generalFieldValues,documentContent:customDocumentContent,escribano:escribanoADesignar,
+        pendingActor:{role:pType,name:pName,lastName:pLastName,dni:pDni,cuit:pCuit,email:pEmail,phone:pPhone,birthDate:pBirthDate,comments:pComments,editingId:editingParticipantId || '',fieldValues:JSON.stringify(actorFieldValues)}
+      };
+      const response = await fetch('/api/case-drafts/'+id,{method:'PUT',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      if (!response.ok) throw new Error((await response.json()).error || 'No se pudo guardar el borrador');
+      setEditingDraftId(id);
+      await refreshDrafts(); setShowCreateModal(false);
+      if (Object.values(actorFiles).some(files => Object.keys(files).length)) alert('Borrador guardado. Los archivos seleccionados todavía no fueron subidos y deberán adjuntarse al retomarlo.');
+    } catch (error:any) { alert(error?.message || 'Error al guardar el borrador'); }
+    finally {setDraftBusy(false);}
   };
 
   const handleCreateSubmit = async (e: React.FormEvent) => {
@@ -335,7 +437,7 @@ export default function CasesList({
       const advisorId = currentUser.role === 'ASESOR' ? currentUser.id : (newAdvisorId || users.find(u => u.role === 'ASESOR')?.id || '');
       const response = await fetch('/api/cases', {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: newTitle, description: newDescription, templateId: newTemplateId, assignedAdvisorId: advisorId, assignedManagerId: currentUser.role === 'ASESOR' ? '' : currentUser.id, participants, pendingDocumentNames: pendingDocs, documentContent: customDocumentContent || undefined })
+        body: JSON.stringify({ title: newTitle, description: newDescription, templateId: newTemplateId, assignedAdvisorId: advisorId, assignedManagerId: currentUser.role === 'ASESOR' ? '' : currentUser.id, participants, generalFieldValues, pendingDocumentNames: pendingDocs, documentContent: customDocumentContent || undefined })
       });
       const created = await response.json();
       if (!response.ok) throw new Error(created.error || 'No se pudo crear el legajo.');
@@ -352,6 +454,10 @@ export default function CasesList({
         data.append('file', file);
         const upload = await fetch('/api/documents/upload', { method: 'POST', credentials: 'include', body: data });
         if (!upload.ok) { const detail = await upload.json().catch(() => ({})); throw new Error(detail.error || 'Error al almacenar ' + req.name + ' en R2.'); }
+      }
+      if (editingDraftId) {
+        await fetch('/api/case-drafts/'+editingDraftId,{method:'DELETE',credentials:'include'});
+        await refreshDrafts(); setEditingDraftId(null);
       }
       await loadState?.();
       setNewTitle(''); setNewDescription(''); setParticipants([]); setActorFiles({});
@@ -410,7 +516,7 @@ export default function CasesList({
           <p className="text-sm text-slate-500">Visualiza, busca y administra todos los procesos activos de la oficina.</p>
         </div>
         <button
-          onClick={() => setShowCreateModal(true)}
+          onClick={startNewCase}
           className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm rounded-xl shadow-md shadow-indigo-500/10 hover:shadow-indigo-500/20 active:scale-98 transition-all"
         >
           <Plus className="w-4 h-4" />
@@ -479,6 +585,24 @@ export default function CasesList({
           })}
         </div>
       </div>
+
+      {drafts.length > 0 && (
+        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 space-y-3">
+          <h3 className="font-bold text-amber-900">Borradores ({drafts.length})</h3>
+          {drafts.map(draft => <div key={draft.id} className="flex items-center justify-between gap-3 rounded-xl bg-white border border-amber-200 p-3">
+            <button type="button" onClick={() => resumeDraft(draft)} className="text-left min-w-0 flex-1">
+              <span className="text-xs font-bold text-amber-700 mr-2">BORRADOR</span>
+              <span className="text-sm font-semibold text-slate-800">{draft.title || 'Sin título'}</span>
+              <p className="text-xs text-slate-500">Último guardado: {new Date(draft.updatedAt).toLocaleString('es-AR')} · Continuar carga</p>
+            </button>
+            <button type="button" className="text-xs text-rose-700 hover:underline" onClick={async () => {
+              if (!window.confirm('¿Eliminar este borrador?')) return;
+              const response = await fetch('/api/case-drafts/'+draft.id,{method:'DELETE',credentials:'include'});
+              if (response.ok) await refreshDrafts(); else alert('No se pudo eliminar el borrador');
+            }}>Eliminar</button>
+          </div>)}
+        </section>
+      )}
 
       {/* Grid of Cases / Table */}
       <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
@@ -667,7 +791,7 @@ export default function CasesList({
             {/* Header */}
             <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
               <div>
-                <h3 className="text-lg font-bold text-slate-800">Crear Nuevo Legajo</h3>
+                <h3 className="text-lg font-bold text-slate-800">{editingDraftId ? 'Continuar borrador' : 'Crear Nuevo Legajo'}</h3>
                 <p className="text-xs text-slate-400 mt-0.5">Define el proceso, asigna asesores y carga participantes.</p>
               </div>
               <button onClick={() => setShowCreateModal(false)} className="p-1 text-slate-400 hover:text-slate-600 rounded">
@@ -769,6 +893,15 @@ export default function CasesList({
                 </div>
               </div>
 
+              {mappedGeneralFields.length > 0 && <section className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+                <h4 className="text-sm font-bold text-slate-800">Datos de la operación según la hoja digitalizada</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {mappedGeneralFields.map(item => <label key={item.field.id} className="text-xs font-semibold text-slate-600">
+                    {item.field.label} ({item.field.id})
+                    <input type="text" value={generalFieldValues[item.field.id] || ''} onChange={e => setGeneralFieldValues(prev => ({...prev,[item.field.id]:e.target.value}))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white p-2 text-xs" />
+                  </label>)}
+                </div>
+              </section>}
               {/* Actores Cantidad Requerida Section */}
               <div className="border-t border-slate-100 pt-5 space-y-3 font-sans">
                 <div className="flex items-center gap-2">
@@ -838,30 +971,50 @@ export default function CasesList({
                     <label className="text-[10px] font-semibold text-slate-500">Apellido *</label>
                     <input type="text" value={pLastName} onChange={(e) => setPLastName(e.target.value)} placeholder="Ej. Méndez" className="w-full text-[11px] p-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500" />
                   </div>
+                  {(!mappedActorFields.length || roleFields.some(item => !/conyuge/.test(normalizedActor(item.field.actor)) && /fecha de nacimiento/.test(normalizedActor(item.field.label)))) && (
                   <div className="space-y-1">
-                    <label className="text-[10px] font-semibold text-slate-500">Fecha de Nacimiento *</label>
+                    <label className="text-[10px] font-semibold text-slate-500">Fecha de Nacimiento</label>
                     <input type="date" aria-label="Fecha de nacimiento: abrir calendario" value={pBirthDate} onChange={(e) => setPBirthDate(e.target.value)} className="legajo-birth-date w-full text-[11px] p-2 pr-3 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500" />
                   </div>
+                  )}
                   <div className="space-y-1">
                     <label className="text-[10px] font-semibold text-slate-500">DNI *</label>
                     <input type="text" value={pDni} onChange={(e) => setPDni(e.target.value)} placeholder="Ej. 32.145.980" className="w-full text-[11px] p-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500" />
                   </div>
+                  {(!mappedActorFields.length || roleFields.some(item => !/conyuge/.test(normalizedActor(item.field.actor)) && /cuit|cuil/.test(normalizedActor(item.field.label)))) && (
                   <div className="space-y-1">
-                    <label className="text-[10px] font-semibold text-slate-500">CUIT/CUIL *</label>
+                    <label className="text-[10px] font-semibold text-slate-500">CUIT/CUIL</label>
                     <input type="text" value={pCuit} onChange={(e) => setPCuit(e.target.value)} onBlur={() => setPCuit(current => formatCuitCuil(current))} inputMode="numeric" placeholder="Ej. 20-32145980-4" className="w-full text-[11px] p-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500" />
                   </div>
+                  )}
+                  {(!mappedActorFields.length || roleFields.some(item => !/conyuge/.test(normalizedActor(item.field.actor)) && /mail|correo|e-mail/.test(normalizedActor(item.field.label)))) && (
                   <div className="space-y-1">
-                    <label className="text-[10px] font-semibold text-slate-500">Email *</label>
-                    <input required type="email" value={pEmail} onChange={(e) => setPEmail(e.target.value)} placeholder="Ej. mendez@email.com" className="w-full text-[11px] p-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                    <label className="text-[10px] font-semibold text-slate-500">Email</label>
+                    <input type="email" value={pEmail} onChange={(e) => setPEmail(e.target.value)} placeholder="Ej. mendez@email.com" className="w-full text-[11px] p-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500" />
                   </div>
+                  )}
+                  {(!mappedActorFields.length || roleFields.some(item => !/conyuge/.test(normalizedActor(item.field.actor)) && /telefono|celular/.test(normalizedActor(item.field.label)))) && (
                   <div className="space-y-1">
-                    <label className="text-[10px] font-semibold text-slate-500">Teléfono/Celular *</label>
-                    <input required type="tel" value={pPhone} onChange={(e) => setPPhone(e.target.value)} onFocus={(e) => { if (!pPhone.trim()) { setPPhone('+54'); requestAnimationFrame(() => { e.target.setSelectionRange(3, 3); }); } }} placeholder="Ej. +54 11 4432-8761" className="w-full text-[11px] p-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                    <label className="text-[10px] font-semibold text-slate-500">Teléfono/Celular</label>
+                    <input type="tel" value={pPhone} onChange={(e) => setPPhone(e.target.value)} onFocus={(e) => { if (!pPhone.trim()) { setPPhone('+54'); requestAnimationFrame(() => { e.target.setSelectionRange(3, 3); }); } }} placeholder="Ej. +54 11 4432-8761" className="w-full text-[11px] p-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500" />
                   </div>
+                  )}
                   <div className="space-y-1">
                     <label className="text-[10px] font-semibold text-slate-500">Observaciones del Actor</label>
                     <input type="text" value={pComments} onChange={(e) => setPComments(e.target.value)} placeholder="Comentarios, facultades..." className="w-full text-[11px] p-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500" />
                   </div>
+                  {roleFields.length > 0 && <div className="sm:col-span-3 rounded-lg border border-indigo-100 bg-white p-3 space-y-3">
+                    <p className="text-xs font-bold text-indigo-800">Datos de {pType} según la hoja digitalizada</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {roleFields.filter(item => /conyuge/.test(normalizedActor(item.field.actor)) || !/^(dni|mail|correo|fecha de nacimiento|cuit|cuil|telefono|celular)$/i.test(normalizedActor(item.field.label))).map(item => (
+                        <label key={item.field.id} className="block text-[11px] font-semibold text-slate-600">
+                          {item.field.actor} — {item.field.label} ({item.field.id})
+                          <input type="text" value={actorFieldValues[item.field.id] || ''} onChange={e => setActorFieldValues(prev => ({...prev,[item.field.id]:e.target.value}))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white p-2 text-xs" />
+                        </label>
+                      ))}
+                    </div>
+                    <p className="text-[10px] text-slate-500">DNI, correo, fecha de nacimiento y otros datos comunes se vinculan automáticamente con su CAMPO correspondiente.</p>
+                  </div>}
                   {missingActorDocsWarning && <div role="alertdialog" aria-label="Documentos pendientes del actor" className="sm:col-span-3 rounded-xl border border-amber-300 bg-amber-50 p-4 space-y-2">
                     <p className="text-sm font-bold text-amber-900">Documentos pendientes</p>
                     <p className="text-xs text-amber-900">No cargaste: {missingDraftDocs.map(r => r.name).join(', ')}. Podés continuar agregando actores. Si faltan documentos al crear el legajo, el sistema aplicará la política configurada por el administrador: permitirlo como OBSERVADO o impedir su creación.</p>
@@ -946,6 +1099,9 @@ export default function CasesList({
                 className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold rounded-xl"
               >
                 Cancelar
+              </button>
+              <button type="button" disabled={draftBusy || savingCase} onClick={() => void saveDraft()} className="px-4 py-2 rounded-xl border border-amber-300 bg-amber-100 text-amber-900 text-xs font-bold disabled:opacity-50">
+                {draftBusy ? 'Guardando borrador…' : 'Guardar borrador'}
               </button>
               <button
                 type="button"

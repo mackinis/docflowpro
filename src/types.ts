@@ -34,6 +34,7 @@ export interface Participant {
   birthDate?: string;
   role?: ParticipantType;
   comments?: string;
+  fieldValues?: Record<string, string>; // Values linked to the original digital CAMPO identifiers
 }
 
 export type RequirementType = 'document' | 'form' | 'task' | 'actor';
@@ -102,6 +103,7 @@ export interface Case {
   assignedAdvisorId: string;
   assignedManagerId: string;
   participants: Participant[];
+  generalFieldValues?: Record<string,string>;
   createdAt: string;
   updatedAt: string;
   documentContent?: string; // Case-specific digital document for completing
