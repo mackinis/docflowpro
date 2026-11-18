@@ -34,6 +34,7 @@ export interface Participant {
   birthDate?: string;
   role?: ParticipantType;
   comments?: string;
+  fieldValues?: Record<string, string>; // Values linked to the original digital CAMPO identifiers
 }
 
 export type RequirementType = 'document' | 'form' | 'task' | 'actor';
