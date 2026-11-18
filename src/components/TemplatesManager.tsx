@@ -513,7 +513,6 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
         if (loadState) {
           await loadState();
         }
-        setExpandedTemplateId(data.template.id);
       } else {
         alert('Ocurrió un error inesperado al procesar la respuesta de la IA.');
       }
@@ -600,7 +599,6 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
         if (loadState) {
           await loadState();
         }
-        setExpandedTemplateId(data.id);
       } else {
         alert(`Error al crear plantilla: ${data.error || 'Ocurrió un error inesperado'}`);
       }
