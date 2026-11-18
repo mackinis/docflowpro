@@ -1031,7 +1031,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                     <div key={stg.id} className="p-4 bg-white border border-slate-200/95 rounded-xl shadow-xs space-y-4 relative">
                       {/* Stage Toolbar */}
                       <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-1 min-w-0 items-center gap-2 mr-3">
                           <span className="w-5 h-5 rounded-full bg-slate-800 text-white font-mono font-bold text-[10px] flex items-center justify-center">
                             {sIdx + 1}
                           </span>
