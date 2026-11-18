@@ -35,7 +35,7 @@ const roleForField = (actor: string): ParticipantType | null => {
   return null;
 };
 const importedField = (name: string) => {
-  const match = name.match(/^(.*?)\s+—\s+(.*?)\s+\((CAMPO_\d+)\)/i);
+  const match = name.match(/^(.*?)\s+—\s+(.*?)\s+\(\[?(CAMPO_\d+)\]?\)/i);
   return match ? { actor: match[1].trim(), label: match[2].trim(), id: match[3].toUpperCase() } : null;
 };
 
