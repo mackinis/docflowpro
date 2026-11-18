@@ -1725,7 +1725,7 @@ app.post('/api/templates/confirm-field-review', async (c) => {
   const auth=c.get('auth')!;
   if (!(await canUserManageTemplates(c.env.DB,auth.user.id))) return c.json({error:'No autorizado.'},403);
   const {sharedDocumentId,fieldId}=await c.req.json() as {sharedDocumentId?:string;fieldId?:string};
-  if(!sharedDocumentId || !/^\\[CAMPO_\\d+\\*?\\]$/.test(String(fieldId||''))) return c.json({error:'Identificador de campo inválido.'},400);
+  if(!sharedDocumentId || !/^\[CAMPO_\d+\*?\]$/.test(String(fieldId||''))) return c.json({error:'Identificador de campo inválido.'},400);
   const doc=await c.env.DB.prepare('SELECT * FROM shared_documents WHERE id = ?').bind(sharedDocumentId).first<any>();
   if(!doc)return c.json({error:'Documento no encontrado.'},404);
   const roles:string[]=doc.allowed_roles_json?JSON.parse(doc.allowed_roles_json):[];
