@@ -2447,6 +2447,7 @@ app.delete('/api/cases/:id', async (c) => {
   }
 
   await c.env.DB.prepare('DELETE FROM notifications WHERE case_id = ?').bind(id).run();
+  await c.env.DB.prepare('DELETE FROM case_field_values WHERE case_id = ?').bind(id).run();
   await c.env.DB.prepare('DELETE FROM cases WHERE id = ?').bind(id).run();
   await createAudit(c.env.DB, auth.user.id, 'Legajo eliminado permanentemente', 'Case', id, existing.title);
   return c.json({ success: true, id });
@@ -2558,6 +2559,7 @@ app.delete('/api/cases/:id/participants/:participantId', async (c) => {
     .bind(participantId, id)
     .first<any>();
 
+  await c.env.DB.prepare('DELETE FROM case_field_values WHERE case_id = ? AND participant_id = ?').bind(id,participantId).run();
   await c.env.DB.prepare('DELETE FROM case_participants WHERE id = ? AND case_id = ?')
     .bind(participantId, id)
     .run();
