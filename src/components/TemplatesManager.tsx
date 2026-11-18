@@ -83,6 +83,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
 
   // States for Approving and Publishing with Role selection
   const [approvingTemplate, setApprovingTemplate] = useState<ProcessTemplate | null>(null);
+  const [isPublishing, setIsPublishing] = useState(false);
   const [approveRoles, setApproveRoles] = useState<string[]>(['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR']);
 
   // States for manual creation
@@ -569,14 +570,21 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
   };
 
   const executeApproveAndPublish = async () => {
-    if (!approvingTemplate) return;
+    if (!approvingTemplate || isPublishing) return;
+    setIsPublishing(true);
     try {
       const tpl = approvingTemplate;
       const unicodeToBase64 = (str: string) => {
         return btoa(unescape(encodeURIComponent(str)));
       };
       
-      const fileBase64 = `data:text/plain;base64,${unicodeToBase64(tpl.originalDocumentContent || '')}`;
+      const originalContent = tpl.originalDocumentContent || '';
+      const map = tpl.fieldMap || [];
+      const publishedContent = originalContent.replace(/\[CAMPO_\d+\*?\]/g, marker => {
+        const field = map.find(f => f.id === marker);
+        return field ? `[${field.actor} — ${field.label} (${marker.slice(1,-1)})]` : marker;
+      });
+      const fileBase64 = `data:text/plain;base64,${unicodeToBase64(publishedContent)}`;
       const fileName = `${tpl.name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}_digitalizado.txt`;
 
       const response = await fetch('/api/shared-documents', {
@@ -586,8 +594,10 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
         body: JSON.stringify({
           name: `${tpl.name} (Digitalizado)`,
           fileName,
-          fileSize: (tpl.originalDocumentContent || '').length,
+          fileSize: publishedContent.length,
           fileBase64,
+          digitizationSource: originalContent,
+          digitizationFieldMap: map,
           allowedRoles: approveRoles,
           allowedUserIds: [],
           currentUserId: currentUser.id
@@ -617,6 +627,8 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
     } catch (err: any) {
       console.error('Error aprobando documento:', err);
       alert('Error de conexión al aprobar el documento.');
+    } finally {
+      setIsPublishing(false);
     }
   };
 
@@ -1541,6 +1553,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
             <p className="text-xs text-slate-500 leading-relaxed">
               {confirmModal.message}
             </p>
+            {isPublishing && <p role="status" aria-live="polite" className="text-xs text-emerald-700 animate-pulse">Guardando documento y mapa de campos…</p>}
             <div className="flex items-center justify-end gap-2.5 pt-2">
               <button
                 type="button"
@@ -1633,6 +1646,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
               <button
                 type="button"
                 onClick={() => setApprovingTemplate(null)}
+                disabled={isPublishing}
                 className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition-colors cursor-pointer"
               >
                 Cancelar
@@ -1640,10 +1654,10 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
               <button
                 type="button"
                 onClick={executeApproveAndPublish}
-                disabled={approveRoles.length === 0}
+                disabled={approveRoles.length === 0 || isPublishing}
                 className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-semibold rounded-xl shadow-xs transition-colors cursor-pointer"
               >
-                Aprobar y publicar
+                {isPublishing ? 'Publicando documento…' : 'Aprobar y publicar'}
               </button>
             </div>
           </div>
