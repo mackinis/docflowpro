@@ -187,6 +187,12 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
   const allowAdminManager = systemSettings?.allowAdminManagerTemplates !== false;
   const canManageTemplates = isSuperAdmin || (['ADMIN', 'MANAGER'].includes(currentUser.role) && allowAdminManager);
 
+  // Display-only status: unresolved semantics are red; verified mappings remain yellow.
+  const fieldNeedsReview = (field?: NonNullable<ProcessTemplate['fieldMap']>[number]) =>
+    !field || Boolean(field.review) ||
+    /^(dato por identificar|pendiente de identificar|sin significado identificado|dato sin identificar)$/i.test((field.label || '').trim()) ||
+    /^(no determinado|por identificar)$/i.test((field.actor || '').trim());
+
   // Sub-tabs inside expanded templates to view either flow or 100% digitized document
 
   const renderDocumentWithHighlights = (text: string, fieldMap: NonNullable<ProcessTemplate['fieldMap']> = []) => {
@@ -205,7 +211,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
             return (
               <span 
                 key={index} 
-                className="bg-amber-100 text-amber-900 border border-amber-250 rounded px-1.5 py-0.5 mx-0.5 font-mono text-[11px] font-bold shadow-2xs"
+                className={`${fieldNeedsReview(fieldMap.find(f=>f.id===part)) ? "bg-red-100 text-red-900 border-red-400" : "bg-amber-100 text-amber-900 border-amber-300"} border rounded px-1.5 py-0.5 mx-0.5 font-mono text-[11px] font-bold shadow-2xs`}
               >
                 {(() => { const info=fieldMap.find(f=>f.id===part); return info ? `[${info.actor} — ${info.label} (${part.slice(1,-1)})]` : part; })()}
               </span>
@@ -330,7 +336,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
     >{pieces.map((part,i)=>{
       const info=(tpl.fieldMap||[]).find(f=>f.id===(inlineOrigins.current[tpl.id]?.[part]||part));
       return /^\[CAMPO_\d+\*?\]$/.test(part)
-        ? <span key={i} data-marker={part} data-origin={inlineOrigins.current[tpl.id]?.[part]||part} contentEditable={false} className="bg-amber-100 text-amber-900 border border-amber-300 rounded px-1 py-0.5 mx-0.5 font-mono text-[11px] font-bold">{info?`[${info.actor} — ${info.label} (${part.slice(1,-1)})]`:part}</span>
+        ? <span key={i} data-marker={part} data-origin={inlineOrigins.current[tpl.id]?.[part]||part} contentEditable={false} className={`${fieldNeedsReview(info) ? "bg-red-100 text-red-900 border-red-400" : "bg-amber-100 text-amber-900 border-amber-300"} border rounded px-1 py-0.5 mx-0.5 font-mono text-[11px] font-bold`}>{info?`[${info.actor} — ${info.label} (${part.slice(1,-1)})]`:part}</span>
         : <React.Fragment key={i}>{part}</React.Fragment>;
     })}</div>;
   };
