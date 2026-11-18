@@ -328,7 +328,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
       }}
       className="whitespace-pre-wrap leading-relaxed text-slate-800 font-serif text-xs md:text-sm min-h-32 outline-none rounded"
     >{pieces.map((part,i)=>{
-      const info=(tpl.fieldMap||[]).find(f=>f.id===part);
+      const info=(tpl.fieldMap||[]).find(f=>f.id===(inlineOrigins.current[tpl.id]?.[part]||part));
       return /^\[CAMPO_\d+\*?\]$/.test(part)
         ? <span key={i} data-marker={part} data-origin={inlineOrigins.current[tpl.id]?.[part]||part} contentEditable={false} className="bg-amber-100 text-amber-900 border border-amber-300 rounded px-1 py-0.5 mx-0.5 font-mono text-[11px] font-bold">{info?`[${info.actor} — ${info.label} (${part.slice(1,-1)})]`:part}</span>
         : <React.Fragment key={i}>{part}</React.Fragment>;
