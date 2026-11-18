@@ -2038,6 +2038,7 @@ app.post('/api/cases', async (c) => {
     participants,
     documentContent,
     pendingDocumentNames,
+    generalFieldValues,
   } = body;
 
   if (!templateId || String(templateId).startsWith('doc-') || String(templateId).startsWith('tmpl-dig-')) {
@@ -2150,6 +2151,12 @@ app.post('/api/cases', async (c) => {
     const allowedFields = new Set(template.stages.flatMap(st => st.requirements).map(req => (String(req.name).match(/CAMPO_\\d+/i) || [])[0]).filter(Boolean));
     const values = participants.flatMap((p:any) => Object.entries(p.fieldValues || {}).filter(([fieldId,value]) => allowedFields.has(fieldId) && typeof value === 'string' && value.length <= 5000).map(([fieldId,value]) => ({participantId:p.id,fieldId,value})));
     if (values.length) await c.env.DB.batch(values.map((v:any) => c.env.DB.prepare('INSERT INTO case_field_values (case_id, participant_id, field_id, value) VALUES (?, ?, ?, ?)').bind(caseId,v.participantId,v.fieldId,v.value)));
+  }
+
+  if (generalFieldValues && typeof generalFieldValues === 'object' && !Array.isArray(generalFieldValues)) {
+    const allowedFields = new Set(template.stages.flatMap(st => st.requirements).map(req => (String(req.name).match(/CAMPO_\d+/i) || [])[0]).filter(Boolean));
+    const values = Object.entries(generalFieldValues).filter(([id,value]) => allowedFields.has(id) && typeof value === 'string' && value.length <= 5000);
+    if (values.length) await c.env.DB.batch(values.map(([id,value]) => c.env.DB.prepare('INSERT INTO case_field_values (case_id, participant_id, field_id, value) VALUES (?, ?, ?, ?)').bind(caseId,'__operation__',id,value)));
   }
 
   const currentStage = template.stages[0];
