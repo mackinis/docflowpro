@@ -1995,6 +1995,32 @@ app.get('/api/cases/advisor-statistics', async (c) => {
   });
 });
 
+// Drafts are private, incomplete forms; they never create cases, tasks or notifications.
+app.get('/api/case-drafts', async (c) => {
+  const auth = c.get('auth')!;
+  const rows = await c.env.DB.prepare('SELECT id, payload_json, created_at, updated_at FROM case_drafts WHERE owner_id = ? ORDER BY updated_at DESC').bind(auth.user.id).all<any>();
+  return c.json((rows.results || []).map(row => ({ id: row.id, ...JSON.parse(row.payload_json), createdAt: row.created_at, updatedAt: row.updated_at })));
+});
+app.put('/api/case-drafts/:id', async (c) => {
+  const auth = c.get('auth')!;
+  const id = c.req.param('id');
+  if (!/^draft-[a-zA-Z0-9-]{8,100}$/.test(id)) return c.json({error:'Identificador de borrador inválido'},400);
+  const payload = await c.req.json();
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload) || JSON.stringify(payload).length > 250000) return c.json({error:'Datos de borrador inválidos'},400);
+  const now = new Date().toISOString();
+  await c.env.DB.prepare(`INSERT INTO case_drafts (id, owner_id, payload_json, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET payload_json = excluded.payload_json, updated_at = excluded.updated_at
+    WHERE case_drafts.owner_id = excluded.owner_id`).bind(id,auth.user.id,JSON.stringify(payload),now,now).run();
+  const row = await c.env.DB.prepare('SELECT id FROM case_drafts WHERE id = ? AND owner_id = ?').bind(id,auth.user.id).first();
+  if (!row) return c.json({error:'No tenés acceso a este borrador'},403);
+  return c.json({id,updatedAt:now});
+});
+app.delete('/api/case-drafts/:id', async (c) => {
+  const auth = c.get('auth')!;
+  await c.env.DB.prepare('DELETE FROM case_drafts WHERE id = ? AND owner_id = ?').bind(c.req.param('id'),auth.user.id).run();
+  return c.json({ok:true});
+});
+
 app.get('/api/cases', async (c) => {
   const cases = await getAllCases(c.env.DB);
   return c.json(cases);
@@ -2044,6 +2070,21 @@ app.post('/api/cases', async (c) => {
 
   if (!title?.trim() || !templateId || !template?.stages?.length) {
     return c.json({ error: 'Debe seleccionar un proceso configurado con al menos una etapa.' }, 400);
+  }
+  // Older digitized processes imported actor fields as tasks, not actor requirements.
+  const importedRoles = new Set<string>();
+  for (const req of template.stages.flatMap(stage => stage.requirements)) {
+    if (req.type !== 'task' || !/CAMPO_\\d+/i.test(req.name)) continue;
+    const prefix = String(req.name).split(' — ')[0].normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase();
+    if (/^locador(?:es)?$/.test(prefix)) importedRoles.add('Locador');
+    if (/^locatario(?:s)?$/.test(prefix)) importedRoles.add('Locatario');
+    if (/^garante(?:s)?$/.test(prefix)) importedRoles.add('Garante');
+    if (/^vendedor(?:es)?$/.test(prefix)) importedRoles.add('Vendedor');
+    if (/^comprador(?:es)?$/.test(prefix)) importedRoles.add('Comprador');
+  }
+  for (const role of importedRoles) {
+    if (!(Array.isArray(participants) ? participants : []).some((p:any) => p.role === role && p.name?.trim() && p.lastName?.trim() && p.dni?.trim()))
+      return c.json({error:'Falta cargar el actor requerido: '+role},400);
   }
   const actorRequirements = template.stages.flatMap(stage => stage.requirements).filter(req => req.type === 'actor' && req.isRequired);
   for (const req of actorRequirements) {
@@ -2106,6 +2147,9 @@ app.post('/api/cases', async (c) => {
       )
     );
     await c.env.DB.batch(pStmts);
+    const allowedFields = new Set(template.stages.flatMap(st => st.requirements).map(req => (String(req.name).match(/CAMPO_\\d+/i) || [])[0]).filter(Boolean));
+    const values = participants.flatMap((p:any) => Object.entries(p.fieldValues || {}).filter(([fieldId,value]) => allowedFields.has(fieldId) && typeof value === 'string' && value.length <= 5000).map(([fieldId,value]) => ({participantId:p.id,fieldId,value})));
+    if (values.length) await c.env.DB.batch(values.map((v:any) => c.env.DB.prepare('INSERT INTO case_field_values (case_id, participant_id, field_id, value) VALUES (?, ?, ?, ?)').bind(caseId,v.participantId,v.fieldId,v.value)));
   }
 
   const currentStage = template.stages[0];
