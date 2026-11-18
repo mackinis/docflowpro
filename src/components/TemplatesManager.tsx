@@ -129,7 +129,13 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
     finally{setImportingFields(false);}
   };
   // Keep typing local and instantaneous. Persist review confirmations on blur only.
-  const updateProcessDescription = (next:string) => setManualDescription(next);
+  const updateProcessDescription = (next:string) => {
+    setManualDescription(next);
+    // Detect review markers immediately without interrupting typing or moving the caret.
+    // Persisting a cleared review remains a separate server-side confirmation on blur.
+  };
+  const countVisibleReviews = () => manualDescription.split('\n').filter(line => /\[REVISAR\]/i.test(line)).length;
+  const longestProcessLine = Math.max(0, ...manualDescription.split('\n').map(line => line.length));
   const persistFieldReviews = async () => {
     if(confirmingFieldReview || !selectedDigitalTemplateId)return;
     const removed=importedFieldMap.filter(f=>f.review &&
@@ -1698,7 +1704,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
       {/* Configuración del proceso: las obligaciones nacen aquí, no en la digitalización. */}
       {showProcessModal && (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-xl max-h-[90vh] flex flex-col overflow-hidden">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-[min(96vw,1500px)] max-h-[90vh] flex flex-col overflow-hidden">
             <div className="p-4 border-b border-slate-100 bg-indigo-50 flex items-center justify-between">
               <h4 className="text-sm font-bold text-indigo-900">Crear proceso operativo</h4>
               <button type="button" onClick={() => setShowProcessModal(false)} aria-label="Cerrar" className="p-1 text-indigo-700"><X className="w-5 h-5"/></button>
@@ -1714,13 +1720,13 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                 <span className="block mt-1 text-[11px] font-normal text-slate-500">Al seleccionar una plantilla se interpretan sus campos amarillos y se generan requisitos editables en Descripción / Objetivo. Revisá los marcados [REVISAR].</span>
                 {confirmingFieldReview && <span className="text-xs text-indigo-600">Guardando reparación interna...</span>}
                 {importingFields && <span className="text-xs text-indigo-600">Analizando campos de la plantilla...</span>}
-                {!!importedFieldMap.length && <span className="text-xs text-emerald-700">{importedFieldMap.length} campos importados · {importedFieldMap.filter(f=>f.review).length} para revisar</span>}
+                {!!importedFieldMap.length && <span className="text-xs text-emerald-700">{importedFieldMap.length} campos importados · {countVisibleReviews()} para revisar</span>}
               </label>
               <label className="block text-xs font-bold text-slate-700">Nombre del Proceso *
                 <input required value={manualName} onChange={e => setManualName(e.target.value)} placeholder="Ej.: Reserva de contrato de locación" className="mt-1 w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg"/>
               </label>
               <label className="block text-xs font-bold text-slate-700">Descripción / Objetivo *
-                <textarea required rows={9} value={manualDescription} onChange={e => updateProcessDescription(e.target.value)} onBlur={() => void persistFieldReviews()} spellCheck={false} className="mt-1 w-full p-2.5 bg-slate-50 text-slate-900 caret-slate-900 border border-slate-200 rounded-lg text-sm leading-normal font-normal resize-y" />
+                <textarea required rows={9} value={manualDescription} onChange={e => updateProcessDescription(e.target.value)} onBlur={() => void persistFieldReviews()} spellCheck={false} wrap="off" className="mt-1 w-full p-2.5 bg-slate-50 text-slate-900 caret-slate-900 border border-slate-200 rounded-lg text-sm leading-normal font-normal resize-y font-mono" style={{minWidth:0}} />
                 <span className="block mt-1 text-[11px] font-normal text-slate-500">Los actores, sus mínimos y los documentos indicados se convierten en requisitos del proceso. Escribí cada obligación en una línea.</span>
               </label>
               <label className="block text-xs font-bold text-slate-700">Rubro Comercial / Industria *
