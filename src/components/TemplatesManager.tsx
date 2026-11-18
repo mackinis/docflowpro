@@ -87,7 +87,6 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
   const [approveRoles, setApproveRoles] = useState<string[]>(['SUPERADMIN', 'ADMIN', 'MANAGER', 'ASESOR']);
 
   // States for manual creation
-  const descriptionOverlayRef = useRef<HTMLDivElement>(null);
   const resetProcessForm = () => {
     setManualName('');
     setManualDescription('');
@@ -1721,14 +1720,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                 <input required value={manualName} onChange={e => setManualName(e.target.value)} placeholder="Ej.: Reserva de contrato de locación" className="mt-1 w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg"/>
               </label>
               <label className="block text-xs font-bold text-slate-700">Descripción / Objetivo *
-                <div className="relative mt-1">
-                  <div ref={descriptionOverlayRef} aria-hidden="true" className="absolute inset-0 overflow-hidden pointer-events-none rounded-lg border border-transparent">
-                    <div className="p-2.5 whitespace-pre-wrap break-words text-sm font-normal leading-normal text-slate-900">
-                      {manualDescription.split('\\n').map((line,i)=><React.Fragment key={i}>{i>0?'\\n':null}<span className={line.includes('[REVISAR]')?'bg-rose-100 text-rose-900':''}>{line||' '}</span></React.Fragment>)}
-                    </div>
-                  </div>
-                  <textarea required rows={9} value={manualDescription} onChange={e => updateProcessDescription(e.target.value)} onBlur={() => void persistFieldReviews()} onScroll={e=>{if(descriptionOverlayRef.current)descriptionOverlayRef.current.scrollTop=e.currentTarget.scrollTop;}} className="relative w-full p-2.5 bg-transparent text-transparent caret-slate-900 border border-slate-200 rounded-lg text-sm leading-normal resize-y" style={{WebkitTextFillColor:'transparent'}}/>
-                </div>
+                <textarea required rows={9} value={manualDescription} onChange={e => updateProcessDescription(e.target.value)} onBlur={() => void persistFieldReviews()} spellCheck={false} className="mt-1 w-full p-2.5 bg-slate-50 text-slate-900 caret-slate-900 border border-slate-200 rounded-lg text-sm leading-normal font-normal resize-y" />
                 <span className="block mt-1 text-[11px] font-normal text-slate-500">Los actores, sus mínimos y los documentos indicados se convierten en requisitos del proceso. Escribí cada obligación en una línea.</span>
               </label>
               <label className="block text-xs font-bold text-slate-700">Rubro Comercial / Industria *
