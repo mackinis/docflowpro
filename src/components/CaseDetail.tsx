@@ -1298,9 +1298,7 @@ export default function CaseDetail({
                                   doc.status === 'uploaded' || doc.status === 'in_review' ? 'bg-amber-50 text-amber-700 border-amber-200' :
                                   'bg-slate-50 text-slate-500 border-slate-200'
                                 }`}>
-                                  {doc.status === 'approved' ? 'Aprobado' :
-                                   doc.status === 'rejected' ? 'Rechazado' :
-                                   'En Revisión'}
+                                  {doc.status === 'rejected' ? 'Rechazado' : 'En Revisión'}
                                 </span>
                               ) : (
                                 <span className="px-2.5 py-1 rounded text-[9px] font-mono font-bold tracking-wider uppercase border bg-slate-50 text-slate-400 border-slate-200 shrink-0">
