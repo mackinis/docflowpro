@@ -1457,8 +1457,8 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                   <div className="bg-indigo-50 border border-indigo-150 p-4 rounded-xl flex items-center gap-3">
                     <Loader2 className="w-5 h-5 animate-spin text-indigo-600 shrink-0" />
                     <div className="text-xs text-indigo-800">
-                      <p className="font-bold">Digitalizando al 100% con Cloudflare Workers AI...</p>
-                      <p className="opacity-80">Convirtiendo espacios y puntos suspensivos en campos completables. No se crearán requisitos de proceso.</p>
+                      <p className="font-bold">Digitalización al 100% con IA...</p>
+                      <p className="opacity-80">Reconociendo y convirtiendo datos en campos completables.</p>
                     </div>
                   </div>
                 )}
