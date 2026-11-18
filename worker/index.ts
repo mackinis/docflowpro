@@ -1720,6 +1720,41 @@ app.post('/api/templates/analyze-fields', async (c) => {
     return c.json({error:'El mapa de digitalización está incompleto. Revisá la plantilla antes de crear el proceso.'},409);
   return c.json({fields,originalDocumentContent:source});
 });
+// Confirm a review flag in the published R2 field map before changing the UI.
+app.post('/api/templates/confirm-field-review', async (c) => {
+  const auth=c.get('auth')!;
+  if (!(await canUserManageTemplates(c.env.DB,auth.user.id))) return c.json({error:'No autorizado.'},403);
+  const {sharedDocumentId,fieldId}=await c.req.json() as {sharedDocumentId?:string;fieldId?:string};
+  if(!sharedDocumentId || !/^\\[CAMPO_\\d+\\*?\\]$/.test(String(fieldId||''))) return c.json({error:'Identificador de campo inválido.'},400);
+  const doc=await c.env.DB.prepare('SELECT * FROM shared_documents WHERE id = ?').bind(sharedDocumentId).first<any>();
+  if(!doc)return c.json({error:'Documento no encontrado.'},404);
+  const roles:string[]=doc.allowed_roles_json?JSON.parse(doc.allowed_roles_json):[];
+  const users:string[]=doc.allowed_user_ids_json?JSON.parse(doc.allowed_user_ids_json):[];
+  if(auth.user.role!=='SUPERADMIN'&&!roles.includes(auth.user.role)&&!users.includes(auth.user.id))
+    return c.json({error:'Acceso denegado.'},403);
+  const key=doc.r2_key+'.fieldmap.json';
+  const obj=await c.env.R2_BUCKET.get(key);
+  if(!obj)return c.json({error:'No existe el mapa de campos publicado.'},409);
+  const metadata=await obj.json() as {originalDocumentContent?:string;fieldMap?:any[]};
+  if(!Array.isArray(metadata.fieldMap))return c.json({error:'Mapa de campos inválido.'},409);
+  const matches=metadata.fieldMap.filter(f=>f.id===fieldId);
+  if(matches.length!==1)return c.json({error:'El identificador no es único o no existe.'},409);
+  const field=matches[0];
+  if(!String(metadata.originalDocumentContent||'').includes(fieldId))
+    return c.json({error:'El campo no coincide con el documento publicado.'},409);
+  if(/^(dato por identificar|pendiente de identificar|sin significado identificado|dato sin identificar)$/i.test(String(field.label||'').trim()) ||
+     /^(no determinado|por identificar)$/i.test(String(field.actor||'').trim()))
+    return c.json({error:'Primero corregí el significado del campo en la digitalización.'},409);
+  if(field.review!==true)return c.json({fieldId,review:false});
+  const next={...metadata,fieldMap:metadata.fieldMap.map(f=>f.id===fieldId?{...f,review:false}:f)};
+  await c.env.R2_BUCKET.put(key,JSON.stringify(next),{httpMetadata:{contentType:'application/json'}});
+  const check=await c.env.R2_BUCKET.get(key);
+  const persisted=check?await check.json() as typeof next:null;
+  if(!persisted?.fieldMap?.some(f=>f.id===fieldId && f.review===false))
+    return c.json({error:'No se pudo confirmar la persistencia de la corrección.'},500);
+  await createAudit(c.env.DB,auth.user.id,'Confirmó revisión de '+fieldId,'SharedDocument',doc.id,doc.name);
+  return c.json({fieldId,review:false});
+});
 app.post('/api/templates', async (c) => {
   const auth = c.get('auth')!;
   if (!(await canUserManageTemplates(c.env.DB, auth.user.id))) {
