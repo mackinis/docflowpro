@@ -9,7 +9,7 @@ function textToPdf(value:string, title:string):Blob {
   const lines:string[]=[];
   for(const line of value.replace(/\r\n?/g,'\n').replace(/\t/g,'    ').split('\n')){
     if(!line.length){lines.push('');continue;}
-    for(let i=0;i<line.length;i+=100)lines.push(line.slice(i,i+100));
+    for(let i=0;i<line.length;i+=165)lines.push(line.slice(i,i+165));
   }
   const pages:string[][]=[];
   for(let i=0;i<lines.length;i+=72)pages.push(lines.slice(i,i+72));
@@ -18,11 +18,11 @@ function textToPdf(value:string, title:string):Blob {
   const pageIds:number[]=[];
   const add=(s:string)=>{objects.push(s);return objects.length;};
   const fontId=add('<< /Type /Font /Subtype /Type1 /BaseFont /Courier /Encoding /WinAnsiEncoding >>');
-  const encode=(s:string)=>s.replace(/[^\x20-\x7e\u00a0-\u00ff]/g,'?').replace(/\\/g,'\\\\').replace(/\(/g,'\\(').replace(/\)/g,'\\)');
+  const encode=(s:string)=>s.replace(/[—–‘’“”…€]/g,ch=>String.fromCharCode(({ '—':151,'–':150,'‘':145,'’':146,'“':147,'”':148,'…':133,'€':128 } as Record<string,number>)[ch])).replace(/[^\x20-\x7e\u00a0-\u00ff\x80-\x9f]/g,'?').replace(/\\/g,'\\\\').replace(/\(/g,'\\(').replace(/\)/g,'\\)');
   for(const page of pages){
-    const stream='0.10 0.15 0.23 rg 0 0 595 842 re f\n1 1 1 rg BT /F1 9 Tf 12 TL 36 805 Td\n'+page.map((line,i)=> (i?'T* ':'')+'('+encode(line)+') Tj').join('\n')+'\nET';
+    const stream='0.10 0.15 0.23 rg 0 0 1100 842 re f\n1 1 1 rg BT /F1 9 Tf 12 TL 36 805 Td\n'+page.map((line,i)=> (i?'T* ':'')+'('+encode(line)+') Tj').join('\n')+'\nET';
     const streamId=add('<< /Length '+stream.length+' >>\nstream\n'+stream+'\nendstream');
-    const pageId=add('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 '+fontId+' 0 R >> >> /Contents '+streamId+' 0 R >>');
+    const pageId=add('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1100 842] /Resources << /Font << /F1 '+fontId+' 0 R >> >> /Contents '+streamId+' 0 R >>');
     pageIds.push(pageId);
   }
   objects[0]='<< /Type /Catalog /Pages 2 0 R >>';
@@ -60,7 +60,7 @@ export default function DocumentPreviewViewer({document:doc,onClose}:{document:P
   const isPdf=doc.mime.includes('pdf') || /\.pdf$/i.test(doc.name);
   const viewerUrl=isText?pdfUrl:doc.url;
   return <div className="fixed inset-0 z-[100] bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Visor de documento">
-    <div className="w-full max-w-6xl h-[90vh] rounded-2xl border border-slate-600 bg-slate-900 shadow-2xl flex flex-col overflow-hidden">
+    <div className="w-full max-w-[98vw] h-[96vh] rounded-2xl border border-slate-600 bg-slate-900 shadow-2xl flex flex-col overflow-hidden">
       <div className="flex items-center justify-between gap-4 px-5 py-3 border-b border-slate-700 text-white">
         <div className="flex items-center gap-2 min-w-0"><FileText className="w-5 h-5 text-indigo-400 shrink-0"/><span className="font-semibold truncate">{doc.name}</span></div>
         <button onClick={onClose} className="rounded-lg p-2 hover:bg-slate-700" aria-label="Cerrar visor"><X className="w-5 h-5"/></button>
