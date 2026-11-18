@@ -249,6 +249,13 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
     });
     inlineLabels.current[templateId]=labels;
   };
+  const inlineLabelDirty = (root:HTMLElement, tpl:ProcessTemplate) =>
+    Array.from(root.querySelectorAll<HTMLElement>('[data-marker]')).some(element=>{
+      const origin=element.dataset.origin||element.dataset.marker;
+      const prior=(tpl.fieldMap||[]).find(f=>f.id===origin);
+      const match=(element.textContent||'').match(/^\[([\s\S]*?)\s+—\s+([\s\S]*?)\s+\(CAMPO_\d+\*?\)\]$/);
+      return !!match && (!prior || match[1].trim()!==prior.actor || match[2].trim()!==prior.label);
+    });
   const [dirtyIds, setDirtyIds] = useState<Record<string,boolean>>({});
   const closeDetails = (id:string) => {
     if(dirtyIds[id]){
@@ -274,7 +281,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
   const [inlineSaving, setInlineSaving] = useState<string|null>(null);
   const saveInlineDocument = async (tpl: ProcessTemplate) => {
     const draft = liveDrafts.current[tpl.id] ?? inlineDrafts[tpl.id];
-    if (draft === undefined || draft === (tpl.originalDocumentContent||'')) return;
+    if (draft === undefined || (!dirtyIds[tpl.id] && draft === (tpl.originalDocumentContent||''))) return;
     setInlineSaving(tpl.id);
     try {
       const ordered = [...new Set(Array.from(draft.matchAll(/\[CAMPO_\d+\*?\]/g), m => m[0]))];
@@ -368,7 +375,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
         // Preserve caret and editable field descriptions while typing.
         const next=readEditor(e.currentTarget);
         liveDrafts.current[tpl.id]=next;
-        const dirty=next!==(tpl.originalDocumentContent||'');
+        const dirty=next!==(tpl.originalDocumentContent||'') || inlineLabelDirty(e.currentTarget,tpl);
         setDirtyIds(prev=>prev[tpl.id]===dirty?prev:{...prev,[tpl.id]:dirty});
       }}
       onBlur={e=>{
@@ -379,7 +386,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
         const next=readEditor(e.currentTarget);
         liveDrafts.current[tpl.id]=next;
         if(next!==content)setInlineDrafts(prev=>({...prev,[tpl.id]:next}));
-        setDirtyIds(prev=>({...prev,[tpl.id]:next!==(tpl.originalDocumentContent||'')}));
+        setDirtyIds(prev=>({...prev,[tpl.id]:next!==(tpl.originalDocumentContent||'') || inlineLabelDirty(e.currentTarget,tpl)}));
       }}
       className="whitespace-pre-wrap leading-relaxed text-slate-800 font-serif text-xs md:text-sm min-h-32 outline-none rounded"
     >{pieces.map((part,i)=>{
@@ -494,9 +501,9 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
           name: manualName,
           description: manualDescription,
           industry: manualIndustry,
-          originalDocumentContent: selectedDigitalTemplateId ? selectedDocumentContent : '',
-          fieldMap: selectedDigitalTemplateId ? importedFieldMap : [],
-          showDocumentToAll: true,
+          originalDocumentContent: '',
+          fieldMap: [],
+          showDocumentToAll: false,
           sharedViewMode: 'flow',
           currentUserId: currentUser.id
         })
