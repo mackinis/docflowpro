@@ -592,8 +592,14 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
           name: manualName,
           description: manualDescription,
           industry: manualIndustry,
-          originalDocumentContent: '',
-          fieldMap: [],
+          // A digitized process must use its imported map, not the free-text parser.
+          originalDocumentContent: selectedDigitalTemplateId ? selectedDocumentContent : '',
+          fieldMap: selectedDigitalTemplateId ? importedFieldMap.map(field => {
+            const matchingLines = manualDescription.split('\n').filter(line => line.includes('(' + field.id + ')'));
+            return matchingLines.length === 1
+              ? { ...field, review: /\[REVISAR\]/i.test(matchingLines[0]) }
+              : field;
+          }) : [],
           showDocumentToAll: false,
           sharedViewMode: 'flow',
           currentUserId: currentUser.id
