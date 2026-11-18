@@ -62,6 +62,7 @@ export default function App() {
   const loadState = async (refreshOnly = false) => {
     try {
       setError(null);
+      let bootstrapData: { user?: User; realUser?: User; needsSetup?: boolean; turnstileSiteKey?: string; turnstileEnabled?: boolean; publicRegistrationEnabled?: boolean } | null = null;
       if (!refreshOnly) {
       const bootstrapRes = await fetch('/api/auth/bootstrap-status', {
         credentials: 'include',
@@ -70,13 +71,13 @@ export default function App() {
       if (!bootstrapRes.ok) {
         throw new Error('No se pudo conectar con el servidor Cloudflare Worker.');
       }
-      const bootstrapData = await bootstrapRes.json();
-      setNeedsSetup(Boolean(bootstrapData.needsSetup));
-      setTurnstileSiteKey(bootstrapData.turnstileSiteKey || '');
-      setTurnstileEnabled(Boolean(bootstrapData.turnstileEnabled));
-      setPublicRegistrationEnabled(bootstrapData.publicRegistrationEnabled !== false);
+      bootstrapData = await bootstrapRes.json();
+      setNeedsSetup(Boolean(bootstrapData!.needsSetup));
+      setTurnstileSiteKey(bootstrapData!.turnstileSiteKey || '');
+      setTurnstileEnabled(Boolean(bootstrapData!.turnstileEnabled));
+      setPublicRegistrationEnabled(bootstrapData!.publicRegistrationEnabled !== false);
 
-      if (!bootstrapData.user) {
+      if (!bootstrapData!.user) {
         sessionStorage.removeItem('docflow_user');
         sessionStorage.removeItem('docflow_real_user');
         setCurrentUser(null);
@@ -118,8 +119,8 @@ export default function App() {
       setState(data);
 
       if (!refreshOnly) {
-      const sessionUser: User = bootstrapData.user;
-      const sessionRealUser: User = bootstrapData.realUser || bootstrapData.user;
+      const sessionUser: User = bootstrapData!.user!;
+      const sessionRealUser: User = bootstrapData!.realUser || bootstrapData!.user!;
       setCurrentUser(sessionUser);
       setRealUser(sessionRealUser);
       sessionStorage.setItem('docflow_user', JSON.stringify(sessionUser));
