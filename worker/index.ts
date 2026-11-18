@@ -2521,8 +2521,45 @@ app.post('/api/confecciones', async (c) => {
   if (auth.user.role === 'MANAGER' && caseObj.assignedManagerId !== auth.user.id) return c.json({ error: 'Legajo fuera de tu responsabilidad.' }, 403);
   const template = await findTemplateOrVirtualById(c.env, String(templateId || ''));
   if (!template?.originalDocumentContent?.trim()) return c.json({ error: 'La plantilla no tiene contenido digitalizado.' }, 400);
-  const content = template.originalDocumentContent;
-  const lastField = Math.max(0, ...Array.from(content.matchAll(/\[CAMPO_(\d+)\*?\]/g), m => Number(m[1])));
+  // Fill only unambiguous structured attributes whose marker meanings were
+  // explicitly saved on this exact digitized template. Never use AI guesses.
+  const originalContent = template.originalDocumentContent;
+  const participants = Array.isArray(caseObj.participants) ? caseObj.participants as any[] : [];
+  const normalized = (v:string) => v.toLocaleLowerCase('es-AR').normalize('NFD')
+    .replace(/[\\u0300-\\u036f]/g,'').replace(/[^a-z0-9]/g,'');
+  const roleFor = (v:string):string => {
+    const x=normalized(v);
+    if(/conyuge|espos/.test(x))return 'spouse';
+    if(/locatario|inquilino/.test(x))return 'locatario';
+    if(/locador|propietario/.test(x))return 'locador';
+    if(/garante|fiador/.test(x))return 'garante';
+    return '';
+  };
+  const keysFor = (v:string):string[] => {
+    const x=normalized(v);
+    if(x==='dni'||x.includes('documentodeidentidad'))return ['dni','documentNumber','document_number'];
+    if(/mail|email|correo/.test(x))return ['email','mail'];
+    if(/fechadenacimiento|nacimiento/.test(x))return ['birthDate','birth_date','dateOfBirth','fechaNacimiento'];
+    if(/estadocivil/.test(x))return ['maritalStatus','marital_status','estadoCivil'];
+    if(/domicilioactual|direccion/.test(x))return ['address','domicilio','domicilioActual'];
+    if(/nombreyapellido|nombrecompleto/.test(x))return ['fullName','name','nombreCompleto'];
+    return [];
+  };
+  let content=originalContent;
+  for(const field of template.fieldMap||[]){
+    if(field.review || !field.label || !field.actor)continue;
+    const kind=roleFor(String(field.actor));
+    const keys=keysFor(String(field.label));
+    if(!kind || !keys.length)continue;
+    const candidates=participants.filter(p=>roleFor(String(p.role||p.type||''))===kind);
+    if(candidates.length!==1)continue;
+    const values=[...new Set(keys.map(k=>candidates[0][k]).filter(v=>typeof v==='string'&&v.trim()))];
+    if(values.length!==1)continue;
+    const value=String(values[0]).trim();
+    if(value.length>2000 || /\\[CAMPO_\\d+\\*?\\]/.test(value))continue;
+    content=content.split(field.id).join(value);
+  }
+  const lastField = Math.max(0, ...Array.from(originalContent.matchAll(/\\[CAMPO_(\\d+)\\*?\\]/g), m => Number(m[1])));
   await ensureConfecciones(c.env.DB);
   const id = crypto.randomUUID(), now = new Date().toISOString();
   await c.env.DB.prepare(`INSERT INTO confecciones
