@@ -595,11 +595,11 @@ export default function CasesList({
               <span className="text-sm font-semibold text-slate-800">{draft.title || 'Sin título'}</span>
               <p className="text-xs text-slate-500">Último guardado: {new Date(draft.updatedAt).toLocaleString('es-AR')} · Continuar carga</p>
             </button>
-            <button type="button" title="Eliminar borrador" aria-label={`Eliminar borrador ${draft.title || 'sin título'}`} className="p-2 rounded-lg text-rose-600 hover:text-rose-800 hover:bg-rose-50 transition-colors" onClick={async () => {
+            <button type="button" className="text-xs text-rose-700 hover:underline" onClick={async () => {
               if (!window.confirm('¿Eliminar este borrador?')) return;
               const response = await fetch('/api/case-drafts/'+draft.id,{method:'DELETE',credentials:'include'});
               if (response.ok) await refreshDrafts(); else alert('No se pudo eliminar el borrador');
-            }}><Trash2 className="w-4 h-4" aria-hidden="true" /></button>
+            }}>Eliminar</button>
           </div>)}
         </section>
       )}
@@ -658,12 +658,6 @@ export default function CasesList({
                 </div>
 
                 <div className="flex items-center justify-between sm:justify-end gap-4 shrink-0" onClick={(e) => e.stopPropagation()}>
-                  {currentUser.role === 'SUPERADMIN' && (
-                    <button type="button" title="Eliminar legajo" aria-label={`Eliminar legajo ${c.code}: ${c.title}`}
-                      onClick={() => setCaseToDelete(c)}
-                      className="p-2 rounded-lg text-rose-600 hover:text-rose-800 hover:bg-rose-50 border border-transparent hover:border-rose-100 transition-colors"
-                    ><Trash2 className="w-4 h-4" aria-hidden="true" /></button>
-                  )}
                   {c.status === 'pending_assignment' ? (
                     <div className="flex flex-col sm:items-end gap-1">
                       <span className="text-[9px] font-mono font-bold uppercase tracking-wider text-amber-700 bg-amber-50 border border-amber-100 px-1.5 py-0.5 rounded-md">
