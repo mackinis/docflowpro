@@ -17,6 +17,28 @@ import {
 } from 'lucide-react';
 import { Case, ProcessTemplate, User as UserType, Participant, ParticipantType } from '../types';
 
+type DraftRecord = {
+  id: string; title: string; description: string; templateId: string; advisorId: string;
+  participants: Participant[]; fieldValues: Record<string,string>; pendingActor: Record<string,string>;
+  documentContent: string; escribano: boolean; updatedAt: string;
+};
+const normalizedActor = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+const roleForField = (actor: string): ParticipantType | null => {
+  const a = normalizedActor(actor);
+  if (/locador/.test(a)) return 'Locador';
+  if (/locatario/.test(a)) return 'Locatario';
+  if (/garante/.test(a)) return 'Garante';
+  if (/vendedor/.test(a)) return 'Vendedor';
+  if (/comprador/.test(a)) return 'Comprador';
+  if (/titular/.test(a)) return 'Titular';
+  if (/apoderado/.test(a)) return 'Apoderado';
+  return null;
+};
+const importedField = (name: string) => {
+  const match = name.match(/^(.*?)\s+—\s+(.*?)\s+\((CAMPO_\d+)\)/i);
+  return match ? { actor: match[1].trim(), label: match[2].trim(), id: match[3].toUpperCase() } : null;
+};
+
 interface CasesListProps {
   cases: Case[];
   templates: ProcessTemplate[];
@@ -49,6 +71,17 @@ export default function CasesList({
   loadState
 }: CasesListProps) {
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [drafts, setDrafts] = useState<DraftRecord[]>([]);
+  const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
+  const [generalFieldValues, setGeneralFieldValues] = useState<Record<string,string>>({});
+  const [actorFieldValues, setActorFieldValues] = useState<Record<string,string>>({});
+  const [draftBusy, setDraftBusy] = useState(false);
+  const refreshDrafts = async () => {
+    const response = await fetch('/api/case-drafts', {credentials:'include'});
+    if (!response.ok) throw new Error('No se pudieron cargar los borradores');
+    setDrafts(await response.json());
+  };
+  React.useEffect(() => { void refreshDrafts().catch(console.error); }, [currentUser.id]);
   const [caseToDelete, setCaseToDelete] = useState<Case | null>(null);
   const [pendingCreationDocs, setPendingCreationDocs] = useState<string[] | null>(null);
   const isTemplateRequired = true;
@@ -95,7 +128,7 @@ export default function CasesList({
   
   React.useEffect(() => {
     const isTemplateRequired = systemSettings?.processTemplateRequired !== false;
-    if (showCreateModal && templates.length > 0) {
+    if (showCreateModal && templates.length > 0 && !newTemplateId) {
       setNewTemplateId(isTemplateRequired ? (templates.find(t => !t.id.startsWith('doc-') && !t.id.startsWith('tmpl-dig-') && !t.originalDocumentContent)?.id || '') : '');
     }
   }, [showCreateModal, templates, systemSettings]);
@@ -139,6 +172,11 @@ export default function CasesList({
     return n.includes(r);
   };
   const draftKey = editingParticipantId || pType + ':' + pDni.replace(/\D/g, '');
+  const mappedFields = process?.stages.flatMap(stage => stage.requirements).map(req => ({ req, field: importedField(req.name) })).filter((item): item is {req: typeof item.req; field: NonNullable<typeof item.field>} => !!item.field) || [];
+  const mappedActorFields = mappedFields.filter(item => roleForField(item.field.actor));
+  const mappedGeneralFields = mappedFields.filter(item => !roleForField(item.field.actor));
+  const roleFields = mappedActorFields.filter(item => roleForField(item.field.actor) === pType);
+  const inferredRoles = Array.from(new Set(mappedActorFields.map(item => roleForField(item.field.actor)).filter((role): role is ParticipantType => !!role)));
   const actorRulesForForm = process?.stages.flatMap(s => s.requirements).filter(r => r.type === 'actor' && r.isRequired) || [];
   // Mostrar únicamente los roles cuya cantidad mínima todavía no se completó.
   // Si se requieren varios actores del mismo rol, conservarlo hasta alcanzar ese mínimo.
@@ -147,6 +185,9 @@ export default function CasesList({
     const role = rule.actorRole as ParticipantType | undefined;
     if (!role || role === 'Escribano') continue;
     requiredCountByRole.set(role, Math.max(requiredCountByRole.get(role) || 0, Math.max(1, Number(rule.minQuantity) || 1)));
+  }
+  for (const role of inferredRoles) {
+    if (!requiredCountByRole.has(role)) requiredCountByRole.set(role, 1);
   }
   const expectedActores = [...requiredCountByRole.entries()].filter(([role]) => role !== 'Garante').reduce((sum, [, count]) => sum + count, 0);
   const expectedGarantes = requiredCountByRole.get('Garante') || 0;
@@ -197,6 +238,10 @@ export default function CasesList({
       const count = participants.filter(p => p.role === rule.actorRole && p.name.trim() && p.lastName.trim() && p.dni.trim()).length;
       const minimum = Math.max(1, Number(rule.minQuantity) || 1);
       if (count < minimum) errors.push(`Faltan ${minimum - count} ${rule.actorRole || rule.name} (mínimo ${minimum}).`);
+    }
+
+    for (const role of inferredRoles) {
+      if (!participants.some(p => p.role === role && p.name.trim() && p.lastName.trim() && p.dni.trim())) errors.push('Falta cargar el actor requerido: ' + role);
     }
 
     // Los documentos exigidos se resumen en una sola línea, sin repetir el listado en otro panel.
