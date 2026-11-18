@@ -12,7 +12,8 @@
     "lint": "tsc --noEmit && tsc -p tsconfig.worker.json --noEmit",
     "db:migrate:local": "wrangler d1 migrations apply docflow-pro-db --local --persist-to .wrangler/state",
     "db:migrate:remote": "wrangler d1 migrations apply docflow-pro-db --remote",
-    "deploy": "npm run build && wrangler deploy"
+    "deploy": "npm run build && wrangler deploy",
+    "postbuild": "node scripts/ensure-r2-bucket.mjs"
   },
   "dependencies": {
     "@cloudflare/workers-types": "^5.20261116.1",
