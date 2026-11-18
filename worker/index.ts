@@ -1638,28 +1638,8 @@ function requirementsFromProcessDescription(description: string): ProcessTemplat
   return [{ id: `stage-${crypto.randomUUID()}`, name: 'Presentación y revisión de requisitos', description: 'Requisitos establecidos por el responsable del proceso', requirements }];
 }
 
-// Interpret highlighted fields before creating a process, rather than asking
-// the Confecciones agent to rediscover their meaning at the end of the workflow.
-app.post('/api/templates/analyze-fields', async (c) => {
-  const auth=c.get('auth')!;
-  if (!(await canUserManageTemplates(c.env.DB,auth.user.id))) return c.json({error:'No autorizado.'},403);
-  const {sharedDocumentId}=await c.req.json();
-  const doc=await c.env.DB.prepare('SELECT * FROM shared_documents WHERE id = ?').bind(String(sharedDocumentId||'')).first<any>();
-  if(!doc)return c.json({error:'El documento digitalizado no existe en Documentos.'},404);
-  const allowedRoles:string[]=doc.allowed_roles_json?JSON.parse(doc.allowed_roles_json):[];
-  const allowedUsers:string[]=doc.allowed_user_ids_json?JSON.parse(doc.allowed_user_ids_json):[];
-  if(auth.user.role!=='SUPERADMIN'&&!allowedRoles.includes(auth.user.role)&&!allowedUsers.includes(auth.user.id))
-    return c.json({error:'No tenés acceso al documento seleccionado.'},403);
-  if(!String(doc.file_name||doc.fileName||'').toLowerCase().endsWith('.txt'))
-    return c.json({error:'Seleccioná un documento digitalizado de texto.'},400);
-  const object=await c.env.R2_BUCKET.get(doc.r2_key);
-  if(!object)return c.json({error:'El archivo del documento no está disponible en R2.'},404);
-  const source=await object.text();
-  const matches=[...source.matchAll(/\[CAMPO_\d+\*?\]/g)];
-  // Keep process requirements in the document's natural order. New
-  // digitizations already assign consecutive IDs at their source.
-  const unique=[...new Set(matches.map(m=>m[0]))];
-  if(!unique.length)return c.json({error:'La plantilla no tiene campos amarillos.'},400);
+function identifyDigitizedFields(source:string) {
+  const unique=[...new Set([...source.matchAll(/\[CAMPO_\d+\*?\]/g)].map(m=>m[0]))];
   const normalize=(s:string)=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
   const roles=/\b(LOCADOR(?:ES|\/S)?|LOCATARIO(?:S|\/S)?|FIADOR(?:ES|\/S)?|GARANTE(?:S|\/S)?)\s*:/gi;
   const fields=unique.map(field=>{
@@ -1690,14 +1670,37 @@ app.post('/api/templates/analyze-fields', async (c) => {
       const m=nearest.match(/(?:DURACI[ÓO]N\s+CONTRATO|NOMBRE\s+Y\s+APELLIDO\s+C[ÓO]NYUGE)\s*[:;]?\s*$/i);
       if(m)label=m[0].trim();
     }
-    const stored=undefined as {label?:string;actor?:string}|undefined;
-    if(stored?.label && !/^(pendiente|sin significado|dato sin identificar)/i.test(stored.label))label=stored.label;
-    if(stored?.actor && !/^(no determinado|por identificar)/i.test(stored.actor))actor=stored.actor;
     if(/^(A PARTIR|HASTA|INDICAR)$/i.test(label))label=label==='INDICAR'?'Meses de gracia':label==='HASTA'?'Fecha de finalización del contrato':'Fecha de inicio del contrato';
     if(!label)label='Dato por identificar';
     const review=label==='Dato por identificar'||label==='Dato solicitado en el contexto anterior'||actor==='Operación'&&!/(contrato|alquiler|locaci[oó]n|dep[oó]sito|ajuste|inventario|servicio|posesi[oó]n|gracia|inicio|finalizaci[oó]n)/i.test(label);
     return {id:field,label,actor,source:'semantic' as const,confidence:review?'low' as const:'medium' as const,review};
   });
+  return fields;
+}
+
+// Interpret highlighted fields before creating a process, rather than asking
+// the Confecciones agent to rediscover their meaning at the end of the workflow.
+app.post('/api/templates/analyze-fields', async (c) => {
+  const auth=c.get('auth')!;
+  if (!(await canUserManageTemplates(c.env.DB,auth.user.id))) return c.json({error:'No autorizado.'},403);
+  const {sharedDocumentId}=await c.req.json();
+  const doc=await c.env.DB.prepare('SELECT * FROM shared_documents WHERE id = ?').bind(String(sharedDocumentId||'')).first<any>();
+  if(!doc)return c.json({error:'El documento digitalizado no existe en Documentos.'},404);
+  const allowedRoles:string[]=doc.allowed_roles_json?JSON.parse(doc.allowed_roles_json):[];
+  const allowedUsers:string[]=doc.allowed_user_ids_json?JSON.parse(doc.allowed_user_ids_json):[];
+  if(auth.user.role!=='SUPERADMIN'&&!allowedRoles.includes(auth.user.role)&&!allowedUsers.includes(auth.user.id))
+    return c.json({error:'No tenés acceso al documento seleccionado.'},403);
+  if(!String(doc.file_name||doc.fileName||'').toLowerCase().endsWith('.txt'))
+    return c.json({error:'Seleccioná un documento digitalizado de texto.'},400);
+  const object=await c.env.R2_BUCKET.get(doc.r2_key);
+  if(!object)return c.json({error:'El archivo del documento no está disponible en R2.'},404);
+  const source=await object.text();
+  const matches=[...source.matchAll(/\[CAMPO_\d+\*?\]/g)];
+  // Keep process requirements in the document's natural order. New
+  // digitizations already assign consecutive IDs at their source.
+  const unique=[...new Set(matches.map(m=>m[0]))];
+  if(!unique.length)return c.json({error:'La plantilla no tiene campos amarillos.'},400);
+  const fields=identifyDigitizedFields(source);
   return c.json({fields,originalDocumentContent:source});
 });
 app.post('/api/templates', async (c) => {
@@ -4416,6 +4419,11 @@ async function handleDigitizeTemplate(c: AppContext) {
       id: `tmpl-dig-${Date.now()}-${crypto.randomUUID().slice(0, 4)}`,
       ...digitized,
     };
+    // Digitization is the only semantic interpretation stage.
+    // Keep machine-readable markers unchanged for downstream filling.
+    finalTemplate.fieldMap=identifyDigitizedFields(finalTemplate.originalDocumentContent||'');
+    finalTemplate.digitizationReviewNotes=finalTemplate.fieldMap.filter(f=>f.review)
+      .map(f=>f.id+': significado o actor pendiente de confirmar');
     await saveTemplateInDb(c.env.DB, finalTemplate, false);
     await createAudit(
       c.env.DB,
