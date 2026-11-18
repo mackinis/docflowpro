@@ -238,6 +238,17 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
   const liveDrafts = useRef<Record<string,string>>({});
   // Original marker identities survive visual renumbering until the save commits the new map.
   const inlineOrigins = useRef<Record<string,Record<string,string>>>({});
+  const inlineLabels = useRef<Record<string,Record<string,{actor:string;label:string}>>>({});
+  const captureInlineLabels = (root:HTMLElement, templateId:string) => {
+    const labels:Record<string,{actor:string;label:string}>={};
+    root.querySelectorAll<HTMLElement>('[data-marker]').forEach(element=>{
+      const id=element.dataset.marker;
+      const value=element.textContent||'';
+      const match=value.match(/^\[([\s\S]*?)\s+—\s+([\s\S]*?)\s+\(CAMPO_\d+\*?\)\]$/);
+      if(id && match)labels[id]={actor:match[1].trim(),label:match[2].trim()};
+    });
+    inlineLabels.current[templateId]=labels;
+  };
   const [dirtyIds, setDirtyIds] = useState<Record<string,boolean>>({});
   const closeDetails = (id:string) => {
     if(dirtyIds[id]){
@@ -272,7 +283,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
       const fieldMap = ordered.map(id=>{
         const originalId=inlineOrigins.current[tpl.id]?.[id]||id;
         const prior=(tpl.fieldMap||[]).find(f=>f.id===originalId);
-        return prior ? {...prior,id:renumbered.get(id)!} : {id:renumbered.get(id)!,label:'Pendiente de identificar',actor:'No determinado',source:'manual' as const,confidence:'low' as const,review:true};
+        return prior ? {...prior,id:renumbered.get(id)!,...(inlineLabels.current[tpl.id]?.[id]||{})} : {id:renumbered.get(id)!,...(inlineLabels.current[tpl.id]?.[id]||{label:'Pendiente de identificar',actor:'No determinado'}),source:'manual' as const,confidence:'low' as const,review:true};
       });
       const response=await fetch(`/api/templates/${tpl.id}`,{
         method:'PUT',credentials:'include',headers:{'Content-Type':'application/json'},
@@ -356,6 +367,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
         if(!canManageTemplates)return;
         recoverInlineMarkers(e.currentTarget,tpl);
         normalizeInlineMarkers(e.currentTarget,tpl.id);
+        captureInlineLabels(e.currentTarget,tpl.id);
         const next=readEditor(e.currentTarget);
         liveDrafts.current[tpl.id]=next;
         const dirty=next!==(tpl.originalDocumentContent||'');
@@ -365,6 +377,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
         if(!canManageTemplates)return;
         recoverInlineMarkers(e.currentTarget,tpl);
         normalizeInlineMarkers(e.currentTarget,tpl.id);
+        captureInlineLabels(e.currentTarget,tpl.id);
         const next=readEditor(e.currentTarget);
         liveDrafts.current[tpl.id]=next;
         if(next!==content)setInlineDrafts(prev=>({...prev,[tpl.id]:next}));
