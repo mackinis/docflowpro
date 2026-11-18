@@ -1041,7 +1041,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                             placeholder="Nombre de la etapa"
                             value={stg.name}
                             onChange={(e) => handleStageFieldChange(sIdx, 'name', e.target.value)}
-                            className="text-xs font-bold text-slate-800 border-b border-transparent hover:border-slate-300 focus:border-indigo-500 bg-transparent py-0.5 px-1 focus:outline-none"
+                            className="flex-1 min-w-0 w-full text-sm font-bold text-slate-800 border-b border-transparent hover:border-slate-300 focus:border-indigo-500 bg-transparent py-1 px-2 focus:outline-none"
                           />
                         </div>
 
