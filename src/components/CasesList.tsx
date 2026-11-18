@@ -283,6 +283,7 @@ export default function CasesList({
     const values = {...actorFieldValues};
     for (const item of roleFields) {
       const label = normalizedActor(item.field.label);
+      if (/conyuge/.test(normalizedActor(item.field.actor))) continue; // Spouse values must never inherit the primary actor's identity.
       if (/^dni$|documento de identidad/.test(label)) values[item.field.id] = pDni;
       else if (/mail|correo|e-mail/.test(label)) values[item.field.id] = pEmail;
       else if (/fecha de nacimiento/.test(label)) values[item.field.id] = pBirthDate;
@@ -1005,7 +1006,7 @@ export default function CasesList({
                   {roleFields.length > 0 && <div className="sm:col-span-3 rounded-lg border border-indigo-100 bg-white p-3 space-y-3">
                     <p className="text-xs font-bold text-indigo-800">Datos de {pType} según la hoja digitalizada</p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {roleFields.filter(item => !/^(dni|mail|correo|fecha de nacimiento|cuit|cuil|telefono|celular)$/i.test(normalizedActor(item.field.label))).map(item => (
+                      {roleFields.filter(item => /conyuge/.test(normalizedActor(item.field.actor)) || !/^(dni|mail|correo|fecha de nacimiento|cuit|cuil|telefono|celular)$/i.test(normalizedActor(item.field.label))).map(item => (
                         <label key={item.field.id} className="block text-[11px] font-semibold text-slate-600">
                           {item.field.actor} — {item.field.label} ({item.field.id})
                           <input type="text" value={actorFieldValues[item.field.id] || ''} onChange={e => setActorFieldValues(prev => ({...prev,[item.field.id]:e.target.value}))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white p-2 text-xs" />
