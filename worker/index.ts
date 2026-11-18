@@ -1802,7 +1802,7 @@ app.post('/api/templates', async (c) => {
   const newTemplate: ProcessTemplate = {
     id: `tmpl-${Date.now()}-${crypto.randomUUID().slice(0, 4)}`,
     name: body.name,
-    description: body.description || '',
+    description: body.sharedDocumentId ? 'Gestionar las etapas, los responsables y los requisitos para confeccionar el contrato de locación utilizando la hoja guía digitalizada.' : (body.description || ''),
     industry: body.industry || 'Inmobiliaria',
     stages: parsedStages,
     originalDocumentContent: body.sharedDocumentId ? '' : (body.originalDocumentContent || ''),
