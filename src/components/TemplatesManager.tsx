@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { 
   FolderKanban, 
   Sparkles, 
@@ -90,6 +90,9 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
   const resetProcessForm = () => {
     setManualName('');
     setManualDescription('');
+    reviewGeneration.current++;
+    if(reviewSaveTimer.current)clearTimeout(reviewSaveTimer.current);
+    setReviewSaveStatus('idle');
     setSelectedDigitalTemplateId('');
     setImportedFieldMap([]);
     setSelectedDocumentContent('');
@@ -102,10 +105,18 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
   const [importedFieldMap,setImportedFieldMap] = useState<NonNullable<ProcessTemplate['fieldMap']>>([]);
   const [importingFields,setImportingFields] = useState(false);
   const [confirmingFieldReview,setConfirmingFieldReview] = useState(false);
+  const [reviewSaveStatus,setReviewSaveStatus] = useState<'idle'|'saving'|'saved'|'error'>('idle');
+  const [descriptionScrollTop,setDescriptionScrollTop] = useState(0);
+  const reviewSaveTimer = useRef<ReturnType<typeof setTimeout>|null>(null);
+  const reviewSaving = useRef(false);
+  const reviewGeneration = useRef(0);
   const [selectedDocumentContent,setSelectedDocumentContent]=useState('');
   // The source of truth is Documentos (shared_documents), not virtual
   // process templates or legacy copies of the same digitized document.
   const importDigitalFields = async (templateId:string) => {
+    reviewGeneration.current++;
+    if(reviewSaveTimer.current)clearTimeout(reviewSaveTimer.current);
+    setReviewSaveStatus('idle');
     setSelectedDigitalTemplateId(templateId);
     setImportedFieldMap([]);
     setSelectedDocumentContent('');
@@ -128,36 +139,64 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
     }catch(error){alert(error instanceof Error?error.message:'Error al analizar campos');}
     finally{setImportingFields(false);}
   };
-  // Keep typing local and instantaneous. Persist review confirmations on blur only.
+  // The textarea remains native and uninterrupted. Save only complete marker changes.
   const updateProcessDescription = (next:string) => {
     setManualDescription(next);
-    // Detect review markers immediately without interrupting typing or moving the caret.
-    // Persisting a cleared review remains a separate server-side confirmation on blur.
+    setReviewSaveStatus('idle');
   };
-  const countVisibleReviews = () => manualDescription.split('\n').filter(line => /\[REVISAR\]/i.test(line)).length;
-  const longestProcessLine = Math.max(0, ...manualDescription.split('\n').map(line => line.length));
+  const reviewLines = manualDescription.split('\n');
+  const countVisibleReviews = () => reviewLines.filter(line => /\[REVISAR\]/i.test(line)).length;
+  const reviewLineIndexes = reviewLines.flatMap((line,index) => /\[REVISAR\]/i.test(line)?[index]:[]);
+  const reviewHighlightStyle: React.CSSProperties = reviewLineIndexes.length ? {
+    backgroundImage: reviewLineIndexes.map(() => 'linear-gradient(rgba(254, 202, 202, 0.65), rgba(254, 202, 202, 0.65))').join(','),
+    backgroundSize: reviewLineIndexes.map(() => '100% 21px').join(','),
+    backgroundPosition: reviewLineIndexes.map(index => '0 '+(10+index*21-descriptionScrollTop)+'px').join(','),
+    backgroundRepeat: 'no-repeat'
+  } : {};
   const persistFieldReviews = async () => {
-    if(confirmingFieldReview || !selectedDigitalTemplateId)return;
-    const removed=importedFieldMap.filter(f=>f.review &&
-      manualDescription.split('\\n').some(line=>line.includes(f.actor+' — '+f.label+' ('+f.id+')') && !line.includes('[REVISAR]')));
-    if(!removed.length)return;
+    if(reviewSaving.current || !selectedDigitalTemplateId || !importedFieldMap.length)return;
+    const generation=reviewGeneration.current;
+    const lines=manualDescription.split('\n');
+    // Match by immutable identifier, never by mutable label or line position.
+    const changes=importedFieldMap.flatMap(f=>{
+      const matching=lines.filter(line=>line.includes('('+f.id+')'));
+      if(matching.length!==1)return [];
+      const target=/\[REVISAR\]/i.test(matching[0]);
+      return Boolean(f.review)===target?[]:[{id:f.id,review:target,expectedReview:Boolean(f.review)}];
+    });
+    if(!changes.length)return;
+    reviewSaving.current=true;
     setConfirmingFieldReview(true);
+    setReviewSaveStatus('saving');
     try {
-      for(const field of removed){
+      for(const change of changes){
         const response=await fetch('/api/templates/confirm-field-review',{
           method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({sharedDocumentId:selectedDigitalTemplateId,fieldId:field.id})
+          body:JSON.stringify({sharedDocumentId:selectedDigitalTemplateId,fieldId:change.id,review:change.review,expectedReview:change.expectedReview})
         });
         const data=await response.json();
-        if(!response.ok || data.fieldId!==field.id || data.review!==false)
-          throw new Error(data.error||'No se pudo confirmar la corrección interna.');
-        setImportedFieldMap(prev=>prev.map(f=>f.id===field.id?{...f,review:false}:f));
+        if(!response.ok || data.fieldId!==change.id || data.review!==change.review)
+          throw new Error(data.error||'No se pudo guardar el estado de revisión.');
+        if(generation!==reviewGeneration.current)return;
+        setImportedFieldMap(prev=>prev.map(f=>f.id===change.id?{...f,review:change.review}:f));
       }
+      if(generation===reviewGeneration.current)setReviewSaveStatus('saved');
     }catch(error){
-      alert(error instanceof Error?error.message:'No se pudo guardar la revisión.');
-      await importDigitalFields(selectedDigitalTemplateId);
-    }finally{setConfirmingFieldReview(false);}
+      if(generation===reviewGeneration.current){
+        setReviewSaveStatus('error');
+        alert(error instanceof Error?error.message:'No se pudo guardar la revisión.');
+      }
+    }finally{
+      reviewSaving.current=false;
+      if(generation===reviewGeneration.current)setConfirmingFieldReview(false);
+    }
   };
+  useEffect(()=>{
+    if(!selectedDigitalTemplateId || !importedFieldMap.length || reviewSaveStatus==='error')return;
+    if(reviewSaveTimer.current)clearTimeout(reviewSaveTimer.current);
+    reviewSaveTimer.current=setTimeout(()=>{void persistFieldReviews();},650);
+    return ()=>{if(reviewSaveTimer.current)clearTimeout(reviewSaveTimer.current);};
+  },[manualDescription,importedFieldMap,selectedDigitalTemplateId,confirmingFieldReview,reviewSaveStatus]);
   const [isCreatingManual, setIsCreatingManual] = useState(false);
 
   // Custom toast notifications
@@ -1718,7 +1757,9 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                   {digitalTemplates.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
                 </select>
                 <span className="block mt-1 text-[11px] font-normal text-slate-500">Al seleccionar una plantilla se interpretan sus campos amarillos y se generan requisitos editables en Descripción / Objetivo. Revisá los marcados [REVISAR].</span>
-                {confirmingFieldReview && <span className="text-xs text-indigo-600">Guardando reparación interna...</span>}
+                {reviewSaveStatus==='saving' && <span className="text-xs text-indigo-600">Guardando...</span>}
+                {reviewSaveStatus==='saved' && <span className="text-xs text-emerald-700">· Cambios guardados</span>}
+                {reviewSaveStatus==='error' && <span className="text-xs text-red-700">· Error al guardar</span>}
                 {importingFields && <span className="text-xs text-indigo-600">Analizando campos de la plantilla...</span>}
                 {!!importedFieldMap.length && <span className="text-xs text-emerald-700">{importedFieldMap.length} campos importados · {countVisibleReviews()} para revisar</span>}
               </label>
@@ -1726,7 +1767,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                 <input required value={manualName} onChange={e => setManualName(e.target.value)} placeholder="Ej.: Reserva de contrato de locación" className="mt-1 w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg"/>
               </label>
               <label className="block text-xs font-bold text-slate-700">Descripción / Objetivo *
-                <textarea required rows={9} value={manualDescription} onChange={e => updateProcessDescription(e.target.value)} onBlur={() => void persistFieldReviews()} spellCheck={false} wrap="off" className="mt-1 w-full p-2.5 bg-slate-50 text-slate-900 caret-slate-900 border border-slate-200 rounded-lg text-sm leading-normal font-normal resize-y font-mono" style={{minWidth:0}} />
+                <textarea required rows={9} value={manualDescription} onChange={e => updateProcessDescription(e.target.value)} onBlur={() => void persistFieldReviews()} onScroll={e => setDescriptionScrollTop(e.currentTarget.scrollTop)} spellCheck={false} wrap="off" className="mt-1 w-full p-2.5 bg-slate-50 text-slate-900 caret-slate-900 border border-slate-200 rounded-lg text-sm leading-normal font-normal resize-y font-mono" style={{minWidth:0,...reviewHighlightStyle}} />
                 <span className="block mt-1 text-[11px] font-normal text-slate-500">Los actores, sus mínimos y los documentos indicados se convierten en requisitos del proceso. Escribí cada obligación en una línea.</span>
               </label>
               <label className="block text-xs font-bold text-slate-700">Rubro Comercial / Industria *
