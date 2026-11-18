@@ -59,9 +59,10 @@ export default function App() {
   }, [activeTab, activeCaseId, currentUser?.id]);
 
   // Load backend state via Cloudflare Worker session cookie
-  const loadState = async () => {
+  const loadState = async (refreshOnly = false) => {
     try {
       setError(null);
+      if (!refreshOnly) {
       const bootstrapRes = await fetch('/api/auth/bootstrap-status', {
         credentials: 'include',
         signal: AbortSignal.timeout(15000)
@@ -84,6 +85,7 @@ export default function App() {
         return;
       }
 
+      }
       // D1 initialization and transient Cloudflare errors can briefly return 503.
       // Retry the state request without showing a misleading connection-error page.
       let response: Response | null = null;
@@ -115,12 +117,14 @@ export default function App() {
       const data: AppDataState = await response.json();
       setState(data);
 
+      if (!refreshOnly) {
       const sessionUser: User = bootstrapData.user;
       const sessionRealUser: User = bootstrapData.realUser || bootstrapData.user;
       setCurrentUser(sessionUser);
       setRealUser(sessionRealUser);
       sessionStorage.setItem('docflow_user', JSON.stringify(sessionUser));
       sessionStorage.setItem('docflow_real_user', JSON.stringify(sessionRealUser));
+      }
     } catch (err: any) {
       console.error(err);
       setError(err?.name === 'TimeoutError' ? 'El servidor tardó demasiado en responder. Intente nuevamente.' : (err.message || 'Error de conexión con el servidor Cloudflare Worker.'));
@@ -153,7 +157,7 @@ export default function App() {
       }
       
       // Reload state after success to capture audit logs & notifications
-      await loadState();
+      await loadState(true);
       
       if (successMsg) {
         setOperationNotice(successMsg);
@@ -339,7 +343,7 @@ export default function App() {
       const detail = await response.json().catch(() => ({}));
       throw new Error(detail.error || 'No se pudo guardar el formulario.');
     }
-    await loadState();
+    await loadState(true);
   };
 
   // Create manual Observation
@@ -382,7 +386,7 @@ export default function App() {
       const detail = await response.json().catch(() => ({}));
       throw new Error(detail.error || 'No se pudo completar la operación.');
     }
-    await loadState();
+    await loadState(true);
     setOperationNotice('¡Etapa avanzada exitosamente! El legajo avanzó de nivel.');
   };
 
@@ -397,7 +401,7 @@ export default function App() {
       const detail = await response.json().catch(() => ({}));
       throw new Error(detail.error || 'No se pudo completar la operación.');
     }
-    await loadState();
+    await loadState(true);
     setOperationNotice('¡Etapa aprobada correctamente!');
   };
 
