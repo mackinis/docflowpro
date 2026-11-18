@@ -22,6 +22,9 @@ type DraftRecord = {
   participants: Participant[]; fieldValues: Record<string,string>; pendingActor: Record<string,string>;
   documentContent: string; escribano: boolean; updatedAt: string;
 };
+// Session-only snapshot: returning to Legajos must not hide already loaded drafts.
+// Scoped to the authenticated user; never persisted to localStorage.
+const draftSnapshots = new Map<string, DraftRecord[]>();
 const normalizedActor = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
 const roleForField = (actor: string): ParticipantType | null => {
   const a = normalizedActor(actor);
@@ -71,7 +74,7 @@ export default function CasesList({
   loadState
 }: CasesListProps) {
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [drafts, setDrafts] = useState<DraftRecord[]>([]);
+  const [drafts, setDrafts] = useState<DraftRecord[]>(() => draftSnapshots.get(currentUser.id) || []);
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
   const [generalFieldValues, setGeneralFieldValues] = useState<Record<string,string>>({});
   const [actorFieldValues, setActorFieldValues] = useState<Record<string,string>>({});
@@ -79,9 +82,16 @@ export default function CasesList({
   const refreshDrafts = async () => {
     const response = await fetch('/api/case-drafts', {credentials:'include'});
     if (!response.ok) throw new Error('No se pudieron cargar los borradores');
-    setDrafts(await response.json());
+    const latest: DraftRecord[] = await response.json();
+    draftSnapshots.set(currentUser.id, latest);
+    setDrafts(latest);
   };
-  React.useEffect(() => { void refreshDrafts().catch(console.error); }, [currentUser.id]);
+  React.useEffect(() => {
+    // Show the previous snapshot synchronously on navigation, then revalidate.
+    // Do not display drafts belonging to the previous impersonated user.
+    setDrafts(draftSnapshots.get(currentUser.id) || []);
+    void refreshDrafts().catch(console.error);
+  }, [currentUser.id]);
   const [caseToDelete, setCaseToDelete] = useState<Case | null>(null);
   const [pendingCreationDocs, setPendingCreationDocs] = useState<string[] | null>(null);
   const isTemplateRequired = true;
