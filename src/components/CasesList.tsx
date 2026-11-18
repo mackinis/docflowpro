@@ -595,11 +595,11 @@ export default function CasesList({
               <span className="text-sm font-semibold text-slate-800">{draft.title || 'Sin título'}</span>
               <p className="text-xs text-slate-500">Último guardado: {new Date(draft.updatedAt).toLocaleString('es-AR')} · Continuar carga</p>
             </button>
-            <button type="button" className="text-xs text-rose-700 hover:underline" onClick={async () => {
+            <button type="button" title="Eliminar borrador" aria-label={`Eliminar borrador ${draft.title || 'sin título'}`} className="p-2 rounded-lg text-rose-600 hover:text-rose-800 hover:bg-rose-50 transition-colors" onClick={async () => {
               if (!window.confirm('¿Eliminar este borrador?')) return;
               const response = await fetch('/api/case-drafts/'+draft.id,{method:'DELETE',credentials:'include'});
               if (response.ok) await refreshDrafts(); else alert('No se pudo eliminar el borrador');
-            }}>Eliminar</button>
+            }}><Trash2 className="w-4 h-4" aria-hidden="true" /></button>
           </div>)}
         </section>
       )}
