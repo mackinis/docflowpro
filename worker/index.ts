@@ -1660,7 +1660,7 @@ function identifyDigitizedFields(source:string) {
     if(spouseHeading && !isOperation){
       const spouseTail=section.slice((spouseHeading.index||0)+spouseHeading[0].length);
       const spouseCount=(spouseTail.match(/\[CAMPO_\d+\*?\]/g)||[]).length;
-      if(spouseCount<3)actor='Cónyuge del '+actor.toLowerCase();
+      if(spouseCount<4)actor='Cónyuge del '+actor.toLowerCase();
     }
     const line=before.slice(before.lastIndexOf('\n')+1);
     const tokens=[...line.matchAll(/(FECHA DE NACIMIENTO|NOMBRE Y APELLIDO(?:\s+(?:DEL?\s+)?C[ÓO]NYUGE)?|DOMICILIO ACTUAL|ESTADO CIVIL|DURACI[ÓO]N(?:\s+CONTRATO)?|MESES DE GRACIA|VALOR DE LA LOCACI[ÓO]N INICIAL|IMPORTE DE MES DE DEP[ÓO]SITO[^\n]*|SERVICIOS? QUE ABONA[^\n]*|POSESI[ÓO]N|INVENTARIO|AJUSTE|MAIL|DNI|A PARTIR|HASTA|INDICAR)\s*:?\s*$/gi)];
