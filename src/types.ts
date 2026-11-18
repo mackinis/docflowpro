@@ -103,6 +103,7 @@ export interface Case {
   assignedAdvisorId: string;
   assignedManagerId: string;
   participants: Participant[];
+  generalFieldValues?: Record<string,string>;
   createdAt: string;
   updatedAt: string;
   documentContent?: string; // Case-specific digital document for completing
