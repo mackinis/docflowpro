@@ -93,6 +93,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
   const [selectedDigitalTemplateId,setSelectedDigitalTemplateId] = useState('');
   const [importedFieldMap,setImportedFieldMap] = useState<NonNullable<ProcessTemplate['fieldMap']>>([]);
   const [importingFields,setImportingFields] = useState(false);
+  const [confirmingFieldReview,setConfirmingFieldReview] = useState(false);
   const [selectedDocumentContent,setSelectedDocumentContent]=useState('');
   // The source of truth is Documentos (shared_documents), not virtual
   // process templates or legacy copies of the same digitized document.
@@ -118,6 +119,40 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
       if(!manualName.trim())setManualName(selected.name.replace(/\s*\(Digitalizado\)\s*$/i,''));
     }catch(error){alert(error instanceof Error?error.message:'Error al analizar campos');}
     finally{setImportingFields(false);}
+  };
+  // The published R2 map is authoritative: update the textarea only after confirmation.
+  const updateProcessDescription = async (next:string) => {
+    if(confirmingFieldReview)return;
+    const removed=importedFieldMap.filter(f=>f.review && manualDescription.includes(
+      f.actor+' — '+f.label+' ('+f.id+') [REVISAR]'
+    ) && next.includes(f.actor+' — '+f.label+' ('+f.id+')') &&
+      !next.includes(f.actor+' — '+f.label+' ('+f.id+') [REVISAR]'));
+    if(!removed.length || !selectedDigitalTemplateId) {
+      setManualDescription(next);
+      return;
+    }
+    // Only one field can be confirmed per request; do not change other metadata.
+    setConfirmingFieldReview(true);
+    try {
+      for(const field of removed){
+        const response=await fetch('/api/templates/confirm-field-review',{
+          method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({sharedDocumentId:selectedDigitalTemplateId,fieldId:field.id})
+        });
+        const data=await response.json();
+        if(!response.ok || data.fieldId!==field.id || data.review!==false)
+          throw new Error(data.error||'No se pudo confirmar la corrección interna.');
+        setImportedFieldMap(prev=>prev.map(f=>f.id===field.id?{...f,review:false}:f));
+        setManualDescription(prev=>prev.replace(
+          field.actor+' — '+field.label+' ('+field.id+') [REVISAR]',
+          field.actor+' — '+field.label+' ('+field.id+')'
+        ));
+      }
+    }catch(error){
+      alert(error instanceof Error?error.message:'No se pudo guardar la revisión.');
+      // Reimport the authoritative state if a partial batch was persisted.
+      await importDigitalFields(selectedDigitalTemplateId);
+    }finally{setConfirmingFieldReview(false);}
   };
   const [isCreatingManual, setIsCreatingManual] = useState(false);
 
@@ -1678,6 +1713,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                   {digitalTemplates.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
                 </select>
                 <span className="block mt-1 text-[11px] font-normal text-slate-500">Al seleccionar una plantilla se interpretan sus campos amarillos y se generan requisitos editables en Descripción / Objetivo. Revisá los marcados [REVISAR].</span>
+                {confirmingFieldReview && <span className="text-xs text-indigo-600">Guardando reparación interna...</span>}
                 {importingFields && <span className="text-xs text-indigo-600">Analizando campos de la plantilla...</span>}
                 {!!importedFieldMap.length && <span className="text-xs text-emerald-700">{importedFieldMap.length} campos importados · {importedFieldMap.filter(f=>f.review).length} para revisar</span>}
               </label>
@@ -1685,7 +1721,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                 <input required value={manualName} onChange={e => setManualName(e.target.value)} placeholder="Ej.: Reserva de contrato de locación" className="mt-1 w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg"/>
               </label>
               <label className="block text-xs font-bold text-slate-700">Descripción / Objetivo *
-                <textarea required rows={9} value={manualDescription} onChange={e => setManualDescription(e.target.value)}  className="mt-1 w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg"/>
+                <textarea required rows={9} value={manualDescription} onChange={e => void updateProcessDescription(e.target.value)}  className="mt-1 w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg"/>
                 <span className="block mt-1 text-[11px] font-normal text-slate-500">Los actores, sus mínimos y los documentos indicados se convierten en requisitos del proceso. Escribí cada obligación en una línea.</span>
               </label>
               <label className="block text-xs font-bold text-slate-700">Rubro Comercial / Industria *
