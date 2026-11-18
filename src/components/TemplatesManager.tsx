@@ -230,11 +230,14 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
 
   const [inlineDrafts, setInlineDrafts] = useState<Record<string,string>>({});
   const liveDrafts = useRef<Record<string,string>>({});
+  // Original marker identities survive visual renumbering until the save commits the new map.
+  const inlineOrigins = useRef<Record<string,Record<string,string>>>({});
   const [dirtyIds, setDirtyIds] = useState<Record<string,boolean>>({});
   const closeDetails = (id:string) => {
     if(dirtyIds[id]){
       requestConfirmation('Cambios sin guardar','Hay cambios sin guardar. Si salís, se perderán. ¿Querés salir igualmente?',()=>{
         delete liveDrafts.current[id];
+        delete inlineOrigins.current[id];
         setInlineDrafts(prev=>{const next={...prev};delete next[id];return next;});
         setDirtyIds(prev=>({...prev,[id]:false}));
         setExpandedTemplateId(null);
@@ -261,7 +264,8 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
       const renumbered = new Map(ordered.map((id,i)=>[id,`[CAMPO_${i+1}${id.endsWith('*]')?'*':''}]`]));
       const content = draft.replace(/\[CAMPO_\d+\*?\]/g,id=>renumbered.get(id)||id);
       const fieldMap = ordered.map(id=>{
-        const prior=(tpl.fieldMap||[]).find(f=>f.id===id);
+        const originalId=inlineOrigins.current[tpl.id]?.[id]||id;
+        const prior=(tpl.fieldMap||[]).find(f=>f.id===originalId);
         return prior ? {...prior,id:renumbered.get(id)!} : {id:renumbered.get(id)!,label:'Pendiente de identificar',actor:'No determinado',source:'manual' as const,confidence:'low' as const,review:true};
       });
       const response=await fetch(`/api/templates/${tpl.id}`,{
@@ -270,12 +274,29 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
       });
       if(!response.ok)throw new Error((await response.json()).error||'No se pudo guardar');
       delete liveDrafts.current[tpl.id];
+      delete inlineOrigins.current[tpl.id];
       setInlineDrafts(prev=>{const next={...prev};delete next[tpl.id];return next;});
       setDirtyIds(prev=>({...prev,[tpl.id]:false}));
       showToast('Documento digitalizado guardado correctamente','success');
       if(loadState)await loadState();
     } catch(error:any){showToast(error?.message||'Error al guardar documento','error');}
     finally{setInlineSaving(null);}
+  };
+
+  const normalizeInlineMarkers = (root:HTMLElement, templateId:string) => {
+    const markers=Array.from(root.querySelectorAll<HTMLElement>('[data-marker]'));
+    const origins:Record<string,string>={};
+    markers.forEach((element,index)=>{
+      const oldId=element.dataset.marker!;
+      const origin=element.dataset.origin||inlineOrigins.current[templateId]?.[oldId]||oldId;
+      const nextId=`[CAMPO_${index+1}${oldId.endsWith('*]')?'*':''}]`;
+      origins[nextId]=origin;
+      element.dataset.origin=origin;
+      element.dataset.marker=nextId;
+      // Preserve the confirmed actor/meaning in the visible badge.
+      element.textContent=(element.textContent||oldId).replace(/CAMPO_\d+\*?/g,nextId.slice(1,-1));
+    });
+    inlineOrigins.current[templateId]=origins;
   };
 
   const renderInlineEditable = (tpl:ProcessTemplate) => {
@@ -291,6 +312,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
       aria-multiline="true"
       onInput={e=>{
         if(!canManageTemplates)return;
+        normalizeInlineMarkers(e.currentTarget,tpl.id);
         const next=readEditor(e.currentTarget);
         liveDrafts.current[tpl.id]=next;
         const dirty=next!==(tpl.originalDocumentContent||'');
@@ -298,6 +320,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
       }}
       onBlur={e=>{
         if(!canManageTemplates)return;
+        normalizeInlineMarkers(e.currentTarget,tpl.id);
         const next=readEditor(e.currentTarget);
         liveDrafts.current[tpl.id]=next;
         if(next!==content)setInlineDrafts(prev=>({...prev,[tpl.id]:next}));
@@ -307,7 +330,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
     >{pieces.map((part,i)=>{
       const info=(tpl.fieldMap||[]).find(f=>f.id===part);
       return /^\[CAMPO_\d+\*?\]$/.test(part)
-        ? <span key={i} data-marker={part} contentEditable={false} className="bg-amber-100 text-amber-900 border border-amber-300 rounded px-1 py-0.5 mx-0.5 font-mono text-[11px] font-bold">{info?`[${info.actor} — ${info.label} (${part.slice(1,-1)})]`:part}</span>
+        ? <span key={i} data-marker={part} data-origin={inlineOrigins.current[tpl.id]?.[part]||part} contentEditable={false} className="bg-amber-100 text-amber-900 border border-amber-300 rounded px-1 py-0.5 mx-0.5 font-mono text-[11px] font-bold">{info?`[${info.actor} — ${info.label} (${part.slice(1,-1)})]`:part}</span>
         : <React.Fragment key={i}>{part}</React.Fragment>;
     })}</div>;
   };
