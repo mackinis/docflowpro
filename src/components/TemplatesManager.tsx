@@ -120,18 +120,13 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
     }catch(error){alert(error instanceof Error?error.message:'Error al analizar campos');}
     finally{setImportingFields(false);}
   };
-  // The published R2 map is authoritative: update the textarea only after confirmation.
-  const updateProcessDescription = async (next:string) => {
-    if(confirmingFieldReview)return;
-    const removed=importedFieldMap.filter(f=>f.review && manualDescription.includes(
-      f.actor+' — '+f.label+' ('+f.id+') [REVISAR]'
-    ) && next.includes(f.actor+' — '+f.label+' ('+f.id+')') &&
-      !next.includes(f.actor+' — '+f.label+' ('+f.id+') [REVISAR]'));
-    if(!removed.length || !selectedDigitalTemplateId) {
-      setManualDescription(next);
-      return;
-    }
-    // Only one field can be confirmed per request; do not change other metadata.
+  // Keep typing local and instantaneous. Persist review confirmations on blur only.
+  const updateProcessDescription = (next:string) => setManualDescription(next);
+  const persistFieldReviews = async () => {
+    if(confirmingFieldReview || !selectedDigitalTemplateId)return;
+    const removed=importedFieldMap.filter(f=>f.review &&
+      manualDescription.split('\\n').some(line=>line.includes(f.actor+' — '+f.label+' ('+f.id+')') && !line.includes('[REVISAR]')));
+    if(!removed.length)return;
     setConfirmingFieldReview(true);
     try {
       for(const field of removed){
@@ -143,14 +138,9 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
         if(!response.ok || data.fieldId!==field.id || data.review!==false)
           throw new Error(data.error||'No se pudo confirmar la corrección interna.');
         setImportedFieldMap(prev=>prev.map(f=>f.id===field.id?{...f,review:false}:f));
-        setManualDescription(prev=>prev.replace(
-          field.actor+' — '+field.label+' ('+field.id+') [REVISAR]',
-          field.actor+' — '+field.label+' ('+field.id+')'
-        ));
       }
     }catch(error){
       alert(error instanceof Error?error.message:'No se pudo guardar la revisión.');
-      // Reimport the authoritative state if a partial batch was persisted.
       await importDigitalFields(selectedDigitalTemplateId);
     }finally{setConfirmingFieldReview(false);}
   };
@@ -1721,7 +1711,8 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                 <input required value={manualName} onChange={e => setManualName(e.target.value)} placeholder="Ej.: Reserva de contrato de locación" className="mt-1 w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg"/>
               </label>
               <label className="block text-xs font-bold text-slate-700">Descripción / Objetivo *
-                <textarea required rows={9} value={manualDescription} onChange={e => void updateProcessDescription(e.target.value)}  className="mt-1 w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg"/>
+                {manualDescription.split('\\n').filter(line=>line.includes('[REVISAR]')).map((line,i)=><div key={i} className="mt-1 px-2 py-1 bg-rose-100 border-l-4 border-rose-500 text-rose-900 text-xs break-words">{line}</div>)}
+                <textarea required rows={9} value={manualDescription} onChange={e => updateProcessDescription(e.target.value)} onBlur={() => void persistFieldReviews()} className="mt-1 w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg"/>
                 <span className="block mt-1 text-[11px] font-normal text-slate-500">Los actores, sus mínimos y los documentos indicados se convierten en requisitos del proceso. Escribí cada obligación en una línea.</span>
               </label>
               <label className="block text-xs font-bold text-slate-700">Rubro Comercial / Industria *
