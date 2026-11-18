@@ -289,6 +289,42 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
     finally{setInlineSaving(null);}
   };
 
+  // Recover pasted/edited descriptive placeholders as actual protected field badges.
+  // Brackets alone are not enough: require the DocFlow CAMPO_N signature.
+  const recoverInlineMarkers = (root:HTMLElement, tpl:ProcessTemplate) => {
+    const pattern=/\\[([^\\]\\n]*?)\\s*\\(CAMPO_(\\d+)(\\*)?\\)\\s*\\]/g;
+    const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
+    const nodes:Text[]=[];
+    while(walker.nextNode()){
+      const node=walker.currentNode as Text;
+      if(node.parentElement?.closest('[data-marker]'))continue;
+      if(pattern.test(node.textContent||''))nodes.push(node);
+      pattern.lastIndex=0;
+    }
+    for(const node of nodes){
+      const value=node.textContent||'';
+      const fragment=document.createDocumentFragment();
+      let last=0;
+      for(const match of value.matchAll(pattern)){
+        const index=match.index??0;
+        if(index>last)fragment.appendChild(document.createTextNode(value.slice(last,index)));
+        const id=`[CAMPO_${match[2]}${match[3]||''}]`;
+        const prior=(tpl.fieldMap||[]).find(f=>f.id===id);
+        const badge=document.createElement('span');
+        badge.dataset.marker=id;
+        badge.dataset.origin=id;
+        badge.contentEditable='false';
+        const needsReview=fieldNeedsReview(prior);
+        badge.className=(needsReview?'bg-red-100 text-red-900 border-red-400':'bg-amber-100 text-amber-900 border-amber-300')+' border rounded px-1 py-0.5 mx-0.5 font-mono text-[11px] font-bold';
+        badge.textContent=match[0];
+        fragment.appendChild(badge);
+        last=index+match[0].length;
+      }
+      if(last<value.length)fragment.appendChild(document.createTextNode(value.slice(last)));
+      node.replaceWith(fragment);
+    }
+  };
+
   const normalizeInlineMarkers = (root:HTMLElement, templateId:string) => {
     const markers=Array.from(root.querySelectorAll<HTMLElement>('[data-marker]'));
     const origins:Record<string,string>={};
@@ -318,6 +354,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
       aria-multiline="true"
       onInput={e=>{
         if(!canManageTemplates)return;
+        recoverInlineMarkers(e.currentTarget,tpl);
         normalizeInlineMarkers(e.currentTarget,tpl.id);
         const next=readEditor(e.currentTarget);
         liveDrafts.current[tpl.id]=next;
@@ -326,6 +363,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
       }}
       onBlur={e=>{
         if(!canManageTemplates)return;
+        recoverInlineMarkers(e.currentTarget,tpl);
         normalizeInlineMarkers(e.currentTarget,tpl.id);
         const next=readEditor(e.currentTarget);
         liveDrafts.current[tpl.id]=next;
