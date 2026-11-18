@@ -874,8 +874,8 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                     <div className="p-5 md:p-7 space-y-6">
                   {isDigitalDoc ? (
                     // Display ONLY the digitized document with its approval flow
-                    <div className="bg-slate-100/60 p-4 rounded-2xl border border-slate-200/60 min-h-[400px] flex items-start justify-center">
-                      <div className="bg-white w-full max-w-2xl shadow-xs border border-slate-200 px-6 py-8 md:px-12 md:py-14 rounded-md flex flex-col justify-between">
+                    <div className="bg-slate-100/60 p-4 md:p-6 rounded-2xl border border-slate-200/60 min-h-[400px]">
+                      <div className="w-full min-w-0 flex flex-col justify-between">
                         <div>
                           <div className="flex items-center justify-between pb-4 mb-6 border-b border-slate-100 text-[10px] text-slate-400 font-mono">
                             <span>PLANTILLA DIGITAL ORIGINAL ({tpl.industry.toUpperCase()})</span>
