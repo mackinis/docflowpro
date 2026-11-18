@@ -1757,11 +1757,8 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
                   {digitalTemplates.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
                 </select>
                 <span className="block mt-1 text-[11px] font-normal text-slate-500">Al seleccionar una plantilla se interpretan sus campos amarillos y se generan requisitos editables en Descripción / Objetivo. Revisá los marcados [REVISAR].</span>
-                {reviewSaveStatus==='saving' && <span className="text-xs text-indigo-600">Guardando...</span>}
-                {reviewSaveStatus==='saved' && <span className="text-xs text-emerald-700">· Cambios guardados</span>}
-                {reviewSaveStatus==='error' && <span className="text-xs text-red-700">· Error al guardar</span>}
                 {importingFields && <span className="text-xs text-indigo-600">Analizando campos de la plantilla...</span>}
-                {!!importedFieldMap.length && <span className="text-xs text-emerald-700">{importedFieldMap.length} campos importados · {countVisibleReviews()} para revisar</span>}
+                {!!importedFieldMap.length && <span className="text-xs text-emerald-700">· {importedFieldMap.length} campos importados · {countVisibleReviews()} para revisar{reviewSaveStatus==='saving' && <span className="text-indigo-600"> · Guardando...</span>}{reviewSaveStatus==='saved' && <span className="text-emerald-700"> · Cambios guardados</span>}{reviewSaveStatus==='error' && <span className="text-red-700"> · Error al guardar</span>}</span>}
               </label>
               <label className="block text-xs font-bold text-slate-700">Nombre del Proceso *
                 <input required value={manualName} onChange={e => setManualName(e.target.value)} placeholder="Ej.: Reserva de contrato de locación" className="mt-1 w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg"/>
