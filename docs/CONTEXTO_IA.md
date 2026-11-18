@@ -66,3 +66,9 @@ DocFlow Pro: aplicación de gestión documental y expedientes/legajos con planti
 - **Cambio:** `normalizeInlineMarkers` actualiza badges y `data-marker` consecutivamente en `onInput` y `onBlur`, mantiene `data-origin` y `inlineOrigins` para preservar la identidad del mapa de actores/etiquetas hasta guardar; `saveInlineDocument` asocia cada campo normalizado a su identidad anterior. El mapa sigue oculto al usuario. No se agregaron botones ni ventanas.
 - **Advertencia:** no se ejecutaron compilación ni pruebas funcionales; comprobar borrar primero/intermedio, insertar campo, guardar y reabrir, y que actor/etiqueta no se desplacen. Revisar también efectos en procesos ya creados antes de editar la plantilla.
 - **Regla de oro / continuidad:** consultar esta bitácora y commits antes de modificar; preservar lo que funciona y dejar decisiones y riesgos en cada intervención.
+
+### 2026-11-18 — Visor digitalizado: ancho completo del marco exterior (`cca828d`)
+- **Pedido:** eliminar el panel/recuadro interior angosto del documento, conservar el marco exterior y ensanchar el contenido, la línea divisoria y los textos del pie hacia los extremos. Mantener el botón verde de aprobación en el mismo flujo/posición vertical y no tocar funcionalidad.
+- **Implementación:** en `src/components/TemplatesManager.tsx`, la envoltura externa mantiene borde, fondo y padding; el panel interior pierde `max-w-2xl`, fondo, borde, sombra y padding propio, pasando a `w-full min-w-0 flex flex-col justify-between`. Encabezado, editor, aprobación y pie comparten el nuevo ancho. No se cambiaron sus handlers.
+- **Validación pendiente:** comprobar visualmente en navegador y tamaños de pantalla, y que el despliegue incorpore el commit; no se ejecutaron pruebas ni se confirmó producción.
+- **Regla de oro / breadcrumb:** leer esta bitácora y commits anteriores antes de actuar; preservar lo existente y registrar decisiones, riesgos y verificaciones pendientes.
