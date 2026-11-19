@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { invalidateCachedJson } from '../utils/requestCache';
 import { fetchStartupEndpoint, startupHttpError } from '../services/startupRequests';
+import { performSyncOperation } from '../services/syncOperation';
 import { useAppTheme } from './useAppTheme';
 import type { AppDataState, User, ProcessTemplate, Participant } from '../types';
 
@@ -107,29 +108,8 @@ export function useAppController() {
   // Sync state helper wrapper
   const syncOperation = async (url: string, options: RequestInit, successMsg?: string) => {
     try {
-      const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
-      const headers: Record<string, string> = {
-        ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
-        ...((options.headers as Record<string, string>) || {})
-      };
-
-      const response = await fetch(url, {
-        ...options,
-        credentials: 'include',
-        headers
-      });
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || 'Ocurrió un error en el servidor.');
-      }
-      
-      // Reload state after success to capture audit logs & notifications
-      invalidateCachedJson('statistics:');
-      await loadState(true);
-      
-      if (successMsg) {
-        setOperationNotice(successMsg);
-      }
+      await performSyncOperation(url, options, () => loadState(true));
+      if (successMsg) setOperationNotice(successMsg);
     } catch (err: any) {
       console.error(err);
       setOperationNotice(`Error en la operación: ${err.message}`);
