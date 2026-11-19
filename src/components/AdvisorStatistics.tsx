@@ -27,6 +27,6 @@ export default function AdvisorStatistics() {
       {!loading && rows.length === 0 && <p className="p-4 text-slate-500">No hay asesores para mostrar.</p>}
     </div>}
     {loading && <p className="text-sm text-slate-500">Consultando estadísticas…</p>}
-    <p className="text-xs text-slate-500">Índice orientativo, no evaluación laboral definitiva. Fórmula: 60% finalizados frente a finalizados + observados, 25% ausencia de documentos rechazados por legajo y 15% ausencia de legajos observados. Sin legajos resueltos no se asigna nota. Las observaciones pueden depender de terceros y requieren revisión humana.</p>
+    <p className="text-xs text-slate-500">Índice orientativo, no evaluación laboral definitiva. Fórmula: promedio por legajo con evidencia de 100 × documentos aprobados / (aprobados + rechazados + observaciones históricas). Finalizar un legajo no suma puntos. Sin evidencia documental no se asigna nota. Las observaciones pueden depender de terceros y requieren revisión humana.</p>
   </section>;
 }
