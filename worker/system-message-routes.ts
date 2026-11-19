@@ -1,6 +1,6 @@
 import type { Hono } from 'hono';
 import type { Env, AppVariables } from './types';
-import { createAudit } from './db';
+import { createAudit, getSystemConfigValue, DEFAULT_SYSTEM_SETTINGS } from './db';
 import { sanitizeFileName, guessMimeType, decodeDataUrl } from './document-parser';
 
 type WorkerApp = Hono<{ Bindings: Env; Variables: AppVariables }>;
