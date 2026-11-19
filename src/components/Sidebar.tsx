@@ -205,9 +205,12 @@ export default function Sidebar({
             {!isCollapsed && <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${showUserDropdown ? 'rotate-180' : ''}`} />}
           </button>
         ) : (
-          <div
-            className={`flex items-center ${isCollapsed ? 'justify-center p-1 bg-transparent border-0' : 'w-full p-2.5 rounded-lg bg-slate-800/40 border border-slate-700/20'} transition-all text-left`}
-            title={isCollapsed ? `${currentUser.name} (${currentUser.role})` : undefined}
+          <button
+            type="button"
+            onClick={() => { setActiveTab('profile'); onCloseMobileSidebar?.(); }}
+            aria-label={`Abrir mi perfil: ${currentUser.name} ${currentUser.lastName}`}
+            className={`flex items-center ${isCollapsed ? 'justify-center p-1 bg-transparent border-0' : 'w-full p-2.5 rounded-lg bg-slate-800/40 border border-slate-700/20'} hover:bg-slate-700/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-400 transition-all text-left cursor-pointer`}
+            title={isCollapsed ? `Mi perfil: ${currentUser.name} (${currentUser.role})` : 'Abrir mi perfil'}
           >
             <div className="flex items-center gap-3">
               <img 
@@ -231,7 +234,7 @@ export default function Sidebar({
                 </div>
               )}
             </div>
-          </div>
+          </button>
         )}
 
         {(realUser?.role === 'SUPERADMIN' || currentUser.role === 'SUPERADMIN') && showUserDropdown && (
