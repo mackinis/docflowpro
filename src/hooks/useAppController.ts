@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigationAudit } from './useNavigationAudit';
 import { invalidateCachedJson } from '../utils/requestCache';
 import { fetchStartupEndpoint, startupHttpError } from '../services/startupRequests';
 import { performSyncOperation } from '../services/syncOperation';
@@ -33,15 +34,7 @@ export function useAppController() {
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [activeCaseId, setActiveCaseId] = useState<string | null>(null);
 
-  // Record navigation without collecting form values or sensitive URL parameters.
-  useEffect(() => {
-    if (!currentUser || !state) return;
-    void fetch('/api/audit/navigation', {
-      method: 'POST', credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tab: activeTab, caseId: activeCaseId })
-    }).catch(() => {});
-  }, [activeTab, activeCaseId, currentUser?.id]);
+  useNavigationAudit(Boolean(currentUser && state), activeTab, activeCaseId, currentUser?.id);
 
   // Load backend state via Cloudflare Worker session cookie
   const loadState = async (refreshOnly = false) => {
