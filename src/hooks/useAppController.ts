@@ -3,6 +3,40 @@ import { invalidateCachedJson } from '../utils/requestCache';
 import { useAppTheme } from './useAppTheme';
 import type { AppDataState, User, ProcessTemplate, Participant } from '../types';
 
+// Startup requests are safe GETs. Retry only transient failures; never retry auth errors.
+const STARTUP_RETRY_STATUSES = new Set([429, 502, 503, 504]);
+
+async function fetchStartupEndpoint(path: string): Promise<Response> {
+  const maxAttempts = 5;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      const response = await fetch(path, {
+        credentials: 'include',
+        cache: 'no-store',
+        signal: AbortSignal.timeout(15000)
+      });
+      if (!STARTUP_RETRY_STATUSES.has(response.status) || attempt === maxAttempts - 1) {
+        return response;
+      }
+      console.warn('Transient startup response', { path, status: response.status, attempt: attempt + 1 });
+    } catch (error) {
+      if (attempt === maxAttempts - 1) throw error;
+      console.warn('Transient startup request failure', { path, attempt: attempt + 1, error });
+    }
+    // Bounded backoff; no retry loop for permanent 4xx failures.
+    await new Promise(resolve => setTimeout(resolve, 1500 * (attempt + 1)));
+  }
+  throw new Error('No se pudo completar la solicitud inicial.');
+}
+
+async function startupHttpError(response: Response, endpoint: string): Promise<Error> {
+  const detail = await response.json().catch(() => ({})) as { error?: string; message?: string };
+  if (detail.error === 'database_initializing') {
+    return new Error('La base de datos todavía no está disponible (HTTP 503). Revisar inicialización D1.');
+  }
+  return new Error(`Error del servidor en ${endpoint} (HTTP ${response.status}): ${detail.message || detail.error || 'sin detalle'}`);
+}
+
 /** Application orchestration: sessions, navigation, mutations and state refreshes. */
 export function useAppController() {
   const [loading, setLoading] = useState(true);
@@ -46,12 +80,9 @@ export function useAppController() {
       setError(null);
       let bootstrapData: { user?: User; realUser?: User; needsSetup?: boolean; turnstileSiteKey?: string; turnstileEnabled?: boolean; publicRegistrationEnabled?: boolean } | null = null;
       if (!refreshOnly) {
-      const bootstrapRes = await fetch('/api/auth/bootstrap-status', {
-        credentials: 'include',
-        signal: AbortSignal.timeout(15000)
-      });
+      const bootstrapRes = await fetchStartupEndpoint('/api/auth/bootstrap-status');
       if (!bootstrapRes.ok) {
-        throw new Error('No se pudo conectar con el servidor Cloudflare Worker.');
+        throw await startupHttpError(bootstrapRes, '/api/auth/bootstrap-status');
       }
       bootstrapData = await bootstrapRes.json();
       setNeedsSetup(Boolean(bootstrapData!.needsSetup));
@@ -70,22 +101,7 @@ export function useAppController() {
       }
 
       }
-      // D1 initialization and transient Cloudflare errors can briefly return 503.
-      // Retry the state request without showing a misleading connection-error page.
-      let response: Response | null = null;
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-          response = await fetch('/api/state', {
-            credentials: 'include',
-            signal: AbortSignal.timeout(25000)
-          });
-          if (response.status !== 503 && response.status !== 502 && response.status !== 504) break;
-        } catch (requestError) {
-          if (attempt === 2) throw requestError;
-        }
-        if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 1200 * (attempt + 1)));
-      }
-      if (!response) throw new Error('No se recibió respuesta del servidor.');
+      const response = await fetchStartupEndpoint('/api/state');
       if (response.status === 401) {
         invalidateCachedJson();
         sessionStorage.removeItem('docflow_user');
@@ -96,8 +112,7 @@ export function useAppController() {
         return;
       }
       if (!response.ok) {
-        const detail = await response.json().catch(() => ({}));
-        throw new Error(detail.error || detail.message || 'No se pudo recuperar el estado del servidor.');
+        throw await startupHttpError(response, '/api/state');
       }
       const data: AppDataState = await response.json();
       setState(data);
