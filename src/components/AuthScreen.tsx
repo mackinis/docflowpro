@@ -415,7 +415,11 @@ export default function AuthScreen({
             <Briefcase className="h-8 w-8 mb-2" aria-hidden="true" />
             <div className="flex flex-col items-stretch gap-1">
               <span className="text-2xl sm:text-[28px] leading-none font-bold tracking-tight whitespace-nowrap">DocFlow Pro</span>
-              <span className="block w-full whitespace-nowrap text-center text-[10px] sm:text-[11px] leading-tight font-mono uppercase tracking-[0.12em]">Gestión Documental</span>
+              <span className="flex w-full items-center justify-between whitespace-nowrap text-[10px] sm:text-[11px] leading-tight font-mono uppercase" aria-label="Gestión Documental">
+                {"GESTIÓN DOCUMENTAL".split("").map((letter, index) => (
+                  <span key={index} aria-hidden="true">{letter === " " ? "\u00a0" : letter}</span>
+                ))}
+              </span>
             </div>
           </div>
           <h1 className="text-3xl sm:text-4xl font-display font-light tracking-tight mt-6 text-white leading-tight">
