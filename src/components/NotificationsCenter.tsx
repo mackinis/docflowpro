@@ -26,6 +26,8 @@ export default function NotificationsCenter({
   onOpenCase
 }: NotificationsCenterProps) {
   const [loading, setLoading] = useState(false);
+  const [markingReadIds, setMarkingReadIds] = useState<string[]>([]);
+  const [confirmedReadIds, setConfirmedReadIds] = useState<string[]>([]);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'unread' | 'read'>('all');
@@ -34,6 +36,7 @@ export default function NotificationsCenter({
   // Filter for the current user only
   const userNotifications = notifications
     .filter(n => n.userId === currentUser.id)
+    .map(n => confirmedReadIds.includes(n.id) ? { ...n, read: true } : n)
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   const filteredUserNotifications = userNotifications.filter(n => {
@@ -43,17 +46,23 @@ export default function NotificationsCenter({
   });
 
   const handleMarkAsRead = async (id: string) => {
+    if (markingReadIds.includes(id) || confirmedReadIds.includes(id)) return;
+    setMarkingReadIds(ids => [...ids, id]);
+    setErrorMsg(null);
     try {
       const res = await fetch(`/api/notifications/${id}/read`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' }
       });
-      if (res.ok) {
-        await loadState();
-      }
-    } catch (err) {
-      console.error('Error marking notification as read:', err);
+      if (!res.ok) throw new Error('No se pudo marcar la notificación como leída.');
+      // Update this notification immediately; the full state refresh may take longer.
+      setConfirmedReadIds(ids => [...ids, id]);
+      void loadState().catch(err => console.error('Error refreshing notifications:', err));
+    } catch (err: any) {
+      setErrorMsg(err.message || 'No se pudo marcar la notificación como leída.');
+    } finally {
+      setMarkingReadIds(ids => ids.filter(value => value !== id));
     }
   };
 
@@ -306,10 +315,12 @@ export default function NotificationsCenter({
                     {!n.read && (
                       <button
                         onClick={() => handleMarkAsRead(n.id)}
-                        className="text-[10px] font-extrabold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer"
+                        disabled={markingReadIds.includes(n.id)}
+                        aria-busy={markingReadIds.includes(n.id)}
+                        className="text-[10px] font-extrabold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <Check className="w-3.5 h-3.5" />
-                        Marcar como leído
+                        {markingReadIds.includes(n.id) ? 'Marcando como leído...' : 'Marcar como leído'}
                       </button>
                     )}
 
