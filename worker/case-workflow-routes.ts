@@ -6,7 +6,7 @@ type WorkerApp = Hono<{ Bindings: Env; Variables: AppVariables }>;
 type AppContext = Context<{ Bindings: Env; Variables: AppVariables }>;
 
 /** Case tasks, observations, forms, immutable audit and case history routes. */
-export function registerCaseWorkflowRoutes(app: WorkerApp) {
+export function registerCaseWorkflowRoutes(app: WorkerApp, registerNotificationRoutes: (app: WorkerApp) => void) {
 // ============================================================================
 // 10. Tasks, Observations, Forms, Notifications, Audit Logs
 // ============================================================================
@@ -269,6 +269,8 @@ app.get('/api/forms/:requirementId', async (c) => {
 });
 
 
+
+registerNotificationRoutes(app);
 
 // Per-legajo chronology: read-only and scoped to the assigned advisor or supervising roles.
 app.get('/api/cases/:id/history', async (c) => {
