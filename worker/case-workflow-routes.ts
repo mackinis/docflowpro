@@ -268,7 +268,7 @@ app.get('/api/forms/:requirementId', async (c) => {
   });
 });
 
-registerNotificationRoutes(app);
+
 
 // Per-legajo chronology: read-only and scoped to the assigned advisor or supervising roles.
 app.get('/api/cases/:id/history', async (c) => {
