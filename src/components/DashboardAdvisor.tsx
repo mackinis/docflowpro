@@ -37,7 +37,6 @@ export default function DashboardAdvisor({
   const myCasesIds = myCases.map(c => c.id);
 
   // Stats
-  const activeCasesCount = myCases.filter(c => c.status === 'active' || c.status === 'pending_review').length;
   const observedCount = myCases.filter(c => c.status === 'observed').length;
   
   // Pending tasks for my cases
@@ -60,11 +59,19 @@ export default function DashboardAdvisor({
     setResponseComment('');
   };
 
-  const eligible = myCases.filter(c => c.status === 'completed' || c.status === 'observed');
-  const score = eligible.length ? Math.round(100 * eligible.filter(c => c.status === 'completed').length / eligible.length) : null;
+  // Historical quality: resolved observations remain counted. Do not equate completion with quality.
+  const assessedCases = myCases.filter(c => documents.some(d => d.caseId === c.id && (d.status === 'approved' || d.status === 'rejected')) || observations.some(o => o.caseId === c.id));
+  const caseScores = assessedCases.map(c => {
+    const caseDocs = documents.filter(d => d.caseId === c.id);
+    const approved = caseDocs.filter(d => d.status === 'approved').length;
+    const rejected = caseDocs.filter(d => d.status === 'rejected').length;
+    const historicalObservations = observations.filter(o => o.caseId === c.id).length;
+    const denominator = approved + rejected + historicalObservations;
+    return denominator ? (100 * approved / denominator) : null;
+  }).filter((value): value is number => value !== null);
+  const score = caseScores.length ? Math.round(caseScores.reduce((sum, value) => sum + value, 0) / caseScores.length) : null;
   const grade = score === null ? 'Sin datos' : score >= 95 ? 'Excelente' : score >= 85 ? 'Muy bueno' : score >= 70 ? 'Bueno' : score >= 55 ? 'Regular' : score >= 35 ? 'Deficiente' : 'Crítico';
-  // Indicador provisional: proporción de finalizados entre finalizados y observados.
-  // No equivale a una evaluación individual auditada.
+  // Historical proxy based on persisted documents and observations, not a complete event audit.
   return (
     <div className="space-y-6">
       {/* Upper header */}
@@ -80,26 +87,7 @@ export default function DashboardAdvisor({
       </div>
 
       {/* Stats Bento */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between group hover:border-slate-300 transition-all">
-          <div className="space-y-1">
-            <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Mis Legajos</span>
-            <p className="text-3xl font-bold text-slate-800">{myCases.length}</p>
-          </div>
-          <div className="p-3 bg-blue-50 text-blue-600 rounded-xl group-hover:scale-110 transition-transform">
-            <FileText className="w-6 h-6" />
-          </div>
-        </div>
-
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between group hover:border-slate-300 transition-all">
-          <div className="space-y-1">
-            <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Casos Activos</span>
-            <p className="text-3xl font-bold text-slate-800">{activeCasesCount}</p>
-          </div>
-          <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl group-hover:scale-110 transition-transform">
-            <Clock className="w-6 h-6" />
-          </div>
-        </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
 
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
           <div className="space-y-1">
@@ -130,7 +118,7 @@ export default function DashboardAdvisor({
         </div>
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between gap-2 group hover:border-slate-300 transition-all">
           <div className="space-y-1">
-            <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Desempeño</span>
+            <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Calidad histórica</span>
             <p className="text-3xl font-bold text-slate-800">{score === null ? '—' : score + '%'}</p>
             <p className="text-xs font-semibold text-indigo-700">{grade}</p>
           </div>
