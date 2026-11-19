@@ -732,8 +732,9 @@ export default function CaseDetail({
     <div className="space-y-6">
       {previewDoc && <DocumentPreviewViewer document={previewDoc} onClose={closePreview} />}
       <CaseHistoryPanel caseId={caseObj.id} createdAt={caseObj.createdAt} status={caseObj.status} />
-      {/* Back button & top title */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
+      {/* Unified case identity and process progress */}
+      <section className="rounded-2xl border border-slate-200 bg-white shadow-xs px-4 py-4 sm:px-5" aria-label="Información del legajo y etapas del proceso">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <button 
             onClick={onBack} 
@@ -778,8 +779,8 @@ export default function CaseDetail({
         </div>
       </div>
 
-      {/* Compact stage overview, preserving every stage name and description. */}
-      <section className="bg-white px-4 py-3 sm:px-5 rounded-2xl border border-slate-200/80 shadow-xs" aria-label="Etapas del proceso">
+      {/* Stage progress remains dynamic for single- and multi-stage templates. */}
+      <div className="mt-3 border-t border-slate-100 pt-3" aria-label="Etapas del proceso">
         <div className="flex items-center justify-between gap-3 mb-2">
           <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-mono">Etapas del proceso</h3>
           <span className="text-[10px] text-slate-400 font-medium">{Math.min(caseObj.currentStageIndex + 1, template?.stages.length || 1)} de {template?.stages.length || 1}</span>
@@ -802,6 +803,7 @@ export default function CaseDetail({
             );
           })}
         </div>
+      </div>
       </section>
 
       {reopenModal && (
