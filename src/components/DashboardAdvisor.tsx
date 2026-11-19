@@ -8,7 +8,6 @@ import {
   Activity, 
   ClipboardList,
   Upload,
-  UserCheck,
   ArrowRight
 } from 'lucide-react';
 import { Case, Document, Task, Observation, AppDataState, User } from '../types';
@@ -74,9 +73,9 @@ export default function DashboardAdvisor({
           <h2 className="text-2xl font-display font-bold text-slate-800 tracking-tight">Mi Panel de Asesor</h2>
           <p className="text-sm text-slate-500">Gestión ágil de legajos, checklists y observaciones del equipo.</p>
         </div>
-        <div className="flex items-center gap-2 px-3.5 py-1.5 bg-blue-50 border border-blue-100 rounded-lg text-xs font-semibold text-blue-700">
-          <UserCheck className="w-4 h-4" />
-          <span>{currentUser.name} {currentUser.lastName || ''} (Asesor)</span>
+        <div className="flex items-center gap-2 px-3.5 py-1.5 bg-indigo-50 border border-indigo-100 rounded-lg text-xs font-semibold text-indigo-700">
+          <Activity className="w-4 h-4" />
+          <span>Sincronizado</span>
         </div>
       </div>
 

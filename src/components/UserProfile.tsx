@@ -70,7 +70,7 @@ export default function UserProfile({
   // User Management States
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [canCreateAccounts, setCanCreateAccounts] = useState(currentUser.role === 'SUPERADMIN');
-  const [newAccount, setNewAccount] = useState({ name: '', lastName: '', email: '', password: '', role: 'ASESOR' });
+  const [newAccount, setNewAccount] = useState({ name: '', lastName: '', email: '', password: '', role: 'ASESOR', avatar: PRESET_AVATARS[0]?.url || '' });
   React.useEffect(() => {
     if (currentUser.role === 'SUPERADMIN') return;
     if (currentUser.role !== 'ADMIN') { setCanCreateAccounts(false); return; }
@@ -99,7 +99,7 @@ export default function UserProfile({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Check if current user is allowed to manage other users
-  const canManageUsers = ['SUPERADMIN', 'ADMIN', 'MANAGER'].includes(currentUser.role);
+  const canManageUsers = ['SUPERADMIN', 'ADMIN'].includes(currentUser.role);
 
   // Check if current user is allowed to edit sensitive data of a target user based on hierarchy:
   // "solo el superadmin modifica datos sensibles de los admins, speradmins"
@@ -387,7 +387,7 @@ export default function UserProfile({
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 pb-5">
         <div>
           <h1 className="font-display font-bold text-2xl text-slate-800 tracking-tight">
-            Usuarios y Permisos
+            {canManageUsers ? 'Usuarios y Permisos' : 'Mi Perfil'}
           </h1>
           <p className="text-sm text-slate-500">
             Administra tus credenciales personales, datos de contacto y cuentas de usuarios en la plataforma.
@@ -434,7 +434,7 @@ export default function UserProfile({
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'No se pudo crear la cuenta.');
             setSuccessMsg('Cuenta creada, verificada y habilitada para iniciar sesión.');
-            setNewAccount({ name: '', lastName: '', email: '', password: '', role: 'ASESOR' });
+            setNewAccount({ name: '', lastName: '', email: '', password: '', role: 'ASESOR', avatar: PRESET_AVATARS[0]?.url || '' });
             await loadState();
           } catch (err: any) { setErrorMsg(err.message); }
           finally { setLoading(false); }
@@ -461,6 +461,18 @@ export default function UserProfile({
               {currentUser.role === 'SUPERADMIN' && <option value="ADMIN">Administrador</option>}
             </select>
           </label>
+          <fieldset className="space-y-2">
+            <legend className="text-xs font-semibold text-slate-700">Imagen de perfil del nuevo usuario</legend>
+            <div className="flex flex-wrap gap-2">
+              {PRESET_AVATARS.map(item => (
+                <button type="button" key={item.url} title={item.name} aria-label={`Seleccionar avatar ${item.name}`} aria-pressed={newAccount.avatar === item.url}
+                  onClick={() => setNewAccount(value => ({ ...value, avatar: item.url }))}
+                  className={`w-12 h-12 rounded-full overflow-hidden border-2 transition-all ${newAccount.avatar === item.url ? 'border-indigo-600 ring-2 ring-indigo-200' : 'border-slate-200 hover:border-indigo-300'}`}>
+                  <img src={item.url} alt={item.name} className="w-full h-full object-cover" />
+                </button>
+              ))}
+            </div>
+          </fieldset>
           <button disabled={loading} className="rounded-xl bg-indigo-600 px-4 py-2 text-white text-sm font-bold disabled:opacity-50">Crear y habilitar usuario</button>
         </form>
       )}

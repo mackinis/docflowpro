@@ -715,7 +715,7 @@ export default function App() {
                   />
                 )}
 
-                {activeTab === 'profile' && ['SUPERADMIN', 'ADMIN'].includes(currentUser.role) && (
+                {activeTab === 'profile' && (realUser?.role !== 'SUPERADMIN' || currentUser.role === 'SUPERADMIN') && (
                   <UserProfile
                     currentUser={currentUser}
                     state={state}
