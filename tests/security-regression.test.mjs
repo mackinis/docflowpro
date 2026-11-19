@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 const caseWorkflow = readFileSync(new URL('../worker/case-workflow-routes.ts', import.meta.url), 'utf8');
 const worker = readFileSync(new URL('../worker/index.ts', import.meta.url), 'utf8');
 const coreRoutes = readFileSync(new URL('../worker/core-routes.ts', import.meta.url), 'utf8');
+const configAdmin = readFileSync(new URL('../worker/config-admin-routes.ts', import.meta.url), 'utf8');
 const ai = readFileSync(new URL('../worker/ai.ts', import.meta.url), 'utf8');
 const ui = readFileSync(new URL('../src/components/SystemSettings.tsx', import.meta.url), 'utf8');
 const wrangler = readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
@@ -22,7 +23,8 @@ test('legacy AI endpoints remain protected by RBAC', () => {
   assert.match(worker, /app\.use\('\/api\/ai\/\*', enforceAiRbac\)/);
   assert.match(worker, /app\.use\('\/api\/gemini\/\*', enforceAiRbac\)/);
   assert.match(worker, /settings\.aiAllowedRoles/);
-  assert.match(worker, /Configure Agente IA desde su sección específica/);
+  assert.match(configAdmin, /Configure Agente IA desde su sección específica/);
+  assert.match(worker, /registerConfigAdminRoutes\(app, dispatchQueueJob\)/);
 });
 
 test('model selection is applied to actual inference', () => {
