@@ -3156,6 +3156,7 @@ app.post('/api/documents/:id/review', handleDocumentReview);
 app.put('/api/documents/:id/review', handleDocumentReview);
 
 registerCaseWorkflowRoutes(app);
+registerNotificationRoutes(app);
 
 // ============================================================================
 // 11. Cloudflare Workers AI Endpoints (Replaces Gemini 100%)
