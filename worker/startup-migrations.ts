@@ -18,8 +18,8 @@ export async function ensureDatabaseReady(db: D1Database): Promise<void> {
         // to avoid PRAGMA restrictions and make partial initializations retryable.
         const statements = migration.sql
           .split(';')
-          .map((part) => part.split('\\n').filter((line) => !/^\\s*--/.test(line)).join('\\n').trim())
-          .filter((statement) => statement && !/^PRAGMA\\s+foreign_keys\\s*=/i.test(statement));
+          .map((part) => part.split('\n').filter((line) => !/^\s*--/.test(line)).join('\n').trim())
+          .filter((statement) => statement && !/^PRAGMA\s+foreign_keys\s*=/i.test(statement));
         for (const statement of statements) {
           await db.prepare(statement).run();
         }
