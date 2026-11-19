@@ -7,6 +7,7 @@ const ai = readFileSync(new URL('../worker/ai.ts', import.meta.url), 'utf8');
 const ui = readFileSync(new URL('../src/components/SystemSettings.tsx', import.meta.url), 'utf8');
 const wrangler = readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
 const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
+const appController = readFileSync(new URL('../src/hooks/useAppController.ts', import.meta.url), 'utf8');
 
 test('AI model configuration requires server-side authorization', () => {
   assert.match(worker, /app\.post\('\/api\/ai\/settings'/);
@@ -30,7 +31,8 @@ test('model selection is applied to actual inference', () => {
 test('navigation and API requests are logged without storing request bodies', () => {
   assert.match(worker, /app\.post\('\/api\/audit\/navigation'/);
   assert.match(worker, /'ApiRequest'/);
-  assert.match(app, /fetch\('\/api\/audit\/navigation'/);
+  assert.match(app, /useAppController\(\)/);
+  assert.match(appController, /fetch\('\/api\/audit\/navigation'/);
   assert.doesNotMatch(worker.match(/\/\/ Audit every authenticated API request[\s\S]*?app\.post\('\/api\/audit\/navigation'/)?.[0] || '', /c\.req\.json\(/);
 });
 
