@@ -1,21 +1,21 @@
 import React from 'react';
 import { invalidateCachedJson } from '../utils/requestCache';
 import { AppLoadingScreen, AppConnectionError, WorkspaceHeader } from './AppShell';
-import Sidebar from './components/Sidebar';
-import DashboardManager from './components/DashboardManager';
-import DashboardAdvisor from './components/DashboardAdvisor';
-import CasesList from './components/CasesList';
-import CaseDetail from './components/CaseDetail';
-import TemplatesManager from './components/TemplatesManager';
-import Confecciones from './components/Confecciones';
-import AuditLogs from './components/AuditLogs';
-import AdvisorStatistics from './components/AdvisorStatistics';
-import AuthScreen from './components/AuthScreen';
-import UserProfile from './components/UserProfile';
-import SystemSettings from './components/SystemSettings';
-import NotificationsCenter from './components/NotificationsCenter';
-import MessagesCenter from './components/MessagesCenter';
-import SharedDocumentsManager from './components/SharedDocumentsManager';
+import Sidebar from './Sidebar';
+import DashboardManager from './DashboardManager';
+import DashboardAdvisor from './DashboardAdvisor';
+import CasesList from './CasesList';
+import CaseDetail from './CaseDetail';
+import TemplatesManager from './TemplatesManager';
+import Confecciones from './Confecciones';
+import AuditLogs from './AuditLogs';
+import AdvisorStatistics from './AdvisorStatistics';
+import AuthScreen from './AuthScreen';
+import UserProfile from './UserProfile';
+import SystemSettings from './SystemSettings';
+import NotificationsCenter from './NotificationsCenter';
+import MessagesCenter from './MessagesCenter';
+import SharedDocumentsManager from './SharedDocumentsManager';
 
 import type { useAppController } from '../hooks/useAppController';
 
