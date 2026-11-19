@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { invalidateCachedJson } from '../utils/requestCache';
 import { fetchStartupEndpoint, startupHttpError } from '../services/startupRequests';
 import { performSyncOperation } from '../services/syncOperation';
+import { uploadDocumentWithProgress } from '../services/documentUpload';
 import { useAppTheme } from './useAppTheme';
 import type { AppDataState, User, ProcessTemplate, Participant } from '../types';
 
@@ -175,29 +176,7 @@ export function useAppController() {
       formData.append('requirementId', reqId);
       formData.append('name', reqName);
       formData.append('file', file);
-      // XMLHttpRequest permite medir bytes realmente enviados; fetch no expone progreso de subida.
-      await new Promise<void>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', '/api/documents/upload');
-        xhr.withCredentials = true;
-        xhr.upload.onprogress = (event) => {
-          if (event.lengthComputable && event.total > 0) {
-            onProgress?.(Math.min(100, Math.floor((event.loaded / event.total) * 100)), event.loaded, event.total);
-          }
-        };
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            resolve();
-          } else {
-            let message = 'No se pudo guardar el archivo.';
-            try { message = JSON.parse(xhr.responseText).error || message; } catch {}
-            reject(new Error(message));
-          }
-        };
-        xhr.onerror = () => reject(new Error('Falló la conexión durante la subida.'));
-        xhr.onabort = () => reject(new Error('Se canceló la subida.'));
-        xhr.send(formData);
-      });
+      await uploadDocumentWithProgress(formData, onProgress);
       await loadState();
     } else {
       await syncOperation('/api/documents/upload', {
