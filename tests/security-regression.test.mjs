@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
+const caseWorkflow = readFileSync(new URL('../worker/case-workflow-routes.ts', import.meta.url), 'utf8');
 const worker = readFileSync(new URL('../worker/index.ts', import.meta.url), 'utf8');
 const ai = readFileSync(new URL('../worker/ai.ts', import.meta.url), 'utf8');
 const ui = readFileSync(new URL('../src/components/SystemSettings.tsx', import.meta.url), 'utf8');
@@ -49,10 +50,10 @@ test('AI configuration has a dedicated tab', () => {
 });
 
 test('clients cannot forge forensic audit events', () => {
-  assert.match(worker, /app\.post\('\/api\/audit-logs\/log', \(c\) => c\.json\(\{ error: 'Los registros de auditoría se generan exclusivamente en el servidor\.' \}, 403\)\)/);
+  assert.match(caseWorkflow, /app\.post\('\/api\/audit-logs\/log', \(c\) => c\.json\(\{ error: 'Los registros de auditoría se generan exclusivamente en el servidor\.' \}, 403\)\)/);
 });
 
 test('forensic audit browsing is restricted and paginated', () => {
-  assert.match(worker, /auth\.realUser\.role !== 'ADMIN'/);
-  assert.match(worker, /LIMIT \? OFFSET \?/);
+  assert.match(caseWorkflow, /auth\.realUser\.role !== 'ADMIN'/);
+  assert.match(caseWorkflow, /LIMIT \? OFFSET \?/);
 });
