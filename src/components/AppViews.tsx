@@ -229,3 +229,4 @@ export default function AppViews(props: { controller: Controller }) {
       </main>
     </div>
   );
+}
