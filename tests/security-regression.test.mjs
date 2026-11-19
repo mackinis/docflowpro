@@ -12,6 +12,7 @@ const ui = readFileSync(new URL('../src/components/SystemSettings.tsx', import.m
 const wrangler = readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
 const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
 const appController = readFileSync(new URL('../src/hooks/useAppController.ts', import.meta.url), 'utf8');
+const navigationAudit = readFileSync(new URL('../src/hooks/useNavigationAudit.ts', import.meta.url), 'utf8');
 
 test('AI model configuration requires server-side authorization', () => {
   assert.match(accessAiSettings, /app\.post\('\/api\/ai\/settings'/);
@@ -40,7 +41,10 @@ test('navigation and API requests are logged without storing request bodies', ()
   assert.ok(worker.indexOf("app.use('/api/*'") < worker.indexOf('registerCoreRoutes(app)'), 'Core routes must register after API authentication middleware');
   assert.match(worker, /'ApiRequest'/);
   assert.match(app, /useAppController\(\)/);
-  assert.match(appController, /fetch\('\/api\/audit\/navigation'/);
+  assert.match(appController, /useNavigationAudit\(Boolean\(currentUser && state\), activeTab, activeCaseId, currentUser\?\.id\)/);
+  assert.match(navigationAudit, /fetch\('\/api\/audit\/navigation'/);
+  assert.match(navigationAudit, /credentials: 'include'/);
+  assert.match(navigationAudit, /JSON\.stringify\(\{ tab, caseId \}\)/);
   assert.doesNotMatch(worker.match(/\/\/ Audit every authenticated API request[\s\S]*?registerCoreRoutes\(app\)/)?.[0] || '', /c\.req\.json\(/);
 });
 
