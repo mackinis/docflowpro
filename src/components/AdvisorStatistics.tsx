@@ -17,7 +17,7 @@ export default function AdvisorStatistics() {
   useEffect(() => { void load(); }, []);
   return <section className="space-y-5">
     <div className="flex items-center justify-between gap-3">
-      <div><h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2"><Activity className="w-6 h-6 text-indigo-600" /> Estadísticas de Asesores</h2><p className="text-sm text-slate-500">Seguimiento por asesor basado en legajos registrados.</p></div>
+      <div><h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2"><Activity className="w-6 h-6 text-indigo-600" /> Estadísticas de Asesores</h2><p className="text-sm text-slate-500">Calidad histórica del trabajo documental: se consideran rechazos y observaciones durante el proceso, incluso después de finalizar el legajo.</p></div>
       <button type="button" onClick={() => void load(true)} disabled={loading} className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm flex gap-2 items-center disabled:opacity-50"><RefreshCw className="w-4 h-4" /> Actualizar</button>
     </div>
     {error && <p role="alert" className="text-red-700 bg-red-50 rounded-xl p-4">{error}</p>}
