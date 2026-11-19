@@ -79,3 +79,11 @@ DocFlow Pro: aplicación de gestión documental y expedientes/legajos con planti
 - **Invariantes:** no modificar marcadores, numeración, metadatos, guardado, mapa de campos, flujo de aprobación ni confecciones. La evaluación de color se realiza solo al renderizar.
 - **Pendiente:** validar en navegador que las etiquetas pendientes aparezcan rojas y las confirmadas amarillas; no se verificó despliegue ni pruebas de compilación.
 - **Regla de oro / breadcrumb:** revisar `docs/CONTEXTO_IA.md` y commits antes de intervenir, registrar cambios y preservar lo existente.
+
+### 2026-11-19 — Backend: legajos, participantes, borradores y estadísticas — PR #65
+- Pedido: refactorización profunda por dominios sin cambiar interfaz, API, seguridad ni comportamiento.
+- Estado anterior: PR #64 fusionado; el usuario reportó mejoría en el arranque, no verificación instrumental continua. worker/index.ts tenía 3313 líneas.
+- Cambios: extracción de rutas de legajos, participantes, borradores y estadísticas a worker/case-routes.ts, mismo orden de registro, inyección de dispatchQueueJob y getClientIp. worker/index.ts queda en 2573 líneas.
+- Validación: PR #65 abierto; esperar DocFlow quality gate y Confecciones checks. No afirmar merge ni despliegue sin comprobarlos.
+- Pendientes: extraer Confecciones, documentos, autenticación, usuarios, configuración y servicios D1; verificar arranque y revisar migraciones programadas.
+- Continuidad-IA: docs/CONTEXTO_IA.md.
