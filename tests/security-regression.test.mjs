@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const caseWorkflow = readFileSync(new URL('../worker/case-workflow-routes.ts', import.meta.url), 'utf8');
 const worker = readFileSync(new URL('../worker/index.ts', import.meta.url), 'utf8');
+const coreRoutes = readFileSync(new URL('../worker/core-routes.ts', import.meta.url), 'utf8');
 const ai = readFileSync(new URL('../worker/ai.ts', import.meta.url), 'utf8');
 const ui = readFileSync(new URL('../src/components/SystemSettings.tsx', import.meta.url), 'utf8');
 const wrangler = readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
@@ -30,11 +31,13 @@ test('model selection is applied to actual inference', () => {
 });
 
 test('navigation and API requests are logged without storing request bodies', () => {
-  assert.match(worker, /app\.post\('\/api\/audit\/navigation'/);
+  assert.match(coreRoutes, /app\.post\('\/api\/audit\/navigation'/);
+  assert.match(worker, /registerCoreRoutes\(app\)/);
+  assert.ok(worker.indexOf("app.use('/api/*'") < worker.indexOf('registerCoreRoutes(app)'), 'Core routes must register after API authentication middleware');
   assert.match(worker, /'ApiRequest'/);
   assert.match(app, /useAppController\(\)/);
   assert.match(appController, /fetch\('\/api\/audit\/navigation'/);
-  assert.doesNotMatch(worker.match(/\/\/ Audit every authenticated API request[\s\S]*?app\.post\('\/api\/audit\/navigation'/)?.[0] || '', /c\.req\.json\(/);
+  assert.doesNotMatch(worker.match(/\/\/ Audit every authenticated API request[\s\S]*?registerCoreRoutes\(app\)/)?.[0] || '', /c\.req\.json\(/);
 });
 
 test('forensic audit records are retained without scheduled deletion', () => {
