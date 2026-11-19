@@ -305,6 +305,20 @@ export async function findTemplateOrVirtualById(
   return null;
 }
 
+/** A CAMPO task is complete only when its persisted case field has a non-blank value. */
+export function fieldIdForTask(name: string): string | null {
+  return (name.match(/\\bCAMPO_\\d+\\b/i) || [])[0]?.toUpperCase() || null;
+}
+
+export function isFieldTaskComplete(name: string, values: Iterable<{ field_id: string; value: string | null }>): boolean {
+  const fieldId = fieldIdForTask(name);
+  if (!fieldId) return false;
+  for (const item of values) {
+    if (item.field_id.toUpperCase() === fieldId && typeof item.value === 'string' && item.value.trim().length > 0) return true;
+  }
+  return false;
+}
+
 export async function getAllCases(db: D1Database): Promise<Case[]> {
   const [casesRes, partsRes, valuesRes] = await Promise.all([
     db.prepare('SELECT * FROM cases ORDER BY created_at DESC').all<any>(),
@@ -507,14 +521,14 @@ export async function getFullState(
 
   const filteredUsers = isSuper ? allUsers : allUsers.filter((u) => u.role !== 'SUPERADMIN');
 
-  const tasks: Task[] = (tasksRes.results || []).map((t) => ({
+  const fieldValuesByCase = new Map(cases.map((caseItem) => [caseItem.id, [\n    ...Object.entries(caseItem.generalFieldValues || {}).map(([field_id, value]) => ({ field_id, value })),\n    ...caseItem.participants.flatMap((p) => Object.entries(p.fieldValues || {}).map(([field_id, value]) => ({ field_id, value }))),\n  ]]));\n  const tasks: Task[] = (tasksRes.results || []).map((t) => ({
     id: t.id,
     caseId: t.case_id,
     stageId: t.stage_id,
     requirementId: t.requirement_id,
     name: t.name,
     description: t.description || '',
-    status: t.status as Task['status'],
+    status: fieldIdForTask(t.name) ? (isFieldTaskComplete(t.name, fieldValuesByCase.get(t.case_id) || []) ? 'completed' : 'pending') : t.status as Task['status'],
     completedBy: t.completed_by || undefined,
     completedAt: t.completed_at || undefined,
   }));
@@ -761,7 +775,7 @@ export async function validateStageRequirements(
       }
     } else if (req.type === 'task') {
       const task = tasks.find((t: any) => t.requirement_id === req.id);
-      if (!task || task.status !== 'completed') {
+      if (!task || (fieldIdForTask(req.name) ? !isFieldTaskComplete(req.name, fieldValues) : task.status !== 'completed')) {
         missing.push(`Tarea pendiente: "${req.name}"`);
       }
     } else if (req.type === 'form') {
