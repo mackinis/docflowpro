@@ -11,6 +11,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { Case, Document, Task, Observation, AppDataState, User } from '../types';
+import { calculateAdvisorQuality } from '../utils/dashboardQuality';
 
 interface DashboardAdvisorProps {
   state: AppDataState;
@@ -59,19 +60,7 @@ export default function DashboardAdvisor({
     setResponseComment('');
   };
 
-  // Historical quality: resolved observations remain counted. Do not equate completion with quality.
-  const assessedCases = myCases.filter(c => documents.some(d => d.caseId === c.id && (d.status === 'approved' || d.status === 'rejected')) || observations.some(o => o.caseId === c.id));
-  const caseScores = assessedCases.map(c => {
-    const caseDocs = documents.filter(d => d.caseId === c.id);
-    const approved = caseDocs.filter(d => d.status === 'approved').length;
-    const rejected = caseDocs.filter(d => d.status === 'rejected').length;
-    const historicalObservations = observations.filter(o => o.caseId === c.id).length;
-    const denominator = approved + rejected + historicalObservations;
-    return denominator ? (100 * approved / denominator) : null;
-  }).filter((value): value is number => value !== null);
-  const score = caseScores.length ? Math.round(caseScores.reduce((sum, value) => sum + value, 0) / caseScores.length) : null;
-  const grade = score === null ? 'Sin datos' : score >= 95 ? 'Excelente' : score >= 85 ? 'Muy bueno' : score >= 70 ? 'Bueno' : score >= 55 ? 'Regular' : score >= 35 ? 'Deficiente' : 'Crítico';
-  // Historical proxy based on persisted documents and observations, not a complete event audit.
+  const { score, grade } = calculateAdvisorQuality(myCases, documents, observations);
   return (
     <div className="space-y-6">
       {/* Upper header */}
