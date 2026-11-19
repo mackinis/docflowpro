@@ -4,7 +4,7 @@ import type { User } from '../src/types';
 import { PRESET_AVATARS } from '../src/data';
 import type { Env, AppVariables, QueueJob } from './types';
 import { clearLoginRateLimit, checkLoginRateLimit, generateSecureToken, hashPassword, recordFailedLoginAttempt, sha256Hex, verifyPassword, verifyTurnstileToken } from './crypto';
-import { createAudit, getSystemConfigValue, mapUserRow } from './db';
+import { createAudit, DEFAULT_VERIFICATION_POLICIES, getSystemConfigValue, mapUserRow } from './db';
 
 type WorkerApp = Hono<{ Bindings: Env; Variables: AppVariables }>;
 type AppContext = Context<{ Bindings: Env; Variables: AppVariables }>;
