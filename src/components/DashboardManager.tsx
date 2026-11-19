@@ -30,7 +30,7 @@ export default function DashboardManager({ state, onOpenCase, onQuickReviewDoc }
 
   const totalUploadedDocs = documents.length;
   const approvedDocsCount = documents.filter(d => d.status === 'approved').length;
-  const complianceRate = totalUploadedDocs > 0 ? Math.round((approvedDocsCount / totalUploadedDocs) * 100) : 100;
+  const complianceRate = totalUploadedDocs > 0 ? Math.round((approvedDocsCount / totalUploadedDocs) * 100) : null;
 
   // Active advisors with their case count
   const advisors = users.filter(u => u.role === 'ASESOR');
@@ -137,13 +137,13 @@ export default function DashboardManager({ state, onOpenCase, onQuickReviewDoc }
                 className="stroke-indigo-600 fill-none transition-all duration-1000 ease-out"
                 strokeWidth="12"
                 strokeDasharray={2 * Math.PI * 64}
-                strokeDashoffset={2 * Math.PI * 64 * (1 - complianceRate / 100)}
+                strokeDashoffset={2 * Math.PI * 64 * (1 - (complianceRate ?? 0) / 100)}
                 strokeLinecap="round"
               />
             </svg>
             <div className="text-center">
-              <span className="text-4xl font-display font-extrabold text-slate-800">{complianceRate}%</span>
-              <p className="text-[10px] text-slate-400 font-mono tracking-wider uppercase mt-1">Compliance</p>
+              <span className="text-4xl font-display font-extrabold text-slate-800">{complianceRate === null ? '—' : `${complianceRate}%`}</span>
+              <p className="text-[10px] text-slate-400 font-mono tracking-wider uppercase mt-1">{complianceRate === null ? "Sin datos" : "Documentos actuales"}</p>
             </div>
           </div>
 
