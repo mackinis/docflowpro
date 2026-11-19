@@ -884,3 +884,4 @@ export default function UserProfileView({ controller, currentUser, state, loadSt
       </div>}
     </div>
   );
+}
