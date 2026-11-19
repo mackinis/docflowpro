@@ -3155,8 +3155,7 @@ async function handleDocumentReview(c: AppContext) {
 app.post('/api/documents/:id/review', handleDocumentReview);
 app.put('/api/documents/:id/review', handleDocumentReview);
 
-registerCaseWorkflowRoutes(app);
-registerNotificationRoutes(app);
+registerCaseWorkflowRoutes(app, registerNotificationRoutes);
 
 // ============================================================================
 // 11. Cloudflare Workers AI Endpoints (Replaces Gemini 100%)
