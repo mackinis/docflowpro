@@ -521,7 +521,11 @@ export async function getFullState(
 
   const filteredUsers = isSuper ? allUsers : allUsers.filter((u) => u.role !== 'SUPERADMIN');
 
-  const fieldValuesByCase = new Map(cases.map((caseItem) => [caseItem.id, [\n    ...Object.entries(caseItem.generalFieldValues || {}).map(([field_id, value]) => ({ field_id, value })),\n    ...caseItem.participants.flatMap((p) => Object.entries(p.fieldValues || {}).map(([field_id, value]) => ({ field_id, value }))),\n  ]]));\n  const tasks: Task[] = (tasksRes.results || []).map((t) => ({
+  const fieldValuesByCase = new Map(cases.map((caseItem) => [caseItem.id, [
+    ...Object.entries(caseItem.generalFieldValues || {}).map(([field_id, value]) => ({ field_id, value })),
+    ...caseItem.participants.flatMap((p) => Object.entries(p.fieldValues || {}).map(([field_id, value]) => ({ field_id, value }))),
+  ]]));
+  const tasks: Task[] = (tasksRes.results || []).map((t) => ({
     id: t.id,
     caseId: t.case_id,
     stageId: t.stage_id,
