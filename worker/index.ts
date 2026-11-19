@@ -1,6 +1,6 @@
 import { ensureDatabaseReady } from './startup-migrations';
 import { registerSystemMessageRoutes } from './system-message-routes';
-import { registerTemplateRoutes, saveTemplateInDb, identifyDigitizedFields } from './template-routes';
+import { registerTemplateRoutes, saveTemplateInDb } from './template-routes';
 import { registerSharedDocumentRoutes } from './shared-document-routes';
 import { registerNotificationRoutes } from './notification-routes';
 import { Hono, type Context } from 'hono';
@@ -1232,7 +1232,7 @@ app.post('/api/admin/cleanup-unverified', async (c) => {
 
 registerSystemMessageRoutes(app);
 
-registerTemplateRoutes(app);
+const identifyDigitizedFields = registerTemplateRoutes(app);
 
 // ============================================================================
 // 7. Cases (Expedientes / Legajos) & Participants
