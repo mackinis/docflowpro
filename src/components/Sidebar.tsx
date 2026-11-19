@@ -10,8 +10,6 @@ import {
   Check, 
   ChevronDown, 
   LogOut,
-  Sun,
-  Moon,
   Trash2,
   ChevronLeft,
   ChevronRight,
@@ -69,12 +67,6 @@ export default function Sidebar({
     return () => { cancelled = true; };
   }, [currentUser.id, currentUser.role]);
   
-  // Theme state initialized from sessionStorage
-  const [darkMode, setDarkMode] = useState(() => {
-    const saved = sessionStorage.getItem('docflow_theme');
-    return saved === 'dark';
-  });
-
   // Sidebar collapse state initialized from sessionStorage
   const [isCollapsed, setIsCollapsed] = useState(() => {
     const saved = sessionStorage.getItem('docflow_sidebar_collapsed');
@@ -85,22 +77,6 @@ export default function Sidebar({
   useEffect(() => {
     sessionStorage.setItem('docflow_sidebar_collapsed', String(isCollapsed));
   }, [isCollapsed]);
-
-  // Sync dark mode preference with HTML element class & sessionStorage
-  useEffect(() => {
-    if (darkMode) {
-      document.documentElement.classList.add('dark');
-      sessionStorage.setItem('docflow_theme', 'dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-      sessionStorage.setItem('docflow_theme', 'light');
-    }
-  }, [darkMode]);
-
-  // Toggle theme
-  const toggleTheme = () => {
-    setDarkMode(!darkMode);
-  };
 
   const userNotifications = notifications.filter(n => n.userId === currentUser.id);
   const unreadCount = userNotifications.filter(n => !n.read).length;
@@ -158,9 +134,18 @@ export default function Sidebar({
         />
       )}
 
-      <aside className={`fixed inset-y-0 left-0 lg:static ${isCollapsed ? 'w-20' : 'w-64'} bg-slate-900 text-slate-100 flex flex-col h-screen border-r border-slate-800 shrink-0 select-none transition-all duration-300 z-50 ${
+      <aside className={`fixed inset-y-0 left-0 lg:relative ${isCollapsed ? 'w-20' : 'w-64'} bg-slate-900 text-slate-100 flex flex-col h-screen border-r border-slate-800 shrink-0 select-none transition-all duration-300 z-50 ${
         mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
       }`}>
+      {/* Toggle positioned at the vertical midpoint of the entire sidebar */}
+        {/* Toggle Collapse Button on Sidebar Edge */}
+        <button
+          onClick={() => setIsCollapsed(!isCollapsed)}
+          className="absolute top-1/2 -translate-y-1/2 -right-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 p-1 rounded-full shadow-lg z-50 transition-all hover:scale-110 active:scale-95 cursor-pointer hidden lg:flex items-center justify-center"
+          title={isCollapsed ? "Expandir menú" : "Colapsar menú"}
+        >
+          {isCollapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
+        </button>
       {/* Brand Header */}
       <div className={`p-4 ${isCollapsed ? 'justify-center' : 'p-6 justify-between'} border-b border-slate-800 flex items-center relative min-h-[77px]`}>
         <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'gap-2.5'}`}>
@@ -173,18 +158,11 @@ export default function Sidebar({
                 DocFlow Pro
               </h1>
               <p className="text-[10px] font-mono text-slate-400 tracking-wider uppercase">Gestión Documental</p>
+              <p className="text-[10px] font-mono text-slate-500 whitespace-nowrap mt-1">v2.0.0 · Web Platform</p>
             </div>
           )}
         </div>
         
-        {/* Toggle Collapse Button on Sidebar Edge */}
-        <button
-          onClick={() => setIsCollapsed(!isCollapsed)}
-          className="absolute top-1/2 -translate-y-1/2 -right-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 p-1 rounded-full shadow-lg z-50 transition-all hover:scale-110 active:scale-95 cursor-pointer hidden lg:flex items-center justify-center"
-          title={isCollapsed ? "Expandir menú" : "Colapsar menú"}
-        >
-          {isCollapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
-        </button>
       </div>
 
       {/* Active User Switcher / Simulator Panel */}
@@ -355,20 +333,67 @@ export default function Sidebar({
             {!isCollapsed && "Cerrar Sesión"}
           </button>
           
-          <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'} pt-1`}>
-            {!isCollapsed && <span className="text-[11px] text-slate-500 font-mono">v2.0.0 (Cloudflare)</span>}
-            <button 
-              onClick={toggleTheme} 
-              className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors shrink-0 cursor-pointer"
-              title={darkMode ? "Modo Claro" : "Modo Oscuro"}
-              id="btn-theme-toggle"
-            >
-              {darkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4" />}
-            </button>
-          </div>
+          {!isCollapsed && <div className="pt-2 text-center text-[11px] text-slate-400"><FooterClock /></div>}
         </div>
       </div>
     </aside>
   </>
   );
+}
+
+function formatArgentinaFooterClock(date: Date): string {
+  const parts = new Intl.DateTimeFormat('es-AR', {
+    timeZone: 'America/Argentina/Buenos_Aires', day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+  }).formatToParts(date);
+  const part = (type: string) => parts.find(item => item.type === type)?.value || '';
+  return `· ${part('day')}-${part('month')}-${part('year')} · ${part('hour')}:${part('minute')}:${part('second')} ·`;
+}
+
+/** Clock synchronized to the Worker; never treats the browser clock as authoritative. */
+function FooterClock() {
+  const [timestamp, setTimestamp] = useState<number | null>(null);
+  useEffect(() => {
+    let live = true;
+    let reference: { serverMs: number; monotonicMs: number } | null = null;
+    let ongoing = false;
+    async function synchronize() {
+      if (ongoing) return;
+      ongoing = true;
+      try {
+        const before = performance.now();
+        const response = await fetch('/api/health', { cache: 'no-store' });
+        const after = performance.now();
+        if (!response.ok) throw Error('Reloj del servidor no disponible');
+        const data = await response.json() as { timestamp?: string };
+        const serverMs = Date.parse(data.timestamp || '');
+        if (!Number.isFinite(serverMs)) throw Error('Reloj del servidor inválido');
+        if (live) {
+          reference = { serverMs, monotonicMs: (before + after) / 2 };
+          setTimestamp(serverMs + performance.now() - reference.monotonicMs);
+        }
+      } catch {
+        if (live && !reference) setTimestamp(null);
+      } finally { ongoing = false; }
+    }
+    function update() {
+      if (reference) setTimestamp(reference.serverMs + performance.now() - reference.monotonicMs);
+    }
+    function onVisibility() {
+      if (document.visibilityState === 'visible') void synchronize();
+    }
+    void synchronize();
+    const tick = window.setInterval(update, 1000);
+    const refresh = window.setInterval(() => { void synchronize(); }, 5 * 60 * 1000);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      live = false;
+      window.clearInterval(tick);
+      window.clearInterval(refresh);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, []);
+  return <time aria-label="Fecha y hora del servidor en Argentina" className="font-mono tabular-nums whitespace-nowrap">
+    {timestamp === null ? '· Sincronizando hora ·' : formatArgentinaFooterClock(new Date(timestamp))}
+  </time>;
 }
