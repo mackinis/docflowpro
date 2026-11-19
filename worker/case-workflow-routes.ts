@@ -1,6 +1,6 @@
 import { Hono, type Context } from 'hono';
 import type { Env, AppVariables } from './types';
-import { createAudit, createNotification, getCaseById } from './db';
+import { createAudit, createNotification, fieldIdForTask, getCaseById, isFieldTaskComplete } from './db';
 
 type WorkerApp = Hono<{ Bindings: Env; Variables: AppVariables }>;
 type AppContext = Context<{ Bindings: Env; Variables: AppVariables }>;
@@ -12,7 +12,7 @@ export function registerCaseWorkflowRoutes(app: WorkerApp, registerNotificationR
 // ============================================================================
 app.get('/api/cases/:caseId/tasks', async (c) => {
   const { caseId } = c.req.param();
-  const res = await c.env.DB.prepare('SELECT * FROM tasks WHERE case_id = ?').bind(caseId).all<any>();
+  const [res, valuesRes] = await Promise.all([\n    c.env.DB.prepare('SELECT * FROM tasks WHERE case_id = ?').bind(caseId).all<any>(),\n    c.env.DB.prepare('SELECT field_id, value FROM case_field_values WHERE case_id = ?').bind(caseId).all<any>(),\n  ]);\n  const fieldValues = valuesRes.results || [];
   return c.json(
     (res.results || []).map((t) => ({
       id: t.id,
@@ -21,7 +21,7 @@ app.get('/api/cases/:caseId/tasks', async (c) => {
       requirementId: t.requirement_id,
       name: t.name,
       description: t.description || '',
-      status: t.status,
+      status: fieldIdForTask(t.name) ? (isFieldTaskComplete(t.name, fieldValues) ? 'completed' : 'pending') : t.status,
       completedBy: t.completed_by || undefined,
       completedAt: t.completed_at || undefined,
     }))
@@ -33,7 +33,7 @@ async function handleTaskToggle(c: AppContext) {
   const { id } = c.req.param();
   const { status } = await c.req.json();
   const task = await c.env.DB.prepare('SELECT * FROM tasks WHERE id = ?').bind(id).first<any>();
-  if (!task) return c.json({ error: 'Tarea no encontrada' }, 404);
+  if (!task) return c.json({ error: 'Tarea no encontrada' }, 404);\n  if (fieldIdForTask(task.name)) return c.json({ error: 'Esta tarea se completa automáticamente al guardar el campo correspondiente.' }, 409);
 
   const now = status === 'completed' ? new Date().toISOString() : null;
   const completedBy = status === 'completed' ? auth.user.id : null;
