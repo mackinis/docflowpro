@@ -1,6 +1,6 @@
 import { ensureDatabaseReady } from './startup-migrations';
 import { registerSystemMessageRoutes } from './system-message-routes';
-import { registerTemplateRoutes, saveTemplateInDb } from './template-routes';
+import { registerTemplateRoutes, saveTemplateInDb, identifyDigitizedFields } from './template-routes';
 import { registerSharedDocumentRoutes } from './shared-document-routes';
 import { registerNotificationRoutes } from './notification-routes';
 import { Hono, type Context } from 'hono';
