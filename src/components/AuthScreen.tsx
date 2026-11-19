@@ -411,11 +411,13 @@ export default function AuthScreen({
       <aside className="lg:col-span-5 bg-slate-950 text-white p-8 sm:p-12 flex flex-col items-center justify-center text-center relative overflow-hidden min-h-[300px] lg:min-h-screen">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-black opacity-80" />
         <div className="relative z-10 space-y-4 max-w-sm sm:max-w-md mx-auto flex flex-col items-center justify-center">
-          <div className="flex items-center justify-center gap-3 text-teal-400">
-            <Briefcase className="h-7 w-7 shrink-0" />
-            <div className="flex flex-col items-stretch gap-0.5 text-center">
-              <span className="text-2xl sm:text-[28px] leading-none font-bold tracking-tight">DocFlow Pro</span>
-              <span className="w-full text-[10px] sm:text-[11px] leading-tight font-mono uppercase tracking-[0.08em]">Gestión Documental</span>
+          <div className="flex flex-col items-center text-teal-400">
+            <Briefcase className="h-8 w-8 mb-2" aria-hidden="true" />
+            <div className="flex flex-col items-stretch gap-1">
+              <span className="text-2xl sm:text-[28px] leading-none font-bold tracking-tight whitespace-nowrap">DocFlow Pro</span>
+              <span className="flex w-full justify-between text-[10px] sm:text-[11px] leading-tight font-mono uppercase" aria-label="Gestión Documental">
+                <span>Gestión</span><span>Documental</span>
+              </span>
             </div>
           </div>
           <h1 className="text-3xl sm:text-4xl font-display font-light tracking-tight mt-6 text-white leading-tight">
