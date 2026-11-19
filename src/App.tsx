@@ -1,14 +1,7 @@
 import { invalidateCachedJson } from './utils/requestCache';
 import React, { useState, useEffect } from 'react';
-import { 
-  Loader2, 
-  Sparkles, 
-  Layers, 
-  AlertCircle,
-  Menu,
-  Sun,
-  Moon
-} from 'lucide-react';
+import { AppLoadingScreen, AppConnectionError, WorkspaceHeader } from './components/AppShell';
+import { useAppTheme } from './hooks/useAppTheme';
 import { AppDataState, User, Case, ProcessTemplate, Participant } from './types';
 import Sidebar from './components/Sidebar';
 import DashboardManager from './components/DashboardManager';
@@ -33,11 +26,7 @@ export default function App() {
   
   // Mobile responsive sidebar state
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const [darkMode, setDarkMode] = useState(() => sessionStorage.getItem('docflow_theme') === 'dark');
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', darkMode);
-    sessionStorage.setItem('docflow_theme', darkMode ? 'dark' : 'light');
-  }, [darkMode]);
+  const { darkMode, toggleTheme } = useAppTheme();
   
   // App data state
   const [state, setState] = useState<AppDataState | null>(null);
@@ -507,17 +496,7 @@ export default function App() {
   // Render Loader
   if (loading) {
     return (
-      <div className="fixed inset-0 z-50 grid place-items-center overflow-hidden bg-slate-50" role="status" aria-live="polite" aria-label="Cargando DocFlow Pro">
-        <div className="flex w-full max-w-xl flex-col items-center gap-4 px-6 text-center" style={{ minHeight: 124, justifyContent: 'center' }}>
-          <div className="grid h-12 w-12 shrink-0 place-items-center">
-            <Loader2 className="h-10 w-10 animate-spin text-indigo-600" aria-hidden="true" />
-          </div>
-          <div className="flex min-h-14 w-full flex-col items-center justify-center gap-1">
-            <p className="font-display text-lg font-bold leading-7 text-slate-800">Cargando DocFlow Pro...</p>
-            <p className="max-w-lg text-xs leading-5 text-slate-400">Estableciendo conexión segura con la base de datos de Gestión Documental...</p>
-          </div>
-        </div>
-      </div>
+      <AppLoadingScreen />
     );
   }
 
@@ -546,21 +525,7 @@ export default function App() {
   // Render Connection error
   if (error || !state || !currentUser) {
     return (
-      <div className="h-screen w-screen flex flex-col items-center justify-center bg-slate-50 p-6">
-        <div className="bg-white p-8 rounded-2xl border border-red-100 shadow-xl max-w-md text-center space-y-4">
-          <AlertCircle className="w-14 h-14 text-red-500 mx-auto" />
-          <h2 className="text-xl font-bold text-slate-800">Error de Conexión</h2>
-          <p className="text-sm text-slate-500">
-            {error || 'No se pudo recuperar la información inicial. Compruebe la conexión e intente nuevamente.'}
-          </p>
-          <button 
-            onClick={() => { setLoading(true); void loadState(); }} 
-            className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-xs"
-          >
-            Reintentar Conexión
-          </button>
-        </div>
-      </div>
+      <AppConnectionError error={error} onRetry={() => { setLoading(true); void loadState(); }} />
     );
   }
 
@@ -597,45 +562,7 @@ export default function App() {
       {/* 2. Main content view */}
       <main className="flex-1 flex flex-col h-screen overflow-hidden w-full">
         {/* Workspace banner / navbar info */}
-        <header className="h-14 bg-white border-b border-slate-200/80 px-4 sm:px-8 flex items-center justify-between shrink-0 select-none">
-          <div className="flex items-center gap-3">
-            {/* Hamburger Button for mobile/tablets (< lg) */}
-            <button 
-              onClick={() => setMobileSidebarOpen(true)}
-              className="lg:hidden p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition-colors cursor-pointer"
-              aria-label="Abrir menú"
-              title="Abrir menú"
-            >
-              <Menu className="w-5 h-5" />
-            </button>
-
-            <div className="flex items-center gap-1.5 text-xs text-slate-400">
-              <Layers className="w-4 h-4 text-slate-400" />
-              <span className="hidden sm:inline">Sistema</span>
-              <span className="hidden sm:inline">/</span>
-              <span className="font-semibold text-slate-600 uppercase font-mono tracking-wider">
-                {activeCaseId ? `Detalle Legajo` : activeTab}
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 sm:gap-4">
-            <span className="flex h-2 w-2 relative">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-            </span>
-            <span className="text-[10px] text-slate-400 font-mono tracking-wider uppercase font-semibold">Online database</span>
-            <button
-              onClick={() => setDarkMode(value => !value)}
-              className="ml-1 p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors cursor-pointer"
-              title={darkMode ? "Modo Claro" : "Modo Oscuro"}
-              aria-label={darkMode ? "Modo Claro" : "Modo Oscuro"}
-              id="btn-theme-toggle"
-            >
-              {darkMode ? <Sun className="w-4 h-4 text-amber-500" /> : <Moon className="w-4 h-4" />}
-            </button>
-          </div>
-        </header>
+        <WorkspaceHeader activeTab={activeTab} activeCaseId={activeCaseId} darkMode={darkMode} onOpenMenu={() => setMobileSidebarOpen(true)} onToggleTheme={toggleTheme} />
 
         {/* Dynamic Inner views with responsive paddings */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 bg-slate-50/50">
