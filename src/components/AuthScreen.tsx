@@ -1005,6 +1005,7 @@ export default function AuthScreen({
             </form>
           )}
         </div>
+        </div>
       </main>
     </div>
   );
