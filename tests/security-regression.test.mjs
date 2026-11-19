@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const caseWorkflow = readFileSync(new URL('../worker/case-workflow-routes.ts', import.meta.url), 'utf8');
 const worker = readFileSync(new URL('../worker/index.ts', import.meta.url), 'utf8');
+const accessAiSettings = readFileSync(new URL('../worker/access-ai-settings.ts', import.meta.url), 'utf8');
 const coreRoutes = readFileSync(new URL('../worker/core-routes.ts', import.meta.url), 'utf8');
 const configAdmin = readFileSync(new URL('../worker/config-admin-routes.ts', import.meta.url), 'utf8');
 const ai = readFileSync(new URL('../worker/ai.ts', import.meta.url), 'utf8');
@@ -13,17 +14,18 @@ const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
 const appController = readFileSync(new URL('../src/hooks/useAppController.ts', import.meta.url), 'utf8');
 
 test('AI model configuration requires server-side authorization', () => {
-  assert.match(worker, /app\.post\('\/api\/ai\/settings'/);
-  assert.match(worker, /if \(!canConfigure\) return c\.json\(\{ error: 'No autorizado/);
-  assert.match(worker, /AI_MODELS\.some\(model => model\.id === body\.model\)/);
-  assert.match(worker, /auth\.user\.role === 'SUPERADMIN'/);
+  assert.match(accessAiSettings, /app\.post\('\/api\/ai\/settings'/);
+  assert.match(accessAiSettings, /if \(!canConfigure\) return c\.json\(\{ error: 'No autorizado/);
+  assert.match(accessAiSettings, /AI_MODELS\.some\(model => model\.id === body\.model\)/);
+  assert.match(accessAiSettings, /auth\.user\.role === 'SUPERADMIN'/);
 });
 
 test('legacy AI endpoints remain protected by RBAC', () => {
-  assert.match(worker, /app\.use\('\/api\/ai\/\*', enforceAiRbac\)/);
-  assert.match(worker, /app\.use\('\/api\/gemini\/\*', enforceAiRbac\)/);
-  assert.match(worker, /settings\.aiAllowedRoles/);
+  assert.match(accessAiSettings, /app\.use\('\/api\/ai\/\*', enforceAiRbac\)/);
+  assert.match(accessAiSettings, /app\.use\('\/api\/gemini\/\*', enforceAiRbac\)/);
+  assert.match(accessAiSettings, /settings\.aiAllowedRoles/);
   assert.match(configAdmin, /Configure Agente IA desde su sección específica/);
+  assert.match(worker, /registerAccessAndAiSettings\(app\)/);
   assert.match(worker, /registerConfigAdminRoutes\(app, dispatchQueueJob\)/);
 });
 
