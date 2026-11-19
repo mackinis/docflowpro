@@ -71,6 +71,7 @@ export default function UserProfile({
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [canCreateAccounts, setCanCreateAccounts] = useState(currentUser.role === 'SUPERADMIN');
   const [newAccount, setNewAccount] = useState({ name: '', lastName: '', email: '', password: '', role: 'ASESOR', avatar: PRESET_AVATARS[0]?.url || '' });
+  const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
   React.useEffect(() => {
     if (currentUser.role === 'SUPERADMIN') return;
     if (currentUser.role !== 'ADMIN') { setCanCreateAccounts(false); return; }
@@ -439,7 +440,31 @@ export default function UserProfile({
           } catch (err: any) { setErrorMsg(err.message); }
           finally { setLoading(false); }
         }}>
-          <h3 className="font-bold text-slate-800">Crear usuario habilitado</h3>
+          <div className="relative flex items-start justify-between gap-4">
+            <h3 className="font-bold text-slate-800">Crear usuario habilitado</h3>
+            <div className="relative shrink-0">
+              <button type="button" aria-label="Elegir imagen de perfil del nuevo usuario" aria-expanded={avatarPickerOpen}
+                aria-controls="new-user-avatar-options" title="Elegir imagen de perfil"
+                onClick={() => setAvatarPickerOpen(open => !open)}
+                onKeyDown={e => { if (e.key === 'Escape') setAvatarPickerOpen(false); }}
+                className="w-12 h-12 rounded-full border-2 border-indigo-500 ring-2 ring-indigo-100 hover:ring-indigo-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 transition-all">
+                <img src={newAccount.avatar} alt="Avatar seleccionado" className="w-full h-full rounded-full object-cover" />
+              </button>
+              {avatarPickerOpen && (
+                <div id="new-user-avatar-options" className="absolute top-full right-0 mt-2 z-30 rounded-2xl border border-slate-200 bg-white shadow-xl p-2 flex flex-col items-center gap-2 max-h-[min(70vh,470px)] overflow-y-auto"
+                  onKeyDown={e => { if (e.key === 'Escape') { setAvatarPickerOpen(false); e.stopPropagation(); } }}>
+                  {PRESET_AVATARS.map(item => (
+                    <button type="button" key={item.url} title={item.name}
+                      aria-label={`Seleccionar avatar ${item.name}`} aria-pressed={newAccount.avatar === item.url}
+                      onClick={() => { setNewAccount(value => ({ ...value, avatar: item.url })); setAvatarPickerOpen(false); }}
+                      className={`w-12 h-12 shrink-0 rounded-full overflow-hidden border-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600 transition-all ${newAccount.avatar === item.url ? 'border-indigo-600 ring-2 ring-indigo-200' : 'border-slate-200 hover:border-indigo-300'}`}>
+                      <img src={item.url} alt={item.name} className="w-full h-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
           <p className="text-xs text-slate-500">El usuario podrá iniciar sesión inmediatamente con la contraseña asignada.</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {(['name','lastName','email','password'] as const).map(key => (
@@ -461,18 +486,6 @@ export default function UserProfile({
               {currentUser.role === 'SUPERADMIN' && <option value="ADMIN">Administrador</option>}
             </select>
           </label>
-          <fieldset className="space-y-2">
-            <legend className="text-xs font-semibold text-slate-700">Imagen de perfil del nuevo usuario</legend>
-            <div className="flex flex-wrap gap-2">
-              {PRESET_AVATARS.map(item => (
-                <button type="button" key={item.url} title={item.name} aria-label={`Seleccionar avatar ${item.name}`} aria-pressed={newAccount.avatar === item.url}
-                  onClick={() => setNewAccount(value => ({ ...value, avatar: item.url }))}
-                  className={`w-12 h-12 rounded-full overflow-hidden border-2 transition-all ${newAccount.avatar === item.url ? 'border-indigo-600 ring-2 ring-indigo-200' : 'border-slate-200 hover:border-indigo-300'}`}>
-                  <img src={item.url} alt={item.name} className="w-full h-full object-cover" />
-                </button>
-              ))}
-            </div>
-          </fieldset>
           <button disabled={loading} className="rounded-xl bg-indigo-600 px-4 py-2 text-white text-sm font-bold disabled:opacity-50">Crear y habilitar usuario</button>
         </form>
       )}
