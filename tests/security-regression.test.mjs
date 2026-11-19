@@ -26,7 +26,7 @@ test('legacy AI endpoints remain protected by RBAC', () => {
   assert.match(accessAiSettings, /settings\.aiAllowedRoles/);
   assert.match(configAdmin, /Configure Agente IA desde su sección específica/);
   assert.match(worker, /registerAccessAndAiSettings\(app\)/);
-  assert.match(accessAiSettings, /registerConfigAdminRoutes\(app, dispatchQueueJob\)/);
+  assert.match(worker, /registerConfigAdminRoutes\(app, dispatchQueueJob\)/);
 });
 
 test('model selection is applied to actual inference', () => {
