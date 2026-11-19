@@ -1,8 +1,8 @@
-const caseWorkflow = readFileSync(new URL('../worker/case-workflow-routes.ts', import.meta.url), 'utf8');
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
+const caseWorkflow = readFileSync(new URL('../worker/case-workflow-routes.ts', import.meta.url), 'utf8');
 const worker = readFileSync(new URL('../worker/index.ts', import.meta.url), 'utf8');
 const ai = readFileSync(new URL('../worker/ai.ts', import.meta.url), 'utf8');
 const ui = readFileSync(new URL('../src/components/SystemSettings.tsx', import.meta.url), 'utf8');
