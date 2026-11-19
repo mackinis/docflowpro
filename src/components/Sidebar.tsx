@@ -1,3 +1,4 @@
+import BrandLockup from './BrandLockup';
 import React, { useState, useEffect } from 'react';
 import { 
   Briefcase, 
@@ -16,7 +17,9 @@ import {
   Settings as SettingsIcon,
   Mail,
   FolderDown,
-  BarChart3
+  BarChart3,
+  Layers,
+  Loader2
 } from 'lucide-react';
 import { User, Notification } from '../types';
 
@@ -56,6 +59,7 @@ export default function Sidebar({
   onCloseMobileSidebar
 }: SidebarProps) {
   const [showUserDropdown, setShowUserDropdown] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [canViewTeamStatistics, setCanViewTeamStatistics] = useState(false);
   useEffect(() => {
@@ -146,23 +150,13 @@ export default function Sidebar({
         >
           {isCollapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
         </button>
-      {/* Brand Header */}
-      <div className={`p-4 ${isCollapsed ? 'justify-center' : 'p-6 justify-between'} border-b border-slate-800 flex items-center relative min-h-[77px]`}>
-        <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'gap-2.5'}`}>
-          <div className="p-2 bg-indigo-600 rounded-lg text-white shadow-md shadow-indigo-500/20 shrink-0">
-            <Briefcase className="w-5.5 h-5.5" />
-          </div>
-          {!isCollapsed && (
-            <div>
-              <h1 className="font-display font-bold text-lg tracking-tight bg-gradient-to-r from-white via-slate-100 to-indigo-300 bg-clip-text text-transparent">
-                DocFlow Pro
-              </h1>
-              <p className="text-[10px] font-mono text-slate-400 tracking-wider uppercase">Gestión Documental</p>
-              <p className="text-[10px] font-mono text-slate-500 whitespace-nowrap mt-1">v2.0.0 · Web Platform</p>
-            </div>
-          )}
-        </div>
-        
+      {/* Brand Header: same mark and typography as the login screen. */}
+      <div className={`border-b border-slate-800 flex items-center justify-center ${isCollapsed ? 'min-h-[77px] px-1' : 'min-h-[110px] px-3'}`}>
+        {isCollapsed ? (
+          <Layers className="w-6 h-6 text-teal-400" aria-label="DocFlow Pro" />
+        ) : (
+          <BrandLockup compact />
+        )}
       </div>
 
       {/* Active User Switcher / Simulator Panel */}
@@ -318,7 +312,11 @@ export default function Sidebar({
         {/* System Settings/Display controls */}
         <div className="space-y-2">
           <button
+            disabled={isLoggingOut}
+            aria-busy={isLoggingOut}
             onClick={async () => {
+              if (isLoggingOut) return;
+              setIsLoggingOut(true);
               try {
                 await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
               } catch {
@@ -328,12 +326,12 @@ export default function Sidebar({
               sessionStorage.removeItem('docflow_real_user');
               window.location.reload();
             }}
-            className={`w-full flex items-center justify-center ${isCollapsed ? 'p-2.5' : 'gap-2 py-2 px-3'} rounded-lg text-xs font-semibold bg-red-600/20 hover:bg-red-600 text-red-300 hover:text-white transition-all border border-red-500/10 cursor-pointer`}
-            title={isCollapsed ? "Cerrar Sesión" : undefined}
+            className={`w-full flex items-center justify-center ${isCollapsed ? 'p-2.5' : 'gap-2 py-2 px-3'} rounded-lg text-xs font-semibold bg-red-600/20 hover:bg-red-600 text-red-300 hover:text-white transition-all border border-red-500/10 disabled:opacity-70 disabled:cursor-wait cursor-pointer`}
+            title={isCollapsed ? (isLoggingOut ? "Saliendo..." : "Cerrar Sesión") : undefined}
             id="btn-logout"
           >
-            <LogOut className="w-3.5 h-3.5 shrink-0" />
-            {!isCollapsed && "Cerrar Sesión"}
+            {isLoggingOut ? <Loader2 className="w-3.5 h-3.5 shrink-0 animate-spin" /> : <LogOut className="w-3.5 h-3.5 shrink-0" />}
+            {!isCollapsed && (isLoggingOut ? "Saliendo..." : "Cerrar Sesión")}
           </button>
           
           {!isCollapsed && <div className="pt-2 text-center text-[11px] text-slate-400"><FooterClock /></div>}
