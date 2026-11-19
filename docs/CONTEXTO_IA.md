@@ -87,3 +87,11 @@ DocFlow Pro: aplicación de gestión documental y expedientes/legajos con planti
 - Validación: PR #65 abierto; esperar DocFlow quality gate y Confecciones checks. No afirmar merge ni despliegue sin comprobarlos.
 - Pendientes: extraer Confecciones, documentos, autenticación, usuarios, configuración y servicios D1; verificar arranque y revisar migraciones programadas.
 - Continuidad-IA: docs/CONTEXTO_IA.md.
+
+### 2026-11-19 — Backend: Confecciones y agente IA — PR siguiente a #65
+- Pedido: continuar extracciones amplias sin alterar comportamiento, contratos, UI ni permisos.
+- PR #65 fusionado en c558765a; dos controles validate aprobados. Producción no comprobada instrumentalmente.
+- Extracción de 538 líneas de Confecciones, chat, ciclo de vida y agente IA a worker/confecciones-routes.ts; registro en posición original. index.ts baja de 2573 a 2039 líneas.
+- Se conservaron handlers originales y sus consultas; todavía existe ensureConfecciones con DDL en rutas de Confecciones: revisar por separado, sin modificarlo dentro de esta refactorización.
+- Pendiente: controles CI, merge y verificación de producción; luego documentos, auth, usuarios y servicios.
+- Continuidad-IA: docs/CONTEXTO_IA.md.
