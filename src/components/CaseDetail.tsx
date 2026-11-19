@@ -778,44 +778,31 @@ export default function CaseDetail({
         </div>
       </div>
 
-      {/* Único entorno del legajo: etapas y requisitos del proceso. */}
-          {/* STAGE TIMELINE / PROCESS STEPPER */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
-        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider font-mono mb-4">Etapas del Proceso</h3>
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-y-4 relative">
-          {/* Timeline bar in bg for MD+ */}
-          <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-slate-100 -translate-y-1/2 hidden md:block -z-0" />
-
+      {/* Compact stage overview, preserving every stage name and description. */}
+      <section className="bg-white px-4 py-3 sm:px-5 rounded-2xl border border-slate-200/80 shadow-xs" aria-label="Etapas del proceso">
+        <div className="flex items-center justify-between gap-3 mb-2">
+          <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-mono">Etapas del proceso</h3>
+          <span className="text-[10px] text-slate-400 font-medium">{Math.min(caseObj.currentStageIndex + 1, template?.stages.length || 1)} de {template?.stages.length || 1}</span>
+        </div>
+        <div className="flex flex-col gap-2">
           {template?.stages.map((stg, index) => {
-            const isActive = index === caseObj.currentStageIndex;
+            const isActive = index === caseObj.currentStageIndex && caseObj.status !== 'completed';
             const isCompleted = index < caseObj.currentStageIndex || caseObj.status === 'completed';
-            const isUpcoming = index > caseObj.currentStageIndex && caseObj.status !== 'completed';
-
             return (
-              <div 
-                key={stg.id} 
-                className={`flex items-center gap-3 md:flex-col md:text-center flex-1 relative z-10 ${
-                  isActive ? 'text-indigo-600' : isCompleted ? 'text-emerald-600' : 'text-slate-400'
-                }`}
-              >
-                {/* Stepper badge */}
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 transition-all ${
-                  isActive ? 'bg-indigo-600 text-white ring-4 ring-indigo-50 shadow-md' :
-                  isCompleted ? 'bg-emerald-500 text-white shadow-sm' :
-                  'bg-slate-100 text-slate-500 border border-slate-200'
-                }`}>
+              <div key={stg.id} className={`flex items-center gap-3 rounded-xl px-3 py-2 border ${isActive ? 'bg-indigo-50/60 border-indigo-100' : 'bg-slate-50/60 border-transparent'}`}>
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${isActive ? 'bg-indigo-600 text-white' : isCompleted ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}>
                   {isCompleted ? <Check className="w-4 h-4" /> : index + 1}
                 </div>
-
-                <div className="min-w-0 w-full md:px-2">
-                  <p className="text-xs font-bold leading-snug whitespace-normal break-words">{stg.name}</p>
-                  <p className="mt-1 text-[10px] text-slate-400 leading-snug whitespace-normal break-words">{stg.description}</p>
+                <div className="min-w-0 flex-1">
+                  <p className={`text-xs font-bold leading-snug ${isActive ? 'text-indigo-700' : isCompleted ? 'text-emerald-700' : 'text-slate-600'}`}>{stg.name}</p>
+                  <p className="text-[10px] text-slate-500 leading-snug mt-0.5">{stg.description}</p>
                 </div>
+                {isActive && <span className="hidden sm:inline text-[10px] font-semibold text-indigo-600 shrink-0">En curso</span>}
               </div>
             );
           })}
         </div>
-      </div>
+      </section>
 
       {reopenModal && (
         <div className="fixed inset-0 z-[100] bg-slate-950/70 flex items-center justify-center p-4">
@@ -1492,18 +1479,9 @@ export default function CaseDetail({
 
                         return (
                           <div key={req.id} className="p-4 bg-slate-50 rounded-xl border border-slate-200/60 flex items-start gap-4">
-                            <input
-                              type="checkbox"
-                              checked={isCompleted}
-                              onChange={(e) => {
-                                if (task) {
-                                  onToggleTask(task.id, e.target.checked ? 'completed' : 'pending');
-                                } else {
-                                  alert('La tarea no está cargada en base, espere un momento.');
-                                }
-                              }}
-                              className="mt-1 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer shrink-0"
-                            />
+                            <span aria-hidden="true" className={`mt-0.5 w-5 h-5 rounded-full shrink-0 flex items-center justify-center ${isCompleted ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-200 text-slate-500'}`}>
+                              {isCompleted ? <Check className="w-3.5 h-3.5" /> : <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />}
+                            </span>
                             <div className="space-y-0.5">
                               <h4 className={`text-xs font-bold leading-tight ${isCompleted ? 'text-slate-400 line-through' : 'text-slate-800'}`}>
                                 {req.name}
