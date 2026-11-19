@@ -5,7 +5,9 @@ import {
   Sparkles, 
   Layers, 
   AlertCircle,
-  Menu
+  Menu,
+  Sun,
+  Moon
 } from 'lucide-react';
 import { AppDataState, User, Case, ProcessTemplate, Participant } from './types';
 import Sidebar from './components/Sidebar';
@@ -31,6 +33,11 @@ export default function App() {
   
   // Mobile responsive sidebar state
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [darkMode, setDarkMode] = useState(() => sessionStorage.getItem('docflow_theme') === 'dark');
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', darkMode);
+    sessionStorage.setItem('docflow_theme', darkMode ? 'dark' : 'light');
+  }, [darkMode]);
   
   // App data state
   const [state, setState] = useState<AppDataState | null>(null);
@@ -618,6 +625,15 @@ export default function App() {
               <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
             </span>
             <span className="text-[10px] text-slate-400 font-mono tracking-wider uppercase font-semibold">Online database</span>
+            <button
+              onClick={() => setDarkMode(value => !value)}
+              className="ml-1 p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors cursor-pointer"
+              title={darkMode ? "Modo Claro" : "Modo Oscuro"}
+              aria-label={darkMode ? "Modo Claro" : "Modo Oscuro"}
+              id="btn-theme-toggle"
+            >
+              {darkMode ? <Sun className="w-4 h-4 text-amber-500" /> : <Moon className="w-4 h-4" />}
+            </button>
           </div>
         </header>
 
