@@ -101,3 +101,9 @@ DocFlow Pro: aplicación de gestión documental y expedientes/legajos con planti
 - Extracción de 510 líneas de documentos R2, versiones, solicitudes de carga y revisión a worker/document-routes.ts; registro en orden original. index.ts baja de 2039 a 1533 líneas.
 - Se conservaron handlers, autorización, auditoría y notificaciones. Pendiente verificar workflows antes del merge y despliegue real.
 - Siguiente: autenticación, usuarios, configuración, IA y separación de servicios. Continuidad-IA: docs/CONTEXTO_IA.md.
+
+### 2026-11-19 — Backend: usuarios y administración — PR posterior a #67
+- PR #67 fusionado en 42580546 con dos controles validate exitosos; Workers Builds independiente reportó failure, despliegue de producción no verificado.
+- Extracción de 295 líneas a worker/user-admin-routes.ts: usuarios, CRUD, delegación de creación y política de registro. Se preserva orden de registro de rutas; index.ts 1533 → 1242 líneas.
+- Pendiente controles CI antes de fusionar; siguiente dominio autenticación y sesiones, seguido de configuración y servicios.
+- Continuidad-IA: docs/CONTEXTO_IA.md.
