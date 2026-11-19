@@ -162,7 +162,7 @@ function requirementsFromProcessDescription(description: string): ProcessTemplat
   return [{ id: `stage-${crypto.randomUUID()}`, name: 'Presentación y revisión de requisitos', description: 'Requisitos establecidos por el responsable del proceso', requirements }];
 }
 
-function identifyDigitizedFields(source:string) {
+export function identifyDigitizedFields(source:string) {
   const unique=[...new Set([...source.matchAll(/\[CAMPO_\d+\*?\]/g)].map(m=>m[0]))];
   const normalize=(s:string)=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
   const roles=/\b(LOCADOR(?:ES|\/S)?|LOCATARIO(?:S|\/S)?|FIADOR(?:ES|\/S)?|GARANTE(?:S|\/S)?)\s*:/gi;
