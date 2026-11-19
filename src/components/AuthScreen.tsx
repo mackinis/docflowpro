@@ -406,26 +406,26 @@ export default function AuthScreen({
   };
 
   return (
-    <div className="min-h-screen w-screen flex items-center justify-center bg-slate-50 p-6 font-sans select-none" id="auth-screen-root">
-      <div className="w-full max-w-lg bg-white rounded-3xl border border-slate-200 shadow-xl overflow-hidden flex flex-col">
-        {/* Upper Brand panel */}
-        <div className="p-8 bg-slate-900 text-white text-center space-y-3 relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-500/10 rounded-full blur-xl"></div>
-          <div className="absolute -bottom-8 -left-8 w-32 h-32 bg-indigo-600/10 rounded-full blur-xl"></div>
-
-          <div className="p-3.5 bg-indigo-600 rounded-2xl inline-block mx-auto text-white shadow-lg shadow-indigo-500/20">
-            <Briefcase className="w-7 h-7" />
+    <div className="min-h-screen w-full grid grid-cols-1 lg:grid-cols-12 bg-slate-50 font-sans text-slate-800" id="auth-screen-root">
+      {/* Gestor de Documentos-inspired brand panel; DocFlow auth behavior remains unchanged. */}
+      <aside className="lg:col-span-5 bg-slate-950 text-white p-8 sm:p-12 flex flex-col items-center justify-center text-center relative overflow-hidden min-h-[300px] lg:min-h-screen">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-black opacity-80" />
+        <div className="relative z-10 space-y-4 max-w-sm sm:max-w-md mx-auto flex flex-col items-center justify-center">
+          <div className="flex items-center gap-2.5 justify-center text-teal-400">
+            <Briefcase className="h-6 w-6" />
+            <span className="text-xs font-mono font-bold tracking-widest uppercase">DocFlow Pro</span>
           </div>
-          <div>
-            <h1 className="font-display font-bold text-2xl tracking-tight bg-gradient-to-r from-white via-slate-100 to-indigo-200 bg-clip-text text-transparent">
-              DocFlow Pro
-            </h1>
-            <p className="text-[10px] font-mono text-slate-400 tracking-widest uppercase mt-0.5">
-              DocFlow Pro / Gestión Documental
-            </p>
-          </div>
+          <p className="text-xs font-mono uppercase tracking-[0.22em] text-teal-400">Gestión Documental</p>
+          <h1 className="text-3xl sm:text-4xl font-display font-light tracking-tight mt-6 text-white leading-tight">
+            Plataforma de Expedientes, Documentos y Procesos
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-300 leading-relaxed max-w-sm mt-3">
+            Inicie sesión o regístrese como Asesor de legajos para coordinar y verificar requisitos de forma fluida.
+          </p>
         </div>
-
+      </aside>
+      <main className="lg:col-span-7 flex items-center justify-center p-6 md:p-12 min-w-0">
+        <div className="w-full max-w-lg bg-white rounded-2xl border border-slate-200 shadow-xl overflow-hidden flex flex-col">
         {/* Dynamic content area */}
         <div className="p-8 flex-1 space-y-6">
           {successMsg && (
@@ -1005,7 +1005,8 @@ export default function AuthScreen({
             </form>
           )}
         </div>
-      </div>
+        </div>
+      </main>
     </div>
   );
 }

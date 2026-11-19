@@ -305,6 +305,20 @@ export async function findTemplateOrVirtualById(
   return null;
 }
 
+/** A CAMPO task is complete only when its persisted case field has a non-blank value. */
+export function fieldIdForTask(name: string): string | null {
+  return (name.match(/\\bCAMPO_\\d+\\b/i) || [])[0]?.toUpperCase() || null;
+}
+
+export function isFieldTaskComplete(name: string, values: Iterable<{ field_id: string; value: string | null }>): boolean {
+  const fieldId = fieldIdForTask(name);
+  if (!fieldId) return false;
+  for (const item of values) {
+    if (item.field_id.toUpperCase() === fieldId && typeof item.value === 'string' && item.value.trim().length > 0) return true;
+  }
+  return false;
+}
+
 export async function getAllCases(db: D1Database): Promise<Case[]> {
   const [casesRes, partsRes, valuesRes] = await Promise.all([
     db.prepare('SELECT * FROM cases ORDER BY created_at DESC').all<any>(),
@@ -507,6 +521,10 @@ export async function getFullState(
 
   const filteredUsers = isSuper ? allUsers : allUsers.filter((u) => u.role !== 'SUPERADMIN');
 
+  const fieldValuesByCase = new Map(cases.map((caseItem) => [caseItem.id, [
+    ...Object.entries(caseItem.generalFieldValues || {}).map(([field_id, value]) => ({ field_id, value })),
+    ...caseItem.participants.flatMap((p) => Object.entries(p.fieldValues || {}).map(([field_id, value]) => ({ field_id, value }))),
+  ]]));
   const tasks: Task[] = (tasksRes.results || []).map((t) => ({
     id: t.id,
     caseId: t.case_id,
@@ -514,7 +532,7 @@ export async function getFullState(
     requirementId: t.requirement_id,
     name: t.name,
     description: t.description || '',
-    status: t.status as Task['status'],
+    status: fieldIdForTask(t.name) ? (isFieldTaskComplete(t.name, fieldValuesByCase.get(t.case_id) || []) ? 'completed' : 'pending') : t.status as Task['status'],
     completedBy: t.completed_by || undefined,
     completedAt: t.completed_at || undefined,
   }));
@@ -713,7 +731,7 @@ export async function validateStageRequirements(
   const stage = template.stages.find((s) => s.id === stageId);
   if (!stage) return { isValid: false, missing: ['Etapa no válida'] };
 
-  const [docsRes, tasksRes, obsRes, subsRes, participantsRes] = await Promise.all([
+  const [docsRes, tasksRes, obsRes, subsRes, participantsRes, fieldValuesRes] = await Promise.all([
     db
       .prepare('SELECT requirement_id, status FROM documents WHERE case_id = ? AND stage_id = ?')
       .bind(caseId, stageId)
@@ -730,8 +748,10 @@ export async function validateStageRequirements(
       .all<any>(),
     db.prepare('SELECT requirement_id, values_json FROM form_submissions WHERE case_id = ? AND stage_id = ?').bind(caseId, stageId).all<any>(),
     db.prepare('SELECT role, name, last_name, dni FROM case_participants WHERE case_id = ?').bind(caseId).all<any>(),
+    db.prepare('SELECT field_id, value FROM case_field_values WHERE case_id = ?').bind(caseId).all<any>(),
   ]);
 
+  const fieldValues = fieldValuesRes.results || [];
   const docs = docsRes.results || [];
   const tasks = tasksRes.results || [];
   const openObs = obsRes.results || [];
@@ -761,7 +781,7 @@ export async function validateStageRequirements(
       }
     } else if (req.type === 'task') {
       const task = tasks.find((t: any) => t.requirement_id === req.id);
-      if (!task || task.status !== 'completed') {
+      if (!task || (fieldIdForTask(req.name) ? !isFieldTaskComplete(req.name, fieldValues) : task.status !== 'completed')) {
         missing.push(`Tarea pendiente: "${req.name}"`);
       }
     } else if (req.type === 'form') {
