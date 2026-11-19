@@ -11,7 +11,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { Case, Document, Task, Observation, AppDataState, User } from '../types';
-import { calculateAdvisorQuality } from '../utils/dashboardQuality';
+import { selectAdvisorDashboard } from '../utils/advisorDashboardSelectors';
 
 interface DashboardAdvisorProps {
   state: AppDataState;
@@ -30,24 +30,7 @@ export default function DashboardAdvisor({
   onReplaceDoc,
   onResolveObs
 }: DashboardAdvisorProps) {
-  const { cases, documents, tasks, observations } = state;
-  const currentAdvisorId = currentUser.id; // dynamic current advisor ID
-
-  // Filter items for current advisor
-  const myCases = cases.filter(c => c.assignedAdvisorId === currentAdvisorId);
-  const myCasesIds = myCases.map(c => c.id);
-
-  // Stats
-  const observedCount = myCases.filter(c => c.status === 'observed').length;
-  
-  // Pending tasks for my cases
-  const myTasks = tasks.filter(t => myCasesIds.includes(t.caseId) && t.status === 'pending');
-  // Documents for my cases
-  const myDocs = documents.filter(d => myCasesIds.includes(d.caseId));
-  // Rejected/observed documents
-  const myObservedDocs = myDocs.filter(d => d.status === 'rejected');
-  // Open observations for my cases
-  const myOpenObs = observations.filter(o => myCasesIds.includes(o.caseId) && o.status === 'open');
+  const { myCases, observedCount, myTasks, myObservedDocs, myOpenObs, score, grade } = selectAdvisorDashboard(state, currentUser.id);
 
   // Interactive replacement states
   const [resolvingObsId, setResolvingObsId] = useState<string | null>(null);
@@ -60,7 +43,6 @@ export default function DashboardAdvisor({
     setResponseComment('');
   };
 
-  const { score, grade } = calculateAdvisorQuality(myCases, documents, observations);
   return (
     <div className="space-y-6">
       {/* Upper header */}
