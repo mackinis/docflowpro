@@ -1,3 +1,4 @@
+import BrandLockup from './BrandLockup';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Briefcase,
@@ -412,17 +413,7 @@ export default function AuthScreen({
       <aside className="lg:col-span-5 bg-slate-950 text-white p-8 sm:p-12 flex flex-col items-center justify-center text-center relative overflow-hidden min-h-[300px] lg:min-h-screen">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-black opacity-80" />
         <div className="relative z-10 space-y-4 max-w-sm sm:max-w-md mx-auto flex flex-col items-center justify-center">
-          <div className="flex flex-col items-center text-teal-400">
-            <Layers className="h-6 w-6 mb-2" aria-hidden="true" />
-            <div className="flex flex-col items-stretch gap-1">
-              <span className="text-2xl sm:text-[28px] leading-none font-bold tracking-tight whitespace-nowrap">DocFlow Pro</span>
-              <span className="flex w-full items-center justify-between whitespace-nowrap text-[10px] sm:text-[11px] leading-tight font-mono uppercase" aria-label="Gestión Documental">
-                {"GESTIÓN DOCUMENTAL".split("").map((letter, index) => (
-                  <span key={index} aria-hidden="true">{letter === " " ? "\u00a0" : letter}</span>
-                ))}
-              </span>
-            </div>
-          </div>
+          <BrandLockup />
           <h1 className="text-3xl sm:text-4xl font-display font-light tracking-tight mt-6 text-white leading-tight">
             Plataforma de Expedientes, Documentos y Procesos
           </h1>
