@@ -95,3 +95,9 @@ DocFlow Pro: aplicación de gestión documental y expedientes/legajos con planti
 - Se conservaron handlers originales y sus consultas; todavía existe ensureConfecciones con DDL en rutas de Confecciones: revisar por separado, sin modificarlo dentro de esta refactorización.
 - Pendiente: controles CI, merge y verificación de producción; luego documentos, auth, usuarios y servicios.
 - Continuidad-IA: docs/CONTEXTO_IA.md.
+
+### 2026-11-19 — Backend: documentos y solicitudes de carga — PR posterior a #66
+- PR #66 fusionado c1ce9f54; dos controles validate aprobados. Producción no comprobada instrumentalmente.
+- Extracción de 510 líneas de documentos R2, versiones, solicitudes de carga y revisión a worker/document-routes.ts; registro en orden original. index.ts baja de 2039 a 1533 líneas.
+- Se conservaron handlers, autorización, auditoría y notificaciones. Pendiente verificar workflows antes del merge y despliegue real.
+- Siguiente: autenticación, usuarios, configuración, IA y separación de servicios. Continuidad-IA: docs/CONTEXTO_IA.md.
