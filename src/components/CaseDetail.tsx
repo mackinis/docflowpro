@@ -732,78 +732,56 @@ export default function CaseDetail({
     <div className="space-y-6">
       {previewDoc && <DocumentPreviewViewer document={previewDoc} onClose={closePreview} />}
       <CaseHistoryPanel caseId={caseObj.id} createdAt={caseObj.createdAt} status={caseObj.status} />
-      {/* Unified case identity and process progress */}
-      <section className="rounded-2xl border border-slate-200 bg-white shadow-xs px-4 py-4 sm:px-5" aria-label="Información del legajo y etapas del proceso">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <button 
-            onClick={onBack} 
-            className="p-2 rounded-lg bg-white border border-slate-200 text-slate-500 hover:text-slate-800 hover:bg-slate-50 transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4" />
-          </button>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-mono font-bold text-indigo-600 bg-indigo-50 border border-indigo-100/50 px-2 rounded">
-                {caseObj.code}
-              </span>
-              <span className="text-xs text-slate-400 font-medium">| {template?.name}</span>
+      {/* Compact unified case identity and current process stage */}
+      <section className="rounded-2xl border border-slate-200 bg-white shadow-xs px-4 py-4 sm:px-5" aria-label="Información del legajo y etapa actual">
+        <div className="flex flex-col lg:flex-row lg:items-center gap-4">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <button onClick={onBack} aria-label="Volver" className="p-2 shrink-0 rounded-lg bg-white border border-slate-200 text-slate-500 hover:text-slate-800 hover:bg-slate-50 transition-colors">
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-mono font-bold text-indigo-600 bg-indigo-50 border border-indigo-100/50 px-2 rounded">{caseObj.code}</span>
+                <span className="text-xs text-slate-400 font-medium">| {template?.name}</span>
+              </div>
+              <h2 className="text-xl font-display font-bold text-slate-800 tracking-tight">{caseObj.title}</h2>
             </div>
-            <h2 className="text-xl font-display font-bold text-slate-800 tracking-tight">{caseObj.title}</h2>
           </div>
-        </div>
 
-        {/* Global Case state badge */}
-        <div className="flex items-center gap-3 shrink-0">
-          <span className={`px-3 py-1 rounded-full text-xs font-mono font-bold tracking-wider uppercase border ${
-            caseObj.status === 'completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-            caseObj.status === 'observed' ? 'bg-red-50 text-red-700 border-red-200' :
-            caseObj.status === 'pending_review' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-            'bg-blue-50 text-blue-700 border-blue-200'
-          }`}>
-            {caseObj.status === 'completed' ? 'Finalizado' :
-             caseObj.status === 'observed' ? 'Observado' :
-             caseObj.status === 'pending_review' ? 'En Revisión' :
-             'Activo'}
-          </span>
+          {template?.stages?.length ? (
+            <div className="w-full lg:w-[320px] xl:w-[360px] shrink-0 rounded-xl bg-slate-50 border border-slate-100 px-4 py-3 text-center" aria-label="Etapa del proceso">
+              <p className="text-xs font-bold text-slate-800 leading-snug">
+                Etapa {Math.min(caseObj.currentStageIndex + 1, template.stages.length)} · {template.stages[Math.min(caseObj.currentStageIndex, template.stages.length - 1)]?.name}
+              </p>
+              <p className="text-[11px] text-slate-500 leading-snug mt-1">
+                {template.stages[Math.min(caseObj.currentStageIndex, template.stages.length - 1)]?.description}
+              </p>
+            </div>
+          ) : null}
+
+          <div className="flex shrink-0 flex-col items-center justify-center gap-1.5 lg:min-w-[112px]">
+            <span className={`px-3 py-1 rounded-full text-xs font-mono font-bold tracking-wider uppercase border ${
+              caseObj.status === 'completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+              caseObj.status === 'observed' ? 'bg-red-50 text-red-700 border-red-200' :
+              caseObj.status === 'pending_review' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+              'bg-blue-50 text-blue-700 border-blue-200'
+            }`}>
+              {caseObj.status === 'completed' ? 'Finalizado' :
+               caseObj.status === 'observed' ? 'Observado' :
+               caseObj.status === 'pending_review' ? 'En Revisión' : 'Activo'}
+            </span>
+            {template?.stages?.length && caseObj.status !== 'completed' && (
+              <span className="text-[11px] font-semibold text-indigo-600">En curso</span>
+            )}
+          </div>
 
           {isSuperAdmin && (
-            <button
-              onClick={() => setShowDeleteConfirm(true)}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-lg transition-colors shadow-xs cursor-pointer animate-pulse"
-            >
+            <button onClick={() => setShowDeleteConfirm(true)} className="flex shrink-0 items-center gap-1.5 px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-lg transition-colors shadow-xs cursor-pointer animate-pulse">
               <Trash2 className="w-3.5 h-3.5" />
               <span>Eliminar Legajo</span>
             </button>
           )}
         </div>
-      </div>
-
-      {/* Stage progress remains dynamic for single- and multi-stage templates. */}
-      <div className="mt-3 border-t border-slate-100 pt-3" aria-label="Etapas del proceso">
-        <div className="flex items-center justify-between gap-3 mb-2">
-          <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-mono">Etapas del proceso</h3>
-          <span className="text-[10px] text-slate-400 font-medium">{Math.min(caseObj.currentStageIndex + 1, template?.stages.length || 1)} de {template?.stages.length || 1}</span>
-        </div>
-        <div className="flex flex-col gap-2">
-          {template?.stages.map((stg, index) => {
-            const isActive = index === caseObj.currentStageIndex && caseObj.status !== 'completed';
-            const isCompleted = index < caseObj.currentStageIndex || caseObj.status === 'completed';
-            return (
-              <div key={stg.id} className={`flex items-center gap-3 rounded-xl px-3 py-2 border ${isActive ? 'bg-indigo-50/60 border-indigo-100' : 'bg-slate-50/60 border-transparent'}`}>
-                <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${isActive ? 'bg-indigo-600 text-white' : isCompleted ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}>
-                  {isCompleted ? <Check className="w-4 h-4" /> : index + 1}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className={`text-xs font-bold leading-snug ${isActive ? 'text-indigo-700' : isCompleted ? 'text-emerald-700' : 'text-slate-600'}`}>{stg.name}</p>
-                  <p className="text-[10px] text-slate-500 leading-snug mt-0.5">{stg.description}</p>
-                </div>
-                {isActive && <span className="hidden sm:inline text-[10px] font-semibold text-indigo-600 shrink-0">En curso</span>}
-              </div>
-            );
-          })}
-        </div>
-      </div>
       </section>
 
       {reopenModal && (
