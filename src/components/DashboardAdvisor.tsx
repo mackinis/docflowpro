@@ -269,12 +269,7 @@ export default function DashboardAdvisor({
                 return (
                   <div key={task.id} className="py-3 flex items-start justify-between hover:bg-slate-50/50 rounded-lg px-2 transition-colors gap-3">
                     <div className="flex items-start gap-3">
-                      <input 
-                        type="checkbox" 
-                        checked={task.status === 'completed'}
-                        onChange={() => onToggleTask(task.id, 'completed')}
-                        className="mt-1 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                      />
+                      
                       <div className="space-y-0.5">
                         <p className="text-xs font-bold text-slate-700">{task.name}</p>
                         <p className="text-[11px] text-slate-400 leading-relaxed">{task.description}</p>
