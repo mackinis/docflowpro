@@ -20,6 +20,6 @@ jobs:
       - name: TypeScript frontend and Worker
         run: npm run lint
       - name: Build frontend
-        run: npx vite build
+        run: npm run build
       - name: Security and audit regression tests
-        run: node --test tests/security-regression.test.mjs
+        run: node --test tests/*.test.mjs
