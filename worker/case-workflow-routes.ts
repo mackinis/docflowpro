@@ -12,7 +12,11 @@ export function registerCaseWorkflowRoutes(app: WorkerApp, registerNotificationR
 // ============================================================================
 app.get('/api/cases/:caseId/tasks', async (c) => {
   const { caseId } = c.req.param();
-  const [res, valuesRes] = await Promise.all([\n    c.env.DB.prepare('SELECT * FROM tasks WHERE case_id = ?').bind(caseId).all<any>(),\n    c.env.DB.prepare('SELECT field_id, value FROM case_field_values WHERE case_id = ?').bind(caseId).all<any>(),\n  ]);\n  const fieldValues = valuesRes.results || [];
+  const [res, valuesRes] = await Promise.all([
+    c.env.DB.prepare('SELECT * FROM tasks WHERE case_id = ?').bind(caseId).all<any>(),
+    c.env.DB.prepare('SELECT field_id, value FROM case_field_values WHERE case_id = ?').bind(caseId).all<any>(),
+  ]);
+  const fieldValues = valuesRes.results || [];
   return c.json(
     (res.results || []).map((t) => ({
       id: t.id,
@@ -33,7 +37,8 @@ async function handleTaskToggle(c: AppContext) {
   const { id } = c.req.param();
   const { status } = await c.req.json();
   const task = await c.env.DB.prepare('SELECT * FROM tasks WHERE id = ?').bind(id).first<any>();
-  if (!task) return c.json({ error: 'Tarea no encontrada' }, 404);\n  if (fieldIdForTask(task.name)) return c.json({ error: 'Esta tarea se completa automáticamente al guardar el campo correspondiente.' }, 409);
+  if (!task) return c.json({ error: 'Tarea no encontrada' }, 404);
+  if (fieldIdForTask(task.name)) return c.json({ error: 'Esta tarea se completa automáticamente al guardar el campo correspondiente.' }, 409);
 
   const now = status === 'completed' ? new Date().toISOString() : null;
   const completedBy = status === 'completed' ? auth.user.id : null;
