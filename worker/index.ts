@@ -742,6 +742,9 @@ app.post('/api/auth/update-profile', async (c) => {
   const { userId, name, lastName, phone, address, city, province, country, password, avatar } = body;
 
   const targetId = userId || auth.user.id;
+  if (avatar !== undefined && (typeof avatar !== 'string' || avatar.length > 250000 || !(PRESET_AVATARS.some(item => item.url === avatar) || /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(avatar)))) {
+    return c.json({ error: 'Imagen de perfil inválida o demasiado grande.' }, 400);
+  }
   if (targetId !== auth.user.id && auth.realUser.role !== 'SUPERADMIN') {
     return c.json({ error: 'No autorizado para editar otro perfil desde esta ruta.' }, 403);
   }
@@ -903,6 +906,9 @@ app.post('/api/users', async (c) => {
   }
   const body = await c.req.json();
   const { name, lastName, email, password, phone, address, city, province, country } = body;
+  if (body.avatar !== undefined && !PRESET_AVATARS.some(item => item.url === body.avatar)) {
+    return c.json({ error: 'Seleccione un avatar disponible.' }, 400);
+  }
   const targetRole = String(body.role || 'ASESOR').toUpperCase();
   if (!['ADMIN', 'MANAGER', 'ASESOR'].includes(targetRole) || (role !== 'SUPERADMIN' && targetRole === 'ADMIN')) {
     return c.json({ error: 'Rol no permitido.' }, 403);
@@ -916,7 +922,7 @@ app.post('/api/users', async (c) => {
   const id = 'usr-' + crypto.randomUUID();
   const now = new Date().toISOString();
   const pwHash = await hashPassword(password);
-  const avatar = PRESET_AVATARS[0]?.url || '';
+  const avatar = body.avatar || PRESET_AVATARS[0]?.url || '';
   await c.env.DB.prepare(`INSERT INTO users (id, name, last_name, email, role, avatar, phone, active, address, city, province, country, password_hash, is_verified, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, 1, ?, ?)`)
     .bind(id, String(name).trim(), String(lastName).trim(), normalizedEmail, targetRole, avatar, phone || '', address || '', city || '', province || '', country || '', pwHash, now, now).run();
   await createAudit(c.env.DB, auth.user.id, 'Creó usuario habilitado', 'User', id, normalizedEmail);
