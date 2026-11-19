@@ -77,6 +77,14 @@ export default function DashboardAdvisor({
 
       {/* Stats Bento */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
+          <div className="space-y-1">
+            <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Mis Legajos</span>
+            <p className="text-3xl font-bold text-slate-800">{myCases.length}</p>
+          </div>
+          <div className="p-3 bg-blue-50 text-blue-600 rounded-xl shrink-0"><FileText className="w-6 h-6" /></div>
+        </div>
+
 
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
           <div className="space-y-1">
