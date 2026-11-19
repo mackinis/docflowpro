@@ -731,7 +731,7 @@ export async function validateStageRequirements(
   const stage = template.stages.find((s) => s.id === stageId);
   if (!stage) return { isValid: false, missing: ['Etapa no válida'] };
 
-  const [docsRes, tasksRes, obsRes, subsRes, participantsRes] = await Promise.all([
+  const [docsRes, tasksRes, obsRes, subsRes, participantsRes, fieldValuesRes] = await Promise.all([
     db
       .prepare('SELECT requirement_id, status FROM documents WHERE case_id = ? AND stage_id = ?')
       .bind(caseId, stageId)
@@ -748,8 +748,10 @@ export async function validateStageRequirements(
       .all<any>(),
     db.prepare('SELECT requirement_id, values_json FROM form_submissions WHERE case_id = ? AND stage_id = ?').bind(caseId, stageId).all<any>(),
     db.prepare('SELECT role, name, last_name, dni FROM case_participants WHERE case_id = ?').bind(caseId).all<any>(),
+    db.prepare('SELECT field_id, value FROM case_field_values WHERE case_id = ?').bind(caseId).all<any>(),
   ]);
 
+  const fieldValues = fieldValuesRes.results || [];
   const docs = docsRes.results || [];
   const tasks = tasksRes.results || [];
   const openObs = obsRes.results || [];
