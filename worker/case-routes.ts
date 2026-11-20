@@ -72,8 +72,9 @@ app.get('/api/statistics/advisors', async (c) => {
         (SELECT COUNT(*) FROM documents d WHERE d.case_id = cs.id AND d.status = 'approved') AS approved,
         (SELECT COUNT(*) FROM documents d WHERE d.case_id = cs.id AND d.status = 'rejected') AS rejected,
         (SELECT COUNT(*) FROM document_history_events e WHERE e.case_id = cs.id AND e.event_type = 'observation') AS observationsCount,
-        (SELECT COUNT(*) FROM documents d WHERE d.case_id = cs.id AND d.status = 'rejected'
-           AND NOT EXISTS (SELECT 1 FROM observations o WHERE o.document_id = d.id)) AS untrackedRejected
+        (SELECT COUNT(*) FROM document_history_events e WHERE e.case_id = cs.id AND e.event_type = 'rejection'
+           AND NOT EXISTS (SELECT 1 FROM observations o WHERE o.document_id = e.document_id
+             AND o.created_at BETWEEN datetime(e.occurred_at, '-1 minute') AND datetime(e.occurred_at, '+1 minute'))) AS untrackedRejected
        FROM cases cs WHERE cs.assigned_advisor_id = ?`
     ).bind(row.advisorId).all<any>();
     const samples = (evidence.results || []).map((item: any) => {
