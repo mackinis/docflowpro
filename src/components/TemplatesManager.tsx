@@ -1,4 +1,4 @@
-import { apiRequest } from '../services/apiTransport';
+import { analyzeTemplateFields, confirmTemplateFieldReview, digitizeTemplate, templateCollection, templateItem, publishSharedDocument } from '../services/templateOperations';
 import React, { useEffect, useRef, useState } from 'react';
 import { cachedJson, invalidateCachedJson } from '../utils/requestCache';
 import { 
@@ -93,7 +93,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
     if(!selected)return;
     setImportingFields(true);
     try {
-      const response=await apiRequest('/api/templates/analyze-fields',{
+      const response=await analyzeTemplateFields({
         method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({sharedDocumentId:templateId})
       });
@@ -138,7 +138,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
     setReviewSaveStatus('saving');
     try {
       for(const change of changes){
-        const response=await apiRequest('/api/templates/confirm-field-review',{
+        const response=await confirmTemplateFieldReview({
           method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},
           body:JSON.stringify({sharedDocumentId:selectedDigitalTemplateId,fieldId:change.id,review:change.review,expectedReview:change.expectedReview})
         });
@@ -325,7 +325,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
          const corrected=edited && !isUnidentifiedField(edited.actor,edited.label) && (!prior || edited.actor!==prior.actor || edited.label!==prior.label);
          return prior ? {...prior,id:renumbered.get(id)!,...edited,...(corrected?{review:false}:{})} : {id:renumbered.get(id)!,...(edited||{label:'Pendiente de identificar',actor:'No determinado'}),source:'manual' as const,confidence:'low' as const,review:!corrected};
       });
-      const response=await apiRequest(`/api/templates/${tpl.id}`,{
+      const response=await templateItem(tpl.id,{
         method:'PUT',credentials:'include',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({...tpl,originalDocumentContent:content,fieldMap,currentUserId:currentUser.id})
       });
@@ -450,7 +450,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
     setIsDigitizing(true);
 
     try {
-      const response = await apiRequest('/api/ai/digitize-template', {
+      const response = await digitizeTemplate( {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -499,7 +499,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
     // Actualizar desde el servidor para no depender únicamente de la lista renderizada.
     let existing = templates.filter(t => !t.id.startsWith('doc-') && !t.originalDocumentContent);
     try {
-      const check = await apiRequest('/api/templates', { credentials: 'include' });
+      const check = await templateCollection( { credentials: 'include' });
       if (!check.ok) throw new Error('No se pudo verificar la lista de procesos.');
       const latest = await check.json();
       if (!Array.isArray(latest)) throw new Error('Respuesta inválida al verificar procesos.');
@@ -532,7 +532,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
     }
     setIsCreatingManual(true);
     try {
-      const response = await apiRequest('/api/templates', {
+      const response = await templateCollection( {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -582,7 +582,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
   const duplicateTemplate = async (tpl: ProcessTemplate, newName: string) => {
 
     try {
-      const response = await apiRequest('/api/templates', {
+      const response = await templateCollection( {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -617,11 +617,11 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
       `¿Está seguro de que desea eliminar la plantilla "${templateName}"? Esta acción no se puede deshacer y afectará la creación de futuros legajos.`,
       async () => {
         try {
-          const response = await apiRequest(`/api/templates/${templateId}?currentUserId=${currentUser.id}`, {
+          const response = await templateItem(templateId, {
             method: 'DELETE',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' }
-          });
+          }, currentUser.id);
 
           if (response.ok) {
             showToast(`¡Plantilla "${templateName}" eliminada con éxito!`, 'success');
@@ -754,7 +754,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
         currentUserId: currentUser.id
       };
 
-      const response = await apiRequest(`/api/templates/${editingTemplate.id}`, {
+      const response = await templateItem(editingTemplate.id, {
         method: 'PUT',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -807,7 +807,7 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
       const fileBase64 = `data:text/plain;base64,${unicodeToBase64(publishedContent)}`;
       const fileName = `${tpl.name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}_digitalizado.txt`;
 
-      const response = await apiRequest('/api/shared-documents', {
+      const response = await publishSharedDocument( {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -827,9 +827,9 @@ export default function TemplatesManager({ templates, currentUser, systemSetting
       const data = await response.json();
       if (response.ok && data.id) {
         invalidateCachedJson('shared-documents:');
-        const deletion = await apiRequest(`/api/templates/${tpl.id}?currentUserId=${currentUser.id}`, {
+        const deletion = await templateItem(tpl.id, {
           method: 'DELETE', credentials: 'include'
-        }).catch(() => null);
+        }, currentUser.id).catch(() => null);
         if (!deletion?.ok) {
           alert('El documento se publicó correctamente, pero no se pudo eliminar la plantilla original. Verificá Plantillas antes de volver a publicarla.');
         } else {
