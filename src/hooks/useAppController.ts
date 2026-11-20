@@ -1,3 +1,4 @@
+import { apiRequest } from '../services/apiTransport';
 import { useState, useEffect } from 'react';
 import { useNavigationAudit } from './useNavigationAudit';
 import { invalidateCachedJson } from '../utils/requestCache';
@@ -113,7 +114,7 @@ export function useAppController() {
   // Switch active role/user (Superadmin server-verified impersonation)
   const handleUserChange = async (user: User) => {
     try {
-      const response = await fetch('/api/auth/impersonate', {
+      const response = await apiRequest('/api/auth/impersonate', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -205,7 +206,7 @@ export function useAppController() {
   // Review Document (Approve / Reject)
   const handleReviewDoc = async (docId: string, status: 'approved' | 'rejected' | 'uploaded', observationText?: string, allowedRoles?: string[]) => {
     if (!currentUser) throw new Error('Sesión no disponible.');
-    const response = await fetch(`/api/documents/${docId}/review`, {
+    const response = await apiRequest(`/api/documents/${docId}/review`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -256,7 +257,7 @@ export function useAppController() {
 
     if (!stageId) return;
 
-    const response = await fetch('/api/forms/submit', {
+    const response = await apiRequest('/api/forms/submit', {
       method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ caseId: activeCaseId, stageId, requirementId: reqId, values })
     });
@@ -299,7 +300,7 @@ export function useAppController() {
   // Advance Stage (Validated)
   const handleAdvanceStage = async () => {
     if (!activeCaseId) return;
-    const response = await fetch(`/api/cases/${activeCaseId}/advance`, {
+    const response = await apiRequest(`/api/cases/${activeCaseId}/advance`, {
       method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId: currentUser.id })
     });
@@ -314,7 +315,7 @@ export function useAppController() {
   // Approve Stage (Manager only)
   const handleApproveStage = async () => {
     if (!activeCaseId) return;
-    const response = await fetch(`/api/cases/${activeCaseId}/approve-stage`, {
+    const response = await apiRequest(`/api/cases/${activeCaseId}/approve-stage`, {
       method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId: currentUser.id })
     });
@@ -328,7 +329,7 @@ export function useAppController() {
 
   const handleReopenCase = async (password: string): Promise<void> => {
     if (!activeCaseId) throw new Error('No hay un legajo activo.');
-    const response = await fetch(`/api/cases/${activeCaseId}/reopen`, {
+    const response = await apiRequest(`/api/cases/${activeCaseId}/reopen`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
