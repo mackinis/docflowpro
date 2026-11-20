@@ -1,3 +1,4 @@
+import { advisorDocumentQuality, advisorQualityGrade } from './advisor-quality';
 import type { Hono } from 'hono';
 import type { Env, AppVariables, QueueJob } from './types';
 import type { ProcessTemplate, Participant } from '../src/types';
@@ -74,21 +75,15 @@ app.get('/api/statistics/advisors', async (c) => {
         (SELECT COUNT(*) FROM document_history_events e WHERE e.case_id = cs.id AND e.event_type = 'observation') AS observationsCount,
         (SELECT COUNT(*) FROM document_history_events e WHERE e.case_id = cs.id AND e.event_type = 'rejection'
            AND NOT EXISTS (SELECT 1 FROM observations o WHERE o.document_id = e.document_id
-             AND o.created_at BETWEEN datetime(e.occurred_at, '-1 minute') AND datetime(e.occurred_at, '+1 minute'))) AS untrackedRejected
+             AND ABS((julianday(o.created_at) - julianday(e.occurred_at)) * 86400) <= 60)) AS untrackedRejected
        FROM cases cs WHERE cs.assigned_advisor_id = ?`
     ).bind(row.advisorId).all<any>();
-    const samples = (evidence.results || []).map((item: any) => {
-      const approved = Number(item.approved || 0);
-      const errors = Number(item.untrackedRejected || 0) + Number(item.observationsCount || 0);
-      return approved + errors > 0 ? 100 * approved / (approved + errors) : null;
-    }).filter((value: number | null): value is number => value !== null);
-    const rejectedDocuments = (evidence.results || []).reduce((sum: number, item: any) => sum + Number(item.rejected || 0), 0);
-    const score = samples.length ? Math.round(samples.reduce((sum: number, value: number) => sum + value, 0) / samples.length) : null;
-    const grade = score === null ? 'Sin datos' : score >= 95 ? 'Excelente' : score >= 85 ? 'Muy bueno' : score >= 70 ? 'Bueno' : score >= 55 ? 'Regular' : score >= 35 ? 'Deficiente' : 'Crítico';
+    const { score, sampleSize, rejectedDocuments } = advisorDocumentQuality(evidence.results || []);
+    const grade = advisorQualityGrade(score);
     return {
       ...row, total, completed, observed, rejectedDocuments,
       pendingReview: Number(row.pendingReview || 0), active: Number(row.active || 0),
-      score, grade, sampleSize: samples.length,
+      score, grade, sampleSize,
       factors: { completionRate: null, documentQuality: score, observedAvoidance: null }
     };
   }));
