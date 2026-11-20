@@ -66,17 +66,19 @@ app.get('/api/statistics/advisors', async (c) => {
     const total = Number(row.total || 0);
     const completed = Number(row.completed || 0);
     const observed = Number(row.observed || 0);
-    // Score document evidence, never completion status. Historical observations remain counted.
+    // Score document evidence, never completion status. Historical observations remain counted once, including after resolution.
     const evidence = await c.env.DB.prepare(
       `SELECT cs.id AS caseId,
         (SELECT COUNT(*) FROM documents d WHERE d.case_id = cs.id AND d.status = 'approved') AS approved,
         (SELECT COUNT(*) FROM documents d WHERE d.case_id = cs.id AND d.status = 'rejected') AS rejected,
-        (SELECT COUNT(*) FROM observations o WHERE o.case_id = cs.id) AS observationsCount
+        (SELECT COUNT(*) FROM document_history_events e WHERE e.case_id = cs.id AND e.event_type = 'observation') AS observationsCount,
+        (SELECT COUNT(*) FROM documents d WHERE d.case_id = cs.id AND d.status = 'rejected'
+           AND NOT EXISTS (SELECT 1 FROM observations o WHERE o.document_id = d.id)) AS untrackedRejected
        FROM cases cs WHERE cs.assigned_advisor_id = ?`
     ).bind(row.advisorId).all<any>();
     const samples = (evidence.results || []).map((item: any) => {
       const approved = Number(item.approved || 0);
-      const errors = Number(item.rejected || 0) + Number(item.observationsCount || 0);
+      const errors = Number(item.untrackedRejected || 0) + Number(item.observationsCount || 0);
       return approved + errors > 0 ? 100 * approved / (approved + errors) : null;
     }).filter((value: number | null): value is number => value !== null);
     const rejectedDocuments = (evidence.results || []).reduce((sum: number, item: any) => sum + Number(item.rejected || 0), 0);
@@ -91,7 +93,7 @@ app.get('/api/statistics/advisors', async (c) => {
   }));
   return c.json({
     advisors,
-    methodology: 'Promedio de calidad documental por legajo con evidencia: 100 × documentos aprobados / (aprobados + rechazados + observaciones históricas). El cierre del legajo no suma puntos. Sin evidencia no se califica.',
+    methodology: 'Promedio de calidad documental por legajo con evidencia: 100 × documentos aprobados / (aprobados + observaciones históricas + rechazos sin observación). El cierre del legajo no suma puntos. Sin evidencia no se califica.',
     note: 'Índice orientativo, no evaluación laboral definitiva: una observación puede depender del cliente o del responsable. No mide demoras atribuibles individualmente ni reemplaza la revisión humana.'
   });
 });
