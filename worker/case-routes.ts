@@ -66,30 +66,35 @@ app.get('/api/statistics/advisors', async (c) => {
     const total = Number(row.total || 0);
     const completed = Number(row.completed || 0);
     const observed = Number(row.observed || 0);
-    const resolved = completed + observed;
-    const rejected = await c.env.DB.prepare(
-      `SELECT COUNT(*) AS count FROM documents d JOIN cases cs ON cs.id = d.case_id WHERE cs.assigned_advisor_id = ? AND d.status = 'rejected'`
-    ).bind(row.advisorId).first<{ count: number }>();
-    const rejectedDocuments = Number(rejected?.count || 0);
-    // Transparent descriptive index. Do not present as a definitive personnel assessment.
-    // 60% completed vs observed; 25% avoidance of rejected documents per case;
-    // 15% proportion of cases without an observed status, excluding active work.
-    const completionRate = resolved ? completed / resolved : null;
-    const documentQuality = total ? Math.max(0, 1 - rejectedDocuments / total) : null;
-    const observedAvoidance = resolved ? 1 - observed / resolved : null;
-    const score = completionRate === null || documentQuality === null || observedAvoidance === null
-      ? null : Math.round(100 * (0.6 * completionRate + 0.25 * documentQuality + 0.15 * observedAvoidance));
+    // Score document evidence, never completion status. Historical observations remain counted once, including after resolution.
+    const evidence = await c.env.DB.prepare(
+      `SELECT cs.id AS caseId,
+        (SELECT COUNT(*) FROM documents d WHERE d.case_id = cs.id AND d.status = 'approved') AS approved,
+        (SELECT COUNT(*) FROM documents d WHERE d.case_id = cs.id AND d.status = 'rejected') AS rejected,
+        (SELECT COUNT(*) FROM document_history_events e WHERE e.case_id = cs.id AND e.event_type = 'observation') AS observationsCount,
+        (SELECT COUNT(*) FROM document_history_events e WHERE e.case_id = cs.id AND e.event_type = 'rejection'
+           AND NOT EXISTS (SELECT 1 FROM observations o WHERE o.document_id = e.document_id
+             AND o.created_at BETWEEN datetime(e.occurred_at, '-1 minute') AND datetime(e.occurred_at, '+1 minute'))) AS untrackedRejected
+       FROM cases cs WHERE cs.assigned_advisor_id = ?`
+    ).bind(row.advisorId).all<any>();
+    const samples = (evidence.results || []).map((item: any) => {
+      const approved = Number(item.approved || 0);
+      const errors = Number(item.untrackedRejected || 0) + Number(item.observationsCount || 0);
+      return approved + errors > 0 ? 100 * approved / (approved + errors) : null;
+    }).filter((value: number | null): value is number => value !== null);
+    const rejectedDocuments = (evidence.results || []).reduce((sum: number, item: any) => sum + Number(item.rejected || 0), 0);
+    const score = samples.length ? Math.round(samples.reduce((sum: number, value: number) => sum + value, 0) / samples.length) : null;
     const grade = score === null ? 'Sin datos' : score >= 95 ? 'Excelente' : score >= 85 ? 'Muy bueno' : score >= 70 ? 'Bueno' : score >= 55 ? 'Regular' : score >= 35 ? 'Deficiente' : 'Crítico';
     return {
       ...row, total, completed, observed, rejectedDocuments,
       pendingReview: Number(row.pendingReview || 0), active: Number(row.active || 0),
-      score, grade, sampleSize: resolved,
-      factors: { completionRate: completionRate === null ? null : Math.round(completionRate * 100), documentQuality: documentQuality === null ? null : Math.round(documentQuality * 100), observedAvoidance: observedAvoidance === null ? null : Math.round(observedAvoidance * 100) }
+      score, grade, sampleSize: samples.length,
+      factors: { completionRate: null, documentQuality: score, observedAvoidance: null }
     };
   }));
   return c.json({
     advisors,
-    methodology: 'Índice descriptivo: 60% finalizados/(finalizados+observados), 25% máximo(0,1-documentos rechazados/legajos), 15% legajos no observados/(finalizados+observados). Sin legajos resueltos no se califica.',
+    methodology: 'Promedio de calidad documental por legajo con evidencia: 100 × documentos aprobados / (aprobados + observaciones históricas + rechazos sin observación). El cierre del legajo no suma puntos. Sin evidencia no se califica.',
     note: 'Índice orientativo, no evaluación laboral definitiva: una observación puede depender del cliente o del responsable. No mide demoras atribuibles individualmente ni reemplaza la revisión humana.'
   });
 });
