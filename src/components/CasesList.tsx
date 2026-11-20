@@ -1,5 +1,5 @@
 import { fetchCaseDrafts, saveCaseDraft, deleteCaseDraft } from '../services/caseDraftRequests';
-import { apiRequest } from '../services/apiTransport';
+import { createCase, uploadCaseDocument, assignCaseManager, deleteCase } from '../services/caseOperations';
 import React, { useState } from 'react';
 import { 
   Plus, 
@@ -424,10 +424,7 @@ export default function CasesList({
     let createdId = '';
     try {
       const advisorId = currentUser.role === 'ASESOR' ? currentUser.id : (newAdvisorId || users.find(u => u.role === 'ASESOR')?.id || '');
-      const response = await apiRequest('/api/cases', {
-        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: newTitle, description: newDescription, templateId: newTemplateId, assignedAdvisorId: advisorId, assignedManagerId: currentUser.role === 'ASESOR' ? '' : currentUser.id, participants, generalFieldValues, pendingDocumentNames: pendingDocs, documentContent: customDocumentContent || undefined })
-      });
+      const response = await createCase({ title: newTitle, description: newDescription, templateId: newTemplateId, assignedAdvisorId: advisorId, assignedManagerId: currentUser.role === 'ASESOR' ? '' : currentUser.id, participants, generalFieldValues, pendingDocumentNames: pendingDocs, documentContent: customDocumentContent || undefined });
       const created = await response.json();
       if (!response.ok) throw new Error(created.error || 'No se pudo crear el legajo.');
       createdId = created.id;
@@ -441,7 +438,7 @@ export default function CasesList({
         data.append('requirementId', requirementId);
         data.append('name', req.name + ' — ' + actor.name + ' ' + actor.lastName);
         data.append('file', file);
-        const upload = await apiRequest('/api/documents/upload', { method: 'POST', credentials: 'include', body: data });
+        const upload = await uploadCaseDocument(data);
         if (!upload.ok) { const detail = await upload.json().catch(() => ({})); throw new Error(detail.error || 'Error al almacenar ' + req.name + ' en R2.'); }
       }
       if (editingDraftId) {
@@ -656,12 +653,7 @@ export default function CasesList({
                         <button
                           onClick={async () => {
                             try {
-                              const response = await apiRequest(`/api/cases/${c.id}/assign-manager`, {
-                                method: 'POST',
-                                credentials: 'include',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ managerId: currentUser.id, currentUserId: currentUser.id })
-                              });
+                              const response = await assignCaseManager(c.id, currentUser.id, currentUser.id);
                               if (!response.ok) {
                                 const err = await response.json();
                                 throw new Error(err.error);
@@ -685,12 +677,7 @@ export default function CasesList({
                             const selectedId = e.target.value;
                             if (!selectedId) return;
                             try {
-                              const response = await apiRequest(`/api/cases/${c.id}/assign-manager`, {
-                                method: 'POST',
-                                credentials: 'include',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ managerId: selectedId, currentUserId: currentUser.id })
-                              });
+                              const response = await assignCaseManager(c.id, selectedId, currentUser.id);
                               if (!response.ok) {
                                 const err = await response.json();
                                 throw new Error(err.error);
@@ -1138,10 +1125,7 @@ export default function CasesList({
                 type="button"
                 onClick={async () => {
                   try {
-                    const response = await apiRequest(`/api/cases/${caseToDelete.id}?currentUserId=${currentUser.id}`, {
-                      method: 'DELETE',
-                      credentials: 'include'
-                    });
+                    const response = await deleteCase(caseToDelete.id, currentUser.id);
                     if (!response.ok) {
                       const err = await response.json();
                       throw new Error(err.error || 'No se pudo eliminar el legajo');
