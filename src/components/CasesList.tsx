@@ -1,3 +1,4 @@
+import { filterCases, countCasesByStatus } from '../utils/caseListSelectors';
 import { fetchCaseDrafts, saveCaseDraft, deleteCaseDraft } from '../services/caseDraftRequests';
 import { createCase, uploadCaseDocument, assignCaseManager, deleteCase } from '../services/caseOperations';
 import React, { useState } from 'react';
@@ -457,21 +458,8 @@ export default function CasesList({
     } finally { setSavingCase(false); }
   };
 
-  // Filter cases based on search and tab selections
-  const filteredCases = cases.filter(c => {
-    const matchesSearch = c.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          c.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          c.description.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesStatus = statusFilter === 'all' || c.status === statusFilter;
-    const matchesTemplate = templateFilter === 'all' || c.templateId === templateFilter;
-    
-    // Advisors can only see cases where they are the assigned advisor.
-    // Managers and Admins can see all cases (since they might need to accept pending ones).
-    const matchesAdvisor = currentUser.role !== 'ASESOR' || c.assignedAdvisorId === currentUser.id;
-
-    return matchesSearch && matchesStatus && matchesTemplate && matchesAdvisor;
-  });
+  // Presentation consumes the same visibility rules as the status counters.
+  const filteredCases = filterCases(cases, currentUser, searchTerm, statusFilter, templateFilter);
 
   return (
     <div className="space-y-6">
@@ -550,10 +538,7 @@ export default function CasesList({
                           st === 'pending_assignment' ? 'Pendientes' :
                           st === 'pending_review' ? 'En Revisión' :
                           st === 'observed' ? 'Observados' : 'Finalizados';
-            const count = cases.filter(c => {
-              const matchesAdvisor = currentUser.role !== 'ASESOR' || c.assignedAdvisorId === currentUser.id;
-              return matchesAdvisor && (st === 'all' || c.status === st);
-            }).length;
+            const count = countCasesByStatus(cases, currentUser, st);
 
             return (
               <button
