@@ -1,4 +1,5 @@
-import { apiRequest } from '../services/apiTransport';
+import { sharedDocumentsForUser, downloadCaseFile, createUploadRequest, reviewUploadRequest, requestCaseReassignment, requestCaseReview, analyzeCaseDocument, caseHistory, assignManagerFromCaseDetail } from '../services/caseDetailOperations';
+import { deleteCase } from '../services/caseOperations';
 import DocumentPreviewViewer from './DocumentPreviewViewer';
 import React, { useState, useEffect, useRef } from 'react';
 import { 
@@ -205,9 +206,7 @@ export default function CaseDetail({
   useEffect(() => {
     const fetchSharedDocs = async () => {
       try {
-        const res = await apiRequest(`/api/shared-documents?userId=${currentUser.id}&role=${currentUser.role}`, {
-          credentials: 'include'
-        });
+        const res = await sharedDocumentsForUser(currentUser.id, currentUser.role);
         if (res.ok) {
           const data = await res.json();
           setSharedDocs(data);
@@ -376,7 +375,7 @@ export default function CaseDetail({
   const handlePreviewCaseDoc = async (docId: string, fileName: string) => {
     setPreviewLoading(true);
     try {
-      const res = await apiRequest(`/api/documents/${docId}/download`, { credentials: 'include' });
+      const res = await downloadCaseFile(`/api/documents/${docId}/download`);
       if (!res.ok) throw new Error('No se pudo abrir el documento.');
       const blob = await res.blob();
       const mime = blob.type || (fileName.toLowerCase().endsWith('.pdf') ? 'application/pdf' : '');
@@ -395,7 +394,7 @@ export default function CaseDetail({
   const handleDownloadCaseDoc = async (docId: string, fileName: string, downloadUrl?: string) => {
     try {
       const url = downloadUrl || `/api/documents/${docId}/download`;
-      const res = await apiRequest(url, { credentials: 'include' });
+      const res = await downloadCaseFile(url);
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || 'No se pudo descargar el documento desde Cloudflare R2.');
@@ -416,7 +415,7 @@ export default function CaseDetail({
 
   const handleCreateUploadRequestSubmit = async (stageId: string, reqId: string, reqName: string, requestedExtension: string) => {
     try {
-      const response = await apiRequest('/api/upload-requests/create', {
+      const response = await createUploadRequest( {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -445,7 +444,7 @@ export default function CaseDetail({
   const handleReviewUploadRequestSubmit = async (reqObjId: string, status: 'approved' | 'rejected') => {
     setSubmittingReview(true);
     try {
-      const response = await apiRequest('/api/upload-requests/review', {
+      const response = await reviewUploadRequest( {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -479,7 +478,7 @@ export default function CaseDetail({
   const handleAcceptAssignment = async () => {
     setSubmittingAssignment(true);
     try {
-      const response = await apiRequest(`/api/cases/${caseObj.id}/assign-manager`, {
+      const response = await assignManagerFromCaseDetail(caseObj.id, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -548,7 +547,7 @@ export default function CaseDetail({
     }
     setIsRequestingReassign(true);
     try {
-      const response = await apiRequest(`/api/cases/${caseObj.id}/request-reassignment`, {
+      const response = await requestCaseReassignment(caseObj.id, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -577,7 +576,7 @@ export default function CaseDetail({
   const handleRequestReview = async () => {
     setIsRequestingReview(true);
     try {
-      const response = await apiRequest(`/api/cases/${caseObj.id}/request-review`, {
+      const response = await requestCaseReview(caseObj.id, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -609,7 +608,7 @@ export default function CaseDetail({
     setAuditResult(null);
 
     try {
-      const response = await apiRequest('/api/ai/analyze-document', {
+      const response = await analyzeCaseDocument( {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -965,7 +964,7 @@ export default function CaseDetail({
                       if (!selectedId) return;
                       setSubmittingAssignment(true);
                       try {
-                        const response = await apiRequest(`/api/cases/${caseObj.id}/assign-manager`, {
+                        const response = await assignManagerFromCaseDetail(caseObj.id, {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           credentials: 'include',
@@ -1119,7 +1118,7 @@ export default function CaseDetail({
                                     onClick={async () => {
                                       try {
                                         const url = linkedSharedDoc.downloadUrl || `/api/shared-documents/${linkedSharedDoc.id}/download`;
-                                        const res = await apiRequest(url, { credentials: 'include' });
+                                        const res = await downloadCaseFile(url);
                                         if (!res.ok) {
                                           throw new Error('Contenido descargable no disponible en R2.');
                                         }
@@ -2092,10 +2091,7 @@ export default function CaseDetail({
                 type="button"
                 onClick={async () => {
                   try {
-                    const response = await apiRequest(`/api/cases/${caseObj.id}?currentUserId=${currentUser.id}`, {
-                      method: 'DELETE',
-                      credentials: 'include'
-                    });
+                    const response = await deleteCase(caseObj.id, currentUser.id);
                     if (!response.ok) {
                       const err = await response.json();
                       throw new Error(err.error || 'No se pudo eliminar el legajo');
@@ -2159,7 +2155,7 @@ function CaseHistoryPanel({ caseId, createdAt, status }: { caseId: string; creat
     setLoading(true);
     setError('');
     try {
-      const response = await apiRequest(`/api/cases/${encodeURIComponent(caseId)}/history`, { credentials: 'include' });
+      const response = await caseHistory(caseId);
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'No se pudo obtener el historial.');
       setEvents(result.events || []);
