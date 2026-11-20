@@ -1,3 +1,4 @@
+import { apiRequest } from '../services/apiTransport';
 import DocumentPreviewViewer from './DocumentPreviewViewer';
 import React, { useState, useEffect, useRef } from 'react';
 import { 
@@ -204,7 +205,7 @@ export default function CaseDetail({
   useEffect(() => {
     const fetchSharedDocs = async () => {
       try {
-        const res = await fetch(`/api/shared-documents?userId=${currentUser.id}&role=${currentUser.role}`, {
+        const res = await apiRequest(`/api/shared-documents?userId=${currentUser.id}&role=${currentUser.role}`, {
           credentials: 'include'
         });
         if (res.ok) {
@@ -375,7 +376,7 @@ export default function CaseDetail({
   const handlePreviewCaseDoc = async (docId: string, fileName: string) => {
     setPreviewLoading(true);
     try {
-      const res = await fetch(`/api/documents/${docId}/download`, { credentials: 'include' });
+      const res = await apiRequest(`/api/documents/${docId}/download`, { credentials: 'include' });
       if (!res.ok) throw new Error('No se pudo abrir el documento.');
       const blob = await res.blob();
       const mime = blob.type || (fileName.toLowerCase().endsWith('.pdf') ? 'application/pdf' : '');
@@ -394,7 +395,7 @@ export default function CaseDetail({
   const handleDownloadCaseDoc = async (docId: string, fileName: string, downloadUrl?: string) => {
     try {
       const url = downloadUrl || `/api/documents/${docId}/download`;
-      const res = await fetch(url, { credentials: 'include' });
+      const res = await apiRequest(url, { credentials: 'include' });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || 'No se pudo descargar el documento desde Cloudflare R2.');
@@ -415,7 +416,7 @@ export default function CaseDetail({
 
   const handleCreateUploadRequestSubmit = async (stageId: string, reqId: string, reqName: string, requestedExtension: string) => {
     try {
-      const response = await fetch('/api/upload-requests/create', {
+      const response = await apiRequest('/api/upload-requests/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -444,7 +445,7 @@ export default function CaseDetail({
   const handleReviewUploadRequestSubmit = async (reqObjId: string, status: 'approved' | 'rejected') => {
     setSubmittingReview(true);
     try {
-      const response = await fetch('/api/upload-requests/review', {
+      const response = await apiRequest('/api/upload-requests/review', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -478,7 +479,7 @@ export default function CaseDetail({
   const handleAcceptAssignment = async () => {
     setSubmittingAssignment(true);
     try {
-      const response = await fetch(`/api/cases/${caseObj.id}/assign-manager`, {
+      const response = await apiRequest(`/api/cases/${caseObj.id}/assign-manager`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -547,7 +548,7 @@ export default function CaseDetail({
     }
     setIsRequestingReassign(true);
     try {
-      const response = await fetch(`/api/cases/${caseObj.id}/request-reassignment`, {
+      const response = await apiRequest(`/api/cases/${caseObj.id}/request-reassignment`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -576,7 +577,7 @@ export default function CaseDetail({
   const handleRequestReview = async () => {
     setIsRequestingReview(true);
     try {
-      const response = await fetch(`/api/cases/${caseObj.id}/request-review`, {
+      const response = await apiRequest(`/api/cases/${caseObj.id}/request-review`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -608,7 +609,7 @@ export default function CaseDetail({
     setAuditResult(null);
 
     try {
-      const response = await fetch('/api/ai/analyze-document', {
+      const response = await apiRequest('/api/ai/analyze-document', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -964,7 +965,7 @@ export default function CaseDetail({
                       if (!selectedId) return;
                       setSubmittingAssignment(true);
                       try {
-                        const response = await fetch(`/api/cases/${caseObj.id}/assign-manager`, {
+                        const response = await apiRequest(`/api/cases/${caseObj.id}/assign-manager`, {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           credentials: 'include',
@@ -1118,7 +1119,7 @@ export default function CaseDetail({
                                     onClick={async () => {
                                       try {
                                         const url = linkedSharedDoc.downloadUrl || `/api/shared-documents/${linkedSharedDoc.id}/download`;
-                                        const res = await fetch(url, { credentials: 'include' });
+                                        const res = await apiRequest(url, { credentials: 'include' });
                                         if (!res.ok) {
                                           throw new Error('Contenido descargable no disponible en R2.');
                                         }
@@ -2091,7 +2092,7 @@ export default function CaseDetail({
                 type="button"
                 onClick={async () => {
                   try {
-                    const response = await fetch(`/api/cases/${caseObj.id}?currentUserId=${currentUser.id}`, {
+                    const response = await apiRequest(`/api/cases/${caseObj.id}?currentUserId=${currentUser.id}`, {
                       method: 'DELETE',
                       credentials: 'include'
                     });
@@ -2158,7 +2159,7 @@ function CaseHistoryPanel({ caseId, createdAt, status }: { caseId: string; creat
     setLoading(true);
     setError('');
     try {
-      const response = await fetch(`/api/cases/${encodeURIComponent(caseId)}/history`, { credentials: 'include' });
+      const response = await apiRequest(`/api/cases/${encodeURIComponent(caseId)}/history`, { credentials: 'include' });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'No se pudo obtener el historial.');
       setEvents(result.events || []);
