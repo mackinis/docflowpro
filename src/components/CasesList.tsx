@@ -1,3 +1,5 @@
+import { fetchCaseDrafts, saveCaseDraft, deleteCaseDraft } from '../services/caseDraftRequests';
+import { apiRequest } from '../services/apiTransport';
 import React, { useState } from 'react';
 import { 
   Plus, 
@@ -57,7 +59,7 @@ export default function CasesList({
   const [actorFieldValues, setActorFieldValues] = useState<Record<string,string>>({});
   const [draftBusy, setDraftBusy] = useState(false);
   const refreshDrafts = async () => {
-    const response = await fetch('/api/case-drafts', {credentials:'include'});
+    const response = await fetchCaseDrafts();
     if (!response.ok) throw new Error('No se pudieron cargar los borradores');
     const latest: DraftRecord[] = await response.json();
     draftSnapshots.set(currentUser.id, latest);
@@ -400,7 +402,7 @@ export default function CasesList({
         participants,fieldValues:generalFieldValues,documentContent:customDocumentContent,escribano:escribanoADesignar,
         pendingActor:{role:pType,name:pName,lastName:pLastName,dni:pDni,cuit:pCuit,email:pEmail,phone:pPhone,birthDate:pBirthDate,comments:pComments,editingId:editingParticipantId || '',fieldValues:JSON.stringify(actorFieldValues)}
       };
-      const response = await fetch('/api/case-drafts/'+id,{method:'PUT',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      const response = await saveCaseDraft(id, payload);
       if (!response.ok) throw new Error((await response.json()).error || 'No se pudo guardar el borrador');
       setEditingDraftId(id);
       await refreshDrafts(); setShowCreateModal(false);
@@ -422,7 +424,7 @@ export default function CasesList({
     let createdId = '';
     try {
       const advisorId = currentUser.role === 'ASESOR' ? currentUser.id : (newAdvisorId || users.find(u => u.role === 'ASESOR')?.id || '');
-      const response = await fetch('/api/cases', {
+      const response = await apiRequest('/api/cases', {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: newTitle, description: newDescription, templateId: newTemplateId, assignedAdvisorId: advisorId, assignedManagerId: currentUser.role === 'ASESOR' ? '' : currentUser.id, participants, generalFieldValues, pendingDocumentNames: pendingDocs, documentContent: customDocumentContent || undefined })
       });
@@ -439,11 +441,11 @@ export default function CasesList({
         data.append('requirementId', requirementId);
         data.append('name', req.name + ' — ' + actor.name + ' ' + actor.lastName);
         data.append('file', file);
-        const upload = await fetch('/api/documents/upload', { method: 'POST', credentials: 'include', body: data });
+        const upload = await apiRequest('/api/documents/upload', { method: 'POST', credentials: 'include', body: data });
         if (!upload.ok) { const detail = await upload.json().catch(() => ({})); throw new Error(detail.error || 'Error al almacenar ' + req.name + ' en R2.'); }
       }
       if (editingDraftId) {
-        await fetch('/api/case-drafts/'+editingDraftId,{method:'DELETE',credentials:'include'});
+        await deleteCaseDraft(editingDraftId);
         await refreshDrafts(); setEditingDraftId(null);
       }
       await loadState?.();
@@ -584,7 +586,7 @@ export default function CasesList({
             </button>
             <button type="button" title="Eliminar borrador" aria-label={`Eliminar borrador ${draft.title || 'sin título'}`} className="p-2 rounded-lg text-rose-600 hover:text-rose-800 hover:bg-rose-50 transition-colors" onClick={async () => {
               if (!window.confirm('¿Eliminar este borrador?')) return;
-              const response = await fetch('/api/case-drafts/'+draft.id,{method:'DELETE',credentials:'include'});
+              const response = await deleteCaseDraft(draft.id);
               if (response.ok) await refreshDrafts(); else alert('No se pudo eliminar el borrador');
             }}><Trash2 className="w-4 h-4" aria-hidden="true" /></button>
           </div>)}
@@ -654,7 +656,7 @@ export default function CasesList({
                         <button
                           onClick={async () => {
                             try {
-                              const response = await fetch(`/api/cases/${c.id}/assign-manager`, {
+                              const response = await apiRequest(`/api/cases/${c.id}/assign-manager`, {
                                 method: 'POST',
                                 credentials: 'include',
                                 headers: { 'Content-Type': 'application/json' },
@@ -683,7 +685,7 @@ export default function CasesList({
                             const selectedId = e.target.value;
                             if (!selectedId) return;
                             try {
-                              const response = await fetch(`/api/cases/${c.id}/assign-manager`, {
+                              const response = await apiRequest(`/api/cases/${c.id}/assign-manager`, {
                                 method: 'POST',
                                 credentials: 'include',
                                 headers: { 'Content-Type': 'application/json' },
@@ -1136,7 +1138,7 @@ export default function CasesList({
                 type="button"
                 onClick={async () => {
                   try {
-                    const response = await fetch(`/api/cases/${caseToDelete.id}?currentUserId=${currentUser.id}`, {
+                    const response = await apiRequest(`/api/cases/${caseToDelete.id}?currentUserId=${currentUser.id}`, {
                       method: 'DELETE',
                       credentials: 'include'
                     });

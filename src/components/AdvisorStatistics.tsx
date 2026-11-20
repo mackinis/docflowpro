@@ -1,24 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Activity, RefreshCw } from 'lucide-react';
-import { cachedJson } from '../utils/requestCache';
-type Advisor = { advisorId: string; name: string; lastName: string; total: number; completed: number; observed: number; pendingReview: number; active: number; rejectedDocuments: number; score: number | null; grade: string; sampleSize: number; factors: { completionRate: number | null; documentQuality: number | null; observedAvoidance: number | null } };
+import { useAdvisorStatistics } from '../hooks/useAdvisorStatistics';
 export default function AdvisorStatistics() {
-  const [rows, setRows] = useState<Advisor[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const load = async (force = false) => {
-    setLoading(true); setError('');
-    try {
-      const data = await cachedJson<{ advisors: Advisor[] }>('statistics:advisors', '/api/statistics/advisors', force);
-      setRows(data.advisors || []);
-    } catch (e: any) { setError(e.message || 'Error de conexión'); }
-    finally { setLoading(false); }
-  };
-  useEffect(() => { void load(); }, []);
+  const { rows, loading, error, refresh } = useAdvisorStatistics();
   return <section className="space-y-5">
     <div className="flex items-center justify-between gap-3">
       <div><h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2"><Activity className="w-6 h-6 text-indigo-600" /> Estadísticas de Asesores</h2><p className="text-sm text-slate-500">Calidad histórica del trabajo documental: se consideran rechazos y observaciones durante el proceso, incluso después de finalizar el legajo.</p></div>
-      <button type="button" onClick={() => void load(true)} disabled={loading} className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm flex gap-2 items-center disabled:opacity-50"><RefreshCw className="w-4 h-4" /> Actualizar</button>
+      <button type="button" onClick={() => void refresh(true)} disabled={loading} className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm flex gap-2 items-center disabled:opacity-50"><RefreshCw className="w-4 h-4" /> Actualizar</button>
     </div>
     {error && <p role="alert" className="text-red-700 bg-red-50 rounded-xl p-4">{error}</p>}
     {!error && <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
