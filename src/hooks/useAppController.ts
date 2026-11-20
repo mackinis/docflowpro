@@ -1,4 +1,4 @@
-import { apiRequest } from '../services/apiTransport';
+import { impersonateUser, reviewDocument, submitCaseForm, advanceCaseStage, approveCaseStage, reopenCase } from '../services/controllerOperations';
 import { useState, useEffect } from 'react';
 import { useNavigationAudit } from './useNavigationAudit';
 import { invalidateCachedJson } from '../utils/requestCache';
@@ -114,12 +114,7 @@ export function useAppController() {
   // Switch active role/user (Superadmin server-verified impersonation)
   const handleUserChange = async (user: User) => {
     try {
-      const response = await apiRequest('/api/auth/impersonate', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetUserId: user.id })
-      });
+      const response = await impersonateUser(user.id);
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
         throw new Error(errData.error || 'No se pudo cambiar de usuario.');
@@ -206,12 +201,7 @@ export function useAppController() {
   // Review Document (Approve / Reject)
   const handleReviewDoc = async (docId: string, status: 'approved' | 'rejected' | 'uploaded', observationText?: string, allowedRoles?: string[]) => {
     if (!currentUser) throw new Error('Sesión no disponible.');
-    const response = await apiRequest(`/api/documents/${docId}/review`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status, observationText, allowedRoles })
-    });
+    const response = await reviewDocument(docId, status, observationText, allowedRoles);
     if (!response.ok) {
       const detail = await response.json().catch(() => ({}));
       throw new Error(detail.error || 'No se pudo guardar el estado del documento.');
@@ -257,10 +247,7 @@ export function useAppController() {
 
     if (!stageId) return;
 
-    const response = await apiRequest('/api/forms/submit', {
-      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ caseId: activeCaseId, stageId, requirementId: reqId, values })
-    });
+    const response = await submitCaseForm(activeCaseId, stageId, reqId, values);
     if (!response.ok) {
       const detail = await response.json().catch(() => ({}));
       throw new Error(detail.error || 'No se pudo guardar el formulario.');
@@ -300,10 +287,7 @@ export function useAppController() {
   // Advance Stage (Validated)
   const handleAdvanceStage = async () => {
     if (!activeCaseId) return;
-    const response = await apiRequest(`/api/cases/${activeCaseId}/advance`, {
-      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: currentUser.id })
-    });
+    const response = await advanceCaseStage(activeCaseId, currentUser.id);
     if (!response.ok) {
       const detail = await response.json().catch(() => ({}));
       throw new Error(detail.error || 'No se pudo completar la operación.');
@@ -315,10 +299,7 @@ export function useAppController() {
   // Approve Stage (Manager only)
   const handleApproveStage = async () => {
     if (!activeCaseId) return;
-    const response = await apiRequest(`/api/cases/${activeCaseId}/approve-stage`, {
-      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: currentUser.id })
-    });
+    const response = await approveCaseStage(activeCaseId, currentUser.id);
     if (!response.ok) {
       const detail = await response.json().catch(() => ({}));
       throw new Error(detail.error || 'No se pudo completar la operación.');
@@ -329,12 +310,7 @@ export function useAppController() {
 
   const handleReopenCase = async (password: string): Promise<void> => {
     if (!activeCaseId) throw new Error('No hay un legajo activo.');
-    const response = await apiRequest(`/api/cases/${activeCaseId}/reopen`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password })
-    });
+    const response = await reopenCase(activeCaseId, password);
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
       throw new Error(body.error || 'No se pudo reabrir el legajo.');
