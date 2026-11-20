@@ -43,6 +43,34 @@ export async function ensureDatabaseReady(db: D1Database): Promise<void> {
       await db.prepare(`CREATE TRIGGER IF NOT EXISTS audit_logs_no_delete
         BEFORE DELETE ON audit_logs
         BEGIN SELECT RAISE(ABORT, 'audit_logs are append-only'); END`).run();
+      // Independent append-only snapshots survive document/case deletion.
+      await db.prepare(`CREATE TABLE IF NOT EXISTS document_history_events (
+        id TEXT PRIMARY KEY, case_id TEXT NOT NULL, document_id TEXT,
+        event_type TEXT NOT NULL, source_id TEXT NOT NULL,
+        details TEXT, occurred_at TEXT NOT NULL
+      )`).run();
+      await db.prepare('CREATE INDEX IF NOT EXISTS idx_document_history_case ON document_history_events(case_id, event_type)').run();
+      await db.prepare(`CREATE TRIGGER IF NOT EXISTS history_observation_insert AFTER INSERT ON observations
+        BEGIN INSERT OR IGNORE INTO document_history_events (id, case_id, document_id, event_type, source_id, details, occurred_at)
+        VALUES ('observation:' || NEW.id, NEW.case_id, NEW.document_id, 'observation', NEW.id, NEW.text, NEW.created_at); END`).run();
+      await db.prepare(`CREATE TRIGGER IF NOT EXISTS history_version_insert AFTER INSERT ON document_versions
+        BEGIN INSERT OR IGNORE INTO document_history_events (id, case_id, document_id, event_type, source_id, details, occurred_at)
+        SELECT 'version:' || NEW.id, d.case_id, NEW.document_id, 'version', NEW.id, NEW.file_name, NEW.uploaded_at
+        FROM documents d WHERE d.id = NEW.document_id; END`).run();
+      await db.prepare(`CREATE TRIGGER IF NOT EXISTS history_observation_resolved AFTER UPDATE OF status ON observations
+        WHEN OLD.status != NEW.status
+        BEGIN INSERT OR IGNORE INTO document_history_events (id, case_id, document_id, event_type, source_id, details, occurred_at)
+        VALUES ('observation-status:' || NEW.id || ':' || NEW.status, NEW.case_id, NEW.document_id, 'observation_status', NEW.id, NEW.status, COALESCE(NEW.resolved_at, strftime('%Y-%m-%dT%H:%M:%fZ','now'))); END`).run();
+      await db.prepare(`CREATE TRIGGER IF NOT EXISTS document_history_no_update BEFORE UPDATE ON document_history_events
+        BEGIN SELECT RAISE(ABORT, 'document history is append-only'); END`).run();
+      await db.prepare(`CREATE TRIGGER IF NOT EXISTS document_history_no_delete BEFORE DELETE ON document_history_events
+        BEGIN SELECT RAISE(ABORT, 'document history is append-only'); END`).run();
+      // Recover existing surviving evidence without inventing lost historical events.
+      await db.prepare(`INSERT OR IGNORE INTO document_history_events (id, case_id, document_id, event_type, source_id, details, occurred_at)
+        SELECT 'observation:' || id, case_id, document_id, 'observation', id, text, created_at FROM observations`).run();
+      await db.prepare(`INSERT OR IGNORE INTO document_history_events (id, case_id, document_id, event_type, source_id, details, occurred_at)
+        SELECT 'version:' || v.id, d.case_id, v.document_id, 'version', v.id, v.file_name, v.uploaded_at
+        FROM document_versions v JOIN documents d ON d.id = v.document_id`).run();
       // Do not expose the application until the minimum schema exists.
       const users = await db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'users'").first();
       if (!users) throw new Error('Database schema is incomplete');
