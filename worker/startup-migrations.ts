@@ -65,6 +65,18 @@ export async function ensureDatabaseReady(db: D1Database): Promise<void> {
         BEGIN SELECT RAISE(ABORT, 'document history is append-only'); END`).run();
       await db.prepare(`CREATE TRIGGER IF NOT EXISTS document_history_no_delete BEFORE DELETE ON document_history_events
         BEGIN SELECT RAISE(ABORT, 'document history is append-only'); END`).run();
+      await db.prepare(`CREATE TRIGGER IF NOT EXISTS history_document_rejection AFTER UPDATE OF status ON documents
+        WHEN NEW.status = 'rejected' AND OLD.status != 'rejected'
+        BEGIN INSERT INTO document_history_events (id, case_id, document_id, event_type, source_id, details, occurred_at)
+        VALUES (lower(hex(randomblob(16))), NEW.case_id, NEW.id, 'rejection', NEW.id, 'document rejected', strftime('%Y-%m-%dT%H:%M:%fZ','now')); END`).run();
+      await db.prepare(`CREATE TRIGGER IF NOT EXISTS history_document_initial_rejection AFTER INSERT ON documents
+        WHEN NEW.status = 'rejected'
+        BEGIN INSERT INTO document_history_events (id, case_id, document_id, event_type, source_id, details, occurred_at)
+        VALUES (lower(hex(randomblob(16))), NEW.case_id, NEW.id, 'rejection', NEW.id, 'document rejected', strftime('%Y-%m-%dT%H:%M:%fZ','now')); END`).run();
+      await db.prepare(`CREATE TRIGGER IF NOT EXISTS history_document_approval AFTER UPDATE OF status ON documents
+        WHEN NEW.status = 'approved' AND OLD.status != 'approved'
+        BEGIN INSERT INTO document_history_events (id, case_id, document_id, event_type, source_id, details, occurred_at)
+        VALUES (lower(hex(randomblob(16))), NEW.case_id, NEW.id, 'approval', NEW.id, 'document approved', strftime('%Y-%m-%dT%H:%M:%fZ','now')); END`).run();
       // Recover existing surviving evidence without inventing lost historical events.
       await db.prepare(`INSERT OR IGNORE INTO document_history_events (id, case_id, document_id, event_type, source_id, details, occurred_at)
         SELECT 'observation:' || id, case_id, document_id, 'observation', id, text, created_at FROM observations`).run();
