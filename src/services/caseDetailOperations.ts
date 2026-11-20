@@ -25,3 +25,7 @@ export function analyzeCaseDocument(options: RequestInit): Promise<Response> {
 export function caseHistory(caseId: string): Promise<Response> {
   return apiRequest(`/api/cases/${encodeURIComponent(caseId)}/history`, { credentials: 'include' });
 }
+
+export function assignManagerFromCaseDetail(caseId: string, options: RequestInit): Promise<Response> {
+  return apiRequest(`/api/cases/${caseId}/assign-manager`, options);
+}
