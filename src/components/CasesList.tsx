@@ -1,3 +1,4 @@
+import { fetchCaseDrafts, saveCaseDraft, deleteCaseDraft } from '../services/caseDraftRequests';
 import { apiRequest } from '../services/apiTransport';
 import React, { useState } from 'react';
 import { 
@@ -58,7 +59,7 @@ export default function CasesList({
   const [actorFieldValues, setActorFieldValues] = useState<Record<string,string>>({});
   const [draftBusy, setDraftBusy] = useState(false);
   const refreshDrafts = async () => {
-    const response = await apiRequest('/api/case-drafts', {credentials:'include'});
+    const response = await fetchCaseDrafts();
     if (!response.ok) throw new Error('No se pudieron cargar los borradores');
     const latest: DraftRecord[] = await response.json();
     draftSnapshots.set(currentUser.id, latest);
@@ -401,7 +402,7 @@ export default function CasesList({
         participants,fieldValues:generalFieldValues,documentContent:customDocumentContent,escribano:escribanoADesignar,
         pendingActor:{role:pType,name:pName,lastName:pLastName,dni:pDni,cuit:pCuit,email:pEmail,phone:pPhone,birthDate:pBirthDate,comments:pComments,editingId:editingParticipantId || '',fieldValues:JSON.stringify(actorFieldValues)}
       };
-      const response = await apiRequest('/api/case-drafts/'+id,{method:'PUT',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      const response = await saveCaseDraft(id, payload);
       if (!response.ok) throw new Error((await response.json()).error || 'No se pudo guardar el borrador');
       setEditingDraftId(id);
       await refreshDrafts(); setShowCreateModal(false);
@@ -444,7 +445,7 @@ export default function CasesList({
         if (!upload.ok) { const detail = await upload.json().catch(() => ({})); throw new Error(detail.error || 'Error al almacenar ' + req.name + ' en R2.'); }
       }
       if (editingDraftId) {
-        await apiRequest('/api/case-drafts/'+editingDraftId,{method:'DELETE',credentials:'include'});
+        await deleteCaseDraft(editingDraftId);
         await refreshDrafts(); setEditingDraftId(null);
       }
       await loadState?.();
@@ -585,7 +586,7 @@ export default function CasesList({
             </button>
             <button type="button" title="Eliminar borrador" aria-label={`Eliminar borrador ${draft.title || 'sin título'}`} className="p-2 rounded-lg text-rose-600 hover:text-rose-800 hover:bg-rose-50 transition-colors" onClick={async () => {
               if (!window.confirm('¿Eliminar este borrador?')) return;
-              const response = await apiRequest('/api/case-drafts/'+draft.id,{method:'DELETE',credentials:'include'});
+              const response = await deleteCaseDraft(draft.id);
               if (response.ok) await refreshDrafts(); else alert('No se pudo eliminar el borrador');
             }}><Trash2 className="w-4 h-4" aria-hidden="true" /></button>
           </div>)}
