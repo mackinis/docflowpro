@@ -167,7 +167,13 @@ app.delete('/api/case-drafts/:id', async (c) => {
 });
 
 app.get('/api/cases', async (c) => {
+  const auth = c.get('auth')!;
   const cases = await getAllCases(c.env.DB);
+  // The standalone case list must enforce the same effective-user boundary as /api/state.
+  // A superadmin impersonating an adviser must not inherit superadmin visibility.
+  if (auth.user.role === 'ASESOR') {
+    return c.json(cases.filter(item => item.assignedAdvisorId === auth.user.id));
+  }
   return c.json(cases);
 });
 
