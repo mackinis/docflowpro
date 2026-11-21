@@ -66,7 +66,7 @@ export default function Sidebar({
     let cancelled = false;
     setCanViewTeamStatistics(false);
     fetch('/api/permissions/me', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(data => {
-      if (!cancelled) setCanViewTeamStatistics(Boolean(data?.statistics?.manage));
+      if (!cancelled) setCanViewTeamStatistics(Boolean(data?.statistics?.view));
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [currentUser.id, currentUser.role]);
