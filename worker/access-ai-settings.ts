@@ -22,18 +22,21 @@ export function registerAccessAndAiSettings(app: Hono<{ Bindings: Env; Variables
       [/^\/api\/users(?:\/|$)|^\/api\/admin\/user-creators|^\/api\/admin\/registration-policy/, 'users'],
       [/^\/api\/audit(?:-|\/)|^\/api\/audit-logs/, 'audit'],
       [/^\/api\/statistics(?:\/|$)/, 'statistics'],
+      [/^\/api\/case-drafts(?:\/|$)/, 'cases'],
+      [/^\/api\/confecciones(?:\/|$)/, 'templates'],
       [/^\/api\/cases(?:\/|$)|^\/api\/tasks(?:\/|$)|^\/api\/observations(?:\/|$)|^\/api\/forms(?:\/|$)/, 'cases'],
       [/^\/api\/(?:documents|shared-documents|upload-requests)(?:\/|$)/, 'documents'],
       [/^\/api\/system-messages(?:\/|$)/, 'messages'],
       [/^\/api\/notifications(?:\/|$)/, 'notifications'],
       [/^\/api\/templates(?:\/|$)/, 'templates'],
+      [/^\/api\/admin\/(?:user-creators|registration-policy)(?:\/|$)/, 'users'],
       [/^\/api\/(?:system-settings|industry|verification-policy|admin\/backup|admin\/cleanup-unverified)(?:\/|$)/, 'settings'],
       [/^\/api\/(?:ai|gemini)(?:\/|$)/, 'ai'],
     ];
     const matched = routes.find(([pattern]) => pattern.test(path));
     if (!matched) return next();
     const method = c.req.method;
-    const action = method === 'GET' ? (path.endsWith('/download') ? 'download' : 'view') : method === 'DELETE' ? 'delete' : method === 'POST' && (/\/api\/(?:users|cases|documents|shared-documents|templates)$/.test(path)) ? 'create' : 'edit';
+    const action = method === 'GET' ? (path.endsWith('/download') ? 'download' : 'view') : method === 'DELETE' ? 'delete' : method === 'POST' && (/\/api\/(?:users|cases|documents|shared-documents|templates|confecciones)$/.test(path)) ? 'create' : 'edit';
     const { hasRbacPermission } = await import('../src/rbac');
     const matrix = await getSystemConfigValue(c.env.DB, 'rbacMatrix', { roles: {}, users: {} });
     if (!hasRbacPermission(matrix, auth.user.role, auth.user.id, `${matched[1]}.${action}` as any)) {
