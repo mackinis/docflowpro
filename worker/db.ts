@@ -477,7 +477,7 @@ export async function getFullState(
   requestingUser: User,
   realUser: User
 ): Promise<AppDataState> {
-  const isSuper = requestingUser.role === 'SUPERADMIN' || realUser.role === 'SUPERADMIN';
+  const isSuper = requestingUser.role === 'SUPERADMIN';
   const db = env.DB;
 
   const [
