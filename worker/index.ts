@@ -169,6 +169,46 @@ app.use('/api/*', async (c, next) => {
   return next();
 });
 
+// Authorize adviser workflow resources before the route handlers read or mutate them.
+// Identifiers for tasks, observations and forms are not authorization credentials.
+app.use('/api/*', async (c, next) => {
+  const auth = c.get('auth');
+  if (!auth || auth.user.role !== 'ASESOR') return next();
+  const path = c.req.path;
+  let caseId: string | null = null;
+  const byCase = path.match(/^\/api\/cases\/([^/]+)\/(?:tasks|observations)$/);
+  if (byCase) caseId = byCase[1];
+  const task = path.match(/^\/api\/tasks\/([^/]+)(?:\/toggle)?$/);
+  const observation = path.match(/^\/api\/observations\/([^/]+)\/(?:resolve|reopen)$/);
+  const form = path.match(/^\/api\/forms\/([^/]+)$/);
+  if (task || observation || form) {
+    const table = task ? 'tasks' : observation ? 'observations' : 'form_submissions';
+    const idColumn = form ? 'requirement_id' : 'id';
+    const resourceId = (task || observation || form)![1];
+    const row = await c.env.DB.prepare(`SELECT case_id FROM ${table} WHERE ${idColumn} = ?`).bind(resourceId).first<{ case_id: string }>();
+    if (!row) return c.json({ error: 'Recurso no encontrado' }, 404);
+    caseId = row.case_id;
+  }
+  if (path === '/api/observations' && c.req.method === 'POST' || path === '/api/forms/submit' && c.req.method === 'POST') {
+    const body = await c.req.raw.clone().json().catch(() => ({})) as { caseId?: string; requirementId?: string };
+    if (!body.caseId) return c.json({ error: 'Legajo requerido' }, 400);
+    caseId = body.caseId;
+    if (path === '/api/forms/submit' && body.requirementId) {
+      const existing = await c.env.DB.prepare('SELECT case_id FROM form_submissions WHERE requirement_id = ?')
+        .bind(body.requirementId).first<{ case_id: string }>();
+      if (existing && existing.case_id !== caseId) return c.json({ error: 'Formulario no disponible' }, 404);
+    }
+  }
+  if (caseId) {
+    const assigned = await c.env.DB.prepare('SELECT assigned_advisor_id FROM cases WHERE id = ?')
+      .bind(caseId).first<{ assigned_advisor_id: string }>();
+    if (!assigned || assigned.assigned_advisor_id !== auth.user.id) {
+      return c.json({ error: 'Legajo no encontrado' }, 404);
+    }
+  }
+  return next();
+});
+
 // A finalized case is read-only across all mutation APIs, including direct HTTP calls.
 app.use('/api/*', async (c, next) => {
   if (['GET', 'HEAD', 'OPTIONS'].includes(c.req.method)) return next();
