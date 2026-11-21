@@ -29,8 +29,9 @@ app.get('/api/notifications', async (c) => {
 
 async function handleReadNotif(c: AppContext) {
   const { id } = c.req.param();
-  await c.env.DB.prepare('UPDATE notifications SET read = 1 WHERE id = ?').bind(id).run();
-  const notif = await c.env.DB.prepare('SELECT * FROM notifications WHERE id = ?').bind(id).first<any>();
+  const auth = c.get('auth')!;
+  await c.env.DB.prepare('UPDATE notifications SET read = 1 WHERE id = ? AND user_id = ?').bind(id, auth.user.id).run();
+  const notif = await c.env.DB.prepare('SELECT * FROM notifications WHERE id = ? AND user_id = ?').bind(id, auth.user.id).first<any>();
   return c.json(
     notif
       ? {
@@ -52,7 +53,8 @@ app.put('/api/notifications/:id/read', handleReadNotif);
 
 app.delete('/api/notifications/:id', async (c) => {
   const { id } = c.req.param();
-  await c.env.DB.prepare('DELETE FROM notifications WHERE id = ?').bind(id).run();
+  const auth = c.get('auth')!;
+  await c.env.DB.prepare('DELETE FROM notifications WHERE id = ? AND user_id = ?').bind(id, auth.user.id).run();
   return c.json({ success: true });
 });
 
