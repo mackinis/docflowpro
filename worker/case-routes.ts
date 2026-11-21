@@ -16,6 +16,20 @@ const { dispatchQueueJob, getClientIp } = dependencies;
 // ============================================================================
 // 7. Cases (Expedientes / Legajos) & Participants
 // ============================================================================
+// Enforce ownership for every case-id endpoint, including participant mutations and
+// workflow actions. This is a server boundary, independent of sidebar visibility.
+app.use('/api/cases/:id/*', async (c, next) => {
+  const auth = c.get('auth');
+  if (!auth || auth.user.role !== 'ASESOR') return next();
+  const caseId = c.req.path.split('/')[3];
+  if (!caseId || ['my-activity', 'advisor-statistics'].includes(caseId)) return next();
+  const caseObj = await getCaseById(c.env.DB, caseId);
+  if (!caseObj || caseObj.assignedAdvisorId !== auth.user.id) {
+    return c.json({ error: 'Legajo no encontrado' }, 404);
+  }
+  return next();
+});
+
 // Advisor statistics use persisted cases and audit events, never client-supplied scores.
 // Personal activity feed: scoped to the authenticated advisor, never arbitrary user input.
 app.get('/api/cases/my-activity', async (c) => {
@@ -532,6 +546,11 @@ app.put('/api/cases/:id', async (c) => {
   const body = await c.req.json();
   const oldCase = await getCaseById(c.env.DB, id);
   if (!oldCase) return c.json({ error: 'Legajo no encontrado' }, 404);
+  // Advisers may update their assigned case content, but cannot reassign ownership
+  // or change its lifecycle status through a generic PUT request.
+  if (auth.user.role === 'ASESOR' && (body.assignedAdvisorId !== undefined || body.status !== undefined)) {
+    return c.json({ error: 'No autorizado para reasignar o cambiar el estado del legajo.' }, 403);
+  }
 
   const now = new Date().toISOString();
   const updatedTitle = body.title || oldCase.title;
