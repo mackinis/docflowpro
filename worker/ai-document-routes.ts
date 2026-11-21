@@ -19,6 +19,14 @@ async function handleAnalyzeDocument(c: AppContext) {
   const { documentId, requirementName, requirementDescription, fileName } = await c.req.json();
   const docRow = await c.env.DB.prepare('SELECT * FROM documents WHERE id = ?').bind(documentId).first<any>();
   if (!docRow) return c.json({ error: 'Documento no encontrado' }, 404);
+  // A manager may audit only documents in cases assigned to them.
+  // This must be checked before loading R2 content or mutating document status.
+  if (auth.user.role === 'MANAGER') {
+    const assignedCase = await getCaseById(c.env.DB, docRow.case_id);
+    if (!assignedCase || assignedCase.assignedManagerId !== auth.user.id) {
+      return c.json({ error: 'Documento no encontrado' }, 404);
+    }
+  }
 
   try {
     const result = await analyzeDocumentWithAI(c.env, {

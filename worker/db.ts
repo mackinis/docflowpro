@@ -477,7 +477,7 @@ export async function getFullState(
   requestingUser: User,
   realUser: User
 ): Promise<AppDataState> {
-  const isSuper = requestingUser.role === 'SUPERADMIN' || realUser.role === 'SUPERADMIN';
+  const isSuper = requestingUser.role === 'SUPERADMIN';
   const db = env.DB;
 
   const [
@@ -702,21 +702,28 @@ export async function getFullState(
     });
   }
 
+  // The state endpoint aggregates multiple domains: never send unrelated case data to advisers.
+  // Managers/admins retain their existing organization-wide oversight; impersonated advisers
+  // are scoped by the effective user rather than the real superadmin session.
+  const advisorScope = requestingUser.role === 'ASESOR';
+  const visibleCaseIds = new Set(cases.filter(item => item.assignedAdvisorId === requestingUser.id).map(item => item.id));
+  const visibleCases = advisorScope ? cases.filter(item => visibleCaseIds.has(item.id)) : cases;
+  const inVisibleCase = (caseId: string | undefined) => Boolean(caseId && visibleCaseIds.has(caseId));
   return {
     users: filteredUsers,
     templates: [...templates, ...virtualTemplates],
-    cases,
-    documents,
-    tasks,
-    observations,
-    notifications,
-    auditLogs: filteredAuditLogs,
-    formSubmissions,
-    uploadRequests,
+    cases: visibleCases,
+    documents: advisorScope ? documents.filter(item => inVisibleCase(item.caseId)) : documents,
+    tasks: advisorScope ? tasks.filter(item => inVisibleCase(item.caseId)) : tasks,
+    observations: advisorScope ? observations.filter(item => inVisibleCase(item.caseId)) : observations,
+    notifications: advisorScope ? notifications.filter(item => item.userId === requestingUser.id) : notifications,
+    auditLogs: advisorScope ? filteredAuditLogs.filter(item => item.userId === requestingUser.id) : filteredAuditLogs,
+    formSubmissions: advisorScope ? [] : formSubmissions,
+    uploadRequests: advisorScope ? uploadRequests.filter(item => inVisibleCase(item.caseId)) : uploadRequests,
     activeIndustry,
-    verificationPolicies,
-    systemSettings,
-    systemMessages: filteredMessages,
+    verificationPolicies: advisorScope ? DEFAULT_VERIFICATION_POLICIES : verificationPolicies,
+    systemSettings: advisorScope ? DEFAULT_SYSTEM_SETTINGS : systemSettings,
+    systemMessages: advisorScope ? filteredMessages.filter(item => item.senderId === requestingUser.id || item.receiverId === requestingUser.id) : filteredMessages,
     sharedDocuments: sharedDocs,
   };
 }
