@@ -22,6 +22,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { User, Notification } from '../types';
+import type { RbacModule } from '../rbac';
 
 interface SidebarProps {
   currentUser: User;
@@ -61,12 +62,12 @@ export default function Sidebar({
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [canViewTeamStatistics, setCanViewTeamStatistics] = useState(false);
+  const [effectivePermissions, setEffectivePermissions] = useState<Partial<Record<RbacModule, {view: boolean}>> | null>(null);
   useEffect(() => {
     let cancelled = false;
-    setCanViewTeamStatistics(false);
+    setEffectivePermissions(null);
     fetch('/api/permissions/me', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(data => {
-      if (!cancelled) setCanViewTeamStatistics(Boolean(data?.statistics?.manage));
+      if (!cancelled) setEffectivePermissions(data || {});
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [currentUser.id, currentUser.role]);
@@ -118,7 +119,20 @@ export default function Sidebar({
     });
   }
 
-  const allowedMenuItems = sortedMenuItems.filter(item => item.roles.includes(currentUser.role) && (item.id !== 'statistics' || canViewTeamStatistics));
+  // RBAC is the single source of truth for navigation; static role lists are not
+  // an authorization policy. 'Confecciones' currently has no dedicated RBAC module
+  // and uses the existing templates permission until its own module is introduced.
+  const menuPermissionModule: Record<string, RbacModule> = {
+    dashboard: 'dashboard', statistics: 'statistics', audit: 'audit',
+    cases: 'cases', confecciones: 'templates', documents: 'documents',
+    messages: 'messages', notifications: 'notifications',
+    templates: 'templates', profile: 'users', settings: 'settings'
+  };
+  const allowedMenuItems = sortedMenuItems.filter(item => {
+    if (item.id === 'profile' && currentUser.role === 'SUPERADMIN') return true;
+    if (!effectivePermissions) return false;
+    return effectivePermissions[menuPermissionModule[item.id]]?.view === true;
+  });
 
   const handleNotificationClick = (n: Notification) => {
     onMarkNotificationRead(n.id);
