@@ -721,7 +721,7 @@ export async function getFullState(
     formSubmissions: advisorScope ? [] : formSubmissions,
     uploadRequests: advisorScope ? uploadRequests.filter(item => inVisibleCase(item.caseId)) : uploadRequests,
     activeIndustry,
-    verificationPolicies: advisorScope ? {} : verificationPolicies,
+    verificationPolicies: advisorScope ? DEFAULT_VERIFICATION_POLICIES : verificationPolicies,
     systemSettings: advisorScope ? DEFAULT_SYSTEM_SETTINGS : systemSettings,
     systemMessages: advisorScope ? filteredMessages.filter(item => item.senderId === requestingUser.id || item.receiverId === requestingUser.id) : filteredMessages,
     sharedDocuments: sharedDocs,
