@@ -50,7 +50,14 @@ export function registerAccessAndAiSettings(app: Hono<{ Bindings: Env; Variables
     const matrix = await getSystemConfigValue(c.env.DB, 'rbacMatrix', { roles: {}, users: {} });
     const can = (action: 'view' | 'download' | 'edit' | 'create' | 'delete') =>
       hasRbacPermission(matrix, auth.user.role, auth.user.id, `documents.${action}`);
-    return c.json({ documents: { view: can('view'), download: can('download'), edit: can('edit'), create: can('create'), delete: can('delete') }, statistics: { view: hasRbacPermission(matrix, auth.user.role, auth.user.id, 'statistics.view'), manage: hasRbacPermission(matrix, auth.user.role, auth.user.id, 'statistics.manage') } });
+    const { RBAC_MODULES, RBAC_ACTIONS } = await import('../src/rbac');
+    const permissions = Object.fromEntries(RBAC_MODULES.map(module => [
+      module,
+      Object.fromEntries(RBAC_ACTIONS.map(action => [
+        action, hasRbacPermission(matrix, auth.user.role, auth.user.id, `${module}.${action}`)
+      ]))
+    ]));
+    return c.json(permissions);
   });
   
   // Granular RBAC administration: server-side superadmin-only policy.
