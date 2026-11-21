@@ -2,7 +2,8 @@ import type { Hono, Context } from 'hono';
 import type { Env, AppVariables } from './types';
 import type { ProcessTemplate } from '../src/types';
 import { analyzeDocumentWithAI, digitizeTemplateWithAI } from './ai';
-import { canUserManageTemplates, createAudit, createNotification, getCaseById } from './db';
+import { canUserManageTemplates, createAudit, createNotification, getCaseById, getSystemConfigValue } from './db';
+import { hasRbacPermission } from '../src/rbac';
 import { saveTemplateInDb } from './template-routes';
 
 type AppContext = Context<{ Bindings: Env; Variables: AppVariables }>;
@@ -96,6 +97,11 @@ async function handleAnalyzeDocument(c: AppContext) {
 
 async function handleDigitizeTemplate(c: AppContext) {
   const auth = c.get('auth')!;
+  const matrix = await getSystemConfigValue(c.env.DB, 'rbacMatrix', { roles: {}, users: {} });
+  // Digitization creates a new process template: AI access does not imply template creation.
+  if (!hasRbacPermission(matrix, auth.user.role, auth.user.id, 'templates.create')) {
+    return c.json({ error: 'Sin permiso para crear plantillas.' }, 403);
+  }
   if (!(await canUserManageTemplates(c.env.DB, auth.user.id))) {
     return c.json({ error: 'No tienes permisos suficientes para digitalizar plantillas.' }, 403);
   }
