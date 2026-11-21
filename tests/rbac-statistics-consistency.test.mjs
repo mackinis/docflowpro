@@ -38,3 +38,15 @@ test('sidebar and team endpoint use the same statistics.view permission', () => 
   assert.match(endpoint, /hasRbacPermission\(matrix, auth\.user\.role, auth\.user\.id, 'statistics\.view'\)/);
   assert.doesNotMatch(endpoint, /hasRbacPermission\(matrix, auth\.user\.role, auth\.user\.id, 'statistics\.manage'\)/);
 });
+
+test('every sidebar navigation module uses effective permissions rather than role allowlists', () => {
+  const sidebar = read('../src/components/Sidebar.tsx');
+  const server = read('../worker/access-ai-settings.ts');
+  for (const module of ['dashboard','statistics','audit','cases','documents','messages','notifications','templates','users','settings']) {
+    assert.match(sidebar, new RegExp('(?:^|[ ,])' + (module === 'users' ? 'profile' : module) + ": '" + module + "'"), module + ' sidebar mapping');
+  }
+  assert.match(sidebar, /effectivePermissions\[menuPermissionModule\[item\.id\]\]\?\.view === true/);
+  assert.doesNotMatch(sidebar, /item\.roles\.includes\(currentUser\.role\)/);
+  assert.match(server, /RBAC_MODULES\.map\(module/);
+  assert.match(server, /hasRbacPermission\(matrix, auth\.user\.role, auth\.user\.id/);
+});
