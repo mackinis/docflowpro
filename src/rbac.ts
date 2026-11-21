@@ -54,9 +54,17 @@ const ASESOR_DEFAULTS = Object.fromEntries(
     [`${module}.${action}`, (ASESOR_ALLOWED[module] || []).includes(action)]
   ))
 ) as Record<PermissionKey, boolean>;
+// Materialize the legacy ADMIN/MANAGER grants explicitly. Unknown/new permissions
+// are denied until reviewed, without silently revoking today's established grants.
+const LEGACY_GRANTED_ACTIONS = Object.fromEntries(
+  RBAC_MODULES.flatMap(module => RBAC_ACTIONS.map(action => {
+    const key = `${module}.${action}` as PermissionKey;
+    return [key, isApplicableRbacPermission(key)];
+  }))
+) as Record<PermissionKey, boolean>;
 export const RBAC_DEFAULTS: Record<Exclude<RbacRole,'SUPERADMIN'>,Partial<Record<PermissionKey,boolean>>> = {
-  ADMIN: { 'userRole.edit':false, 'userSensitive.edit':false },
-  MANAGER: { 'statistics.manage':true,'users.manage':false,'userEmail.edit':false,'userRole.edit':false,'userPassword.edit':false,'userStatus.edit':false,'userSensitive.edit':false,'settings.manage':false,'audit.view':false },
+  ADMIN: { ...LEGACY_GRANTED_ACTIONS, 'userRole.edit':false, 'userSensitive.edit':false },
+  MANAGER: { ...LEGACY_GRANTED_ACTIONS, 'statistics.manage':true,'users.manage':false,'userEmail.edit':false,'userRole.edit':false,'userPassword.edit':false,'userStatus.edit':false,'userSensitive.edit':false,'settings.manage':false,'audit.view':false },
   ASESOR: ASESOR_DEFAULTS,
 };
 // Non-delegable boundaries for advisers, even when an old stored override says otherwise.
@@ -84,5 +92,5 @@ export function hasRbacPermission(matrix: RbacMatrix | null | undefined, role: R
   const roleOverride = matrix?.roles?.[role]?.[key];
   if (typeof roleOverride === 'boolean') return roleOverride;
   const baseline = RBAC_DEFAULTS[role]?.[key];
-  return typeof baseline === 'boolean' ? baseline : true;
+  return baseline === true;
 }
