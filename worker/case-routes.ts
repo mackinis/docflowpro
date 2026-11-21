@@ -44,12 +44,12 @@ app.get('/api/cases/my-activity', async (c) => {
   })));
 });
 
-// Team-level statistics: only users with statistics.manage may inspect other advisors.
+// Reading advisor statistics requires statistics.view; statistics.manage is reserved for management operations.
 app.get('/api/statistics/advisors', async (c) => {
   const auth = c.get('auth')!;
   const { hasRbacPermission } = await import('../src/rbac');
   const matrix = await getSystemConfigValue(c.env.DB, 'rbacMatrix', { roles: {}, users: {} });
-  if (!hasRbacPermission(matrix, auth.user.role, auth.user.id, 'statistics.manage')) {
+  if (!hasRbacPermission(matrix, auth.user.role, auth.user.id, 'statistics.view')) {
     return c.json({ error: 'No tiene permiso para consultar estadísticas del equipo.' }, 403);
   }
   const rows = await c.env.DB.prepare(
