@@ -6,6 +6,32 @@ export type RbacRole = 'SUPERADMIN' | 'ADMIN' | 'MANAGER' | 'ASESOR';
 export type PermissionKey = `${RbacModule}.${RbacAction}`;
 export type RbacMatrix = { roles: Partial<Record<Exclude<RbacRole,'SUPERADMIN'>, Partial<Record<PermissionKey, boolean>>>>; users: Record<string, Partial<Record<PermissionKey, boolean>>> };
 export const RBAC_LABELS: Record<RbacModule,string> = {dashboard:'Tablero',statistics:'Estadísticas de asesores',audit:'Auditoría',cases:'Legajos',documents:'Documentos',messages:'Mensajes',notifications:'Notificaciones',templates:'Plantillas y procesos',users:'Usuarios',userEmail:'Email de acceso',userRole:'Rol de usuario',userPassword:'Contraseña de usuario',userStatus:'Estado de usuario',userSensitive:'Permisos sensibles',settings:'Configuración',ai:'Agente IA'};
+
+// Only actions with a concrete API/UI effect may be configured.
+// "manage" is retained for statistics where it is a distinct authorization.
+export const RBAC_APPLICABLE_ACTIONS: Record<RbacModule, readonly RbacAction[]> = {
+  dashboard: ['view'],
+  statistics: ['view', 'manage'],
+  audit: ['view', 'download'],
+  cases: ['view', 'create', 'edit', 'delete', 'download'],
+  documents: ['view', 'create', 'edit', 'delete', 'download'],
+  messages: ['view', 'create', 'edit', 'delete'],
+  notifications: ['view', 'edit', 'delete'],
+  templates: ['view', 'create', 'edit', 'delete'],
+  users: ['view', 'create', 'edit', 'delete'],
+  userEmail: ['edit'],
+  userRole: ['edit'],
+  userPassword: ['edit'],
+  userStatus: ['edit'],
+  userSensitive: ['edit'],
+  settings: ['view', 'edit'],
+  ai: ['view', 'edit'],
+};
+export function isApplicableRbacPermission(key: PermissionKey): boolean {
+  const [module, action] = key.split('.') as [RbacModule, RbacAction];
+  return RBAC_APPLICABLE_ACTIONS[module]?.includes(action) === true;
+}
+
 export const RBAC_ACTION_LABELS: Record<RbacAction,string> = {view:'Ver',create:'Crear',edit:'Editar',delete:'Eliminar',download:'Descargar',manage:'Administrar'};
 // Asesor: explicit allowlist. Every unspecified action is denied by default.
 const ASESOR_ALLOWED: Partial<Record<RbacModule, readonly RbacAction[]>> = {
@@ -45,10 +71,12 @@ export function isRbacKey(key: string): key is PermissionKey {
 // Hard server-side boundaries. These permissions cannot be delegated through RBAC.
 export function isNonDelegablePermission(role: RbacRole, key: PermissionKey): boolean {
   if (role === 'SUPERADMIN') return false;
+  if (!isApplicableRbacPermission(key)) return true;
   if (key === 'cases.delete') return true;
   return role === 'ASESOR' && isForbiddenForAsesor(key);
 }
 export function hasRbacPermission(matrix: RbacMatrix | null | undefined, role: RbacRole, userId: string, key: PermissionKey): boolean {
+  if (!isApplicableRbacPermission(key)) return false;
   if (role === 'SUPERADMIN') return true;
   if (isNonDelegablePermission(role, key)) return false;
   const userOverride = matrix?.users?.[userId]?.[key];
