@@ -95,10 +95,20 @@ export function registerAccessAndAiSettings(app: Hono<{ Bindings: Env; Variables
   ] as const;
   const AI_DELEGABLE_ROLES = ['ADMIN', 'MANAGER', 'ASESOR'] as const;
   
+  // The role allowlist alone never grants permission to configure AI.
+  // Both the role policy and the effective RBAC permission must approve.
+  const canEditAiSettings = async (c: AppContext): Promise<boolean> => {
+    const auth = c.get('auth');
+    if (!auth) return false;
+    const { hasRbacPermission } = await import('../src/rbac');
+    const matrix = await getSystemConfigValue(c.env.DB, 'rbacMatrix', { roles: {}, users: {} });
+    return hasRbacPermission(matrix, auth.user.role, auth.user.id, 'ai.edit');
+  };
+
   app.get('/api/ai/settings', async (c) => {
     const auth = c.get('auth')!;
     const settings = await getSystemConfigValue(c.env.DB, 'systemSettings', DEFAULT_SYSTEM_SETTINGS);
-    const canConfigure = auth.user.role === 'SUPERADMIN' || (settings.aiSettingsRoles || []).includes(auth.user.role as any);
+    const canConfigure = auth.user.role === 'SUPERADMIN' || ((settings.aiSettingsRoles || []).includes(auth.user.role as any) && await canEditAiSettings(c));
     const canUse = auth.user.role === 'SUPERADMIN' || (settings.aiAllowedRoles || []).includes(auth.user.role as any);
     if (!canConfigure && !canUse) return c.json({ error: 'Acceso al agente IA no autorizado.' }, 403);
     return c.json({ models: AI_MODELS, model: settings.aiModel || AI_MODELS[0].id,
@@ -109,7 +119,7 @@ export function registerAccessAndAiSettings(app: Hono<{ Bindings: Env; Variables
   app.post('/api/ai/settings', async (c) => {
     const auth = c.get('auth')!;
     const current = await getSystemConfigValue(c.env.DB, 'systemSettings', DEFAULT_SYSTEM_SETTINGS);
-    const canConfigure = auth.user.role === 'SUPERADMIN' || (current.aiSettingsRoles || []).includes(auth.user.role as any);
+    const canConfigure = auth.user.role === 'SUPERADMIN' || ((current.aiSettingsRoles || []).includes(auth.user.role as any) && await canEditAiSettings(c));
     if (!canConfigure) return c.json({ error: 'No autorizado para configurar el agente IA.' }, 403);
     const body = await c.req.json().catch(() => ({}));
     if (!AI_MODELS.some(model => model.id === body.model)) return c.json({ error: 'Modelo no permitido.' }, 400);
