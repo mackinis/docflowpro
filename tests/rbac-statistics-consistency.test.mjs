@@ -32,7 +32,7 @@ test('superadmin remains unrestricted', () => {
 test('sidebar and team endpoint use the same statistics.view permission', () => {
   const sidebar = read('../src/components/Sidebar.tsx');
   const routes = read('../worker/case-routes.ts');
-  assert.match(sidebar, /Boolean\(data\?\.statistics\?\.view\)/);
+  assert.match(sidebar, /effectivePermissions\[menuPermissionModule\[item\.id\]\]\?\.view === true/);
   const endpoint = routes.split("app.get('/api/statistics/advisors'")[1]?.split("app.get('/api/cases/advisor-statistics'")[0];
   assert.ok(endpoint, 'team statistics endpoint must exist');
   assert.match(endpoint, /hasRbacPermission\(matrix, auth\.user\.role, auth\.user\.id, 'statistics\.view'\)/);
